@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --teal: #2dd4bf;
+    --teal-strong: #14b8a6;
+    --teal-dark: #0f766e;
+    --teal-soft: #ccfbf1;
+    --teal-faint: #f0fdfa;
+    --black: #000000;
+    --ink: #0b1220;
+    --ink-2: #1f2937;
+    --muted: #6b7280;
+    --muted-2: #9ca3af;
+    --line: #e5e7eb;
+    --line-2: #f1f5f9;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --ok: #10b981;
+    --ok-soft: #d1fae5;
+    --warn: #f59e0b;
+    --warn-soft: #fef3c7;
+    --danger: #ef4444;
+    --danger-soft: #fee2e2;
+  }
+
+  html, body {
+    @apply font-sans bg-[var(--bg)] text-[var(--ink)] text-sm;
+  }
+}
+
+/* Wordmark — uses Lobster from Google Fonts; loaded via app/layout */
+.wordmark {
+  font-family: 'Lobster', 'Pacifico', cursive;
+  color: var(--teal);
+  font-size: 36px;
+  letter-spacing: -1px;
+  line-height: 1;
+}
