@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+
+type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
 /**
  * Single-user auth gate.
@@ -31,7 +33,7 @@ export async function middleware(request: NextRequest) {
     {
       cookies: {
         getAll() { return request.cookies.getAll(); },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
