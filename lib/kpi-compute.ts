@@ -198,7 +198,8 @@ function extractOperatorValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
   kpi: Kpi
 ): EntityValue[] {
-  return rows.map((r) => {
+  const out: EntityValue[] = [];
+  for (const r of rows) {
     const opId = String(r.data['operator_id'] ?? '');
     const hubName = String(r.data['geofence'] ?? '').trim();
     const hubId = hubNameToId(hubName);
@@ -206,43 +207,44 @@ function extractOperatorValues(
     const denField = kpi.denominator_field;
     const numerator = numField ? toNum(r.data[numField]) : NaN;
     const denominator = denField ? toNum(r.data[denField]) : 1;
-    if (!Number.isFinite(numerator)) {
-      return null;
-    }
-    return {
-      entity_type: 'operator' as const,
+    if (!Number.isFinite(numerator)) continue;
+    out.push({
+      entity_type: 'operator',
       entity_key: opId,
       city: r.upload.city ?? null,
       hub_id: hubId ?? r.upload.hub_id ?? null,
       numerator,
       denominator: Number.isFinite(denominator) && denominator > 0 ? denominator : 1,
-    };
-  }).filter((x): x is EntityValue => x !== null);
+    });
+  }
+  return out;
 }
 
 function extractDriverValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
   kpi: Kpi
 ): EntityValue[] {
-  return rows.map((r) => {
+  const out: EntityValue[] = [];
+  for (const r of rows) {
     const drvId = String(r.data['driver_id'] ?? '');
     const hubName = String(r.data['hub'] ?? '').trim();
     const hubId = hubNameToId(hubName);
-    if (!hubId) return null; // CH or excluded driver
+    if (!hubId) continue; // CH or excluded driver
     const numField = kpi.numerator_field ?? '';
     const denField = kpi.denominator_field;
     const numerator = numField ? toNum(r.data[numField]) : NaN;
     const denominator = denField ? toNum(r.data[denField]) : 1;
-    if (!Number.isFinite(numerator)) return null;
-    return {
-      entity_type: 'driver' as const,
+    if (!Number.isFinite(numerator)) continue;
+    out.push({
+      entity_type: 'driver',
       entity_key: drvId,
       city: r.upload.city ?? null,
       hub_id: hubId,
       numerator,
       denominator: Number.isFinite(denominator) && denominator > 0 ? denominator : 1,
-    };
-  }).filter((x): x is EntityValue => x !== null);
+    });
+  }
+  return out;
 }
 
 function extractMnaValues(
@@ -257,22 +259,24 @@ function extractMnaValues(
   //   later when we have a SKU master. For v1 we compute the parent only.
   if (kpi.parent_kpi_id) return []; // skip subdivision splits for now
 
-  return rows.map((r) => {
+  const out: EntityValue[] = [];
+  for (const r of rows) {
     const sku = String(r.data['SKU Calii'] ?? '');
     const hubId = r.upload.hub_id;
-    if (!hubId) return null;
+    if (!hubId) continue;
     const numerator = toNum(r.data['MNA ($)']);
     const denominator = toNum(r.data['Recibido']);
-    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return null;
-    return {
-      entity_type: 'sku' as const,
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) continue;
+    out.push({
+      entity_type: 'sku',
       entity_key: sku,
       city: hubCity.get(hubId) ?? null,
       hub_id: hubId,
       numerator,
       denominator,
-    };
-  }).filter((x): x is EntityValue => x !== null);
+    });
+  }
+  return out;
 }
 
 /**
