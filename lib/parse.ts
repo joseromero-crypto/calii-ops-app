@@ -3,7 +3,7 @@ import type { AppColumn } from './types';
 
 export interface ParsedCsv {
   headers: string[];
-  rows: Record<string, unknown>[];
+  rows: Record<string, string>[];
   errors: Papa.ParseError[];
 }
 
