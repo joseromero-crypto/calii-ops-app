@@ -334,12 +334,21 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
   // Entity-level (skip if values are already at hub level, like faltantes_armador_pct)
   const isAlreadyHubLevel = values.length > 0 && values[0].entity_type === 'hub';
   if (!isAlreadyHubLevel) {
+    // De-dupe within this run: SKUs appear across multiple hubs (same SKU = same string),
+    // operators/drivers don't, but be defensive on all of them.
+    const seen = new Set<string>();
     for (const v of values) {
+      const scopeLevel = v.entity_type === 'sku' ? 'sku' : v.entity_type === 'driver' ? 'driver' : 'operator';
+      // Compound key for SKU so the same SKU id in two hubs becomes two distinct rows.
+      const scopeKey = v.entity_type === 'sku' ? `${v.hub_id ?? '_'}:${v.entity_key}` : v.entity_key;
+      const dedupeKey = `${scopeLevel}|${scopeKey}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       snapshots.push({
         kpi_id: kpi.id,
         week_start: weekStart,
-        scope_level: v.entity_type === 'sku' ? 'sku' : v.entity_type === 'driver' ? 'driver' : 'operator',
-        scope_key: v.entity_key,
+        scope_level: scopeLevel,
+        scope_key: scopeKey,
         value: ratio(v.numerator, v.denominator, kpi),
         numerator: v.numerator,
         denominator: v.denominator,
