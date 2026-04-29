@@ -44,41 +44,48 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     });
   }, [kpis, snapshots, hubId, currentWeek]);
 
-  // Operator/driver rankings within this hub (tasa_armado / pct_tardias_reparto for the ranked list)
-  const operators = useMemo(
-    () =>
-      peers
-        .filter((p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId)
-        .filter((p) => p.kpi_id === 'tasa_armado'),
-    [peers, hubId]
-  );
+  // Operator/driver rankings — prefer within_hub; fall back to within_city for
+  // hubs that are the only hub in their city (Retool doesn't assign a hub name there).
+  const operators = useMemo(() => {
+    const withinHub = peers.filter(
+      (p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId && p.kpi_id === 'tasa_armado'
+    );
+    if (withinHub.length > 0) return withinHub;
+    return peers.filter(
+      (p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hub?.city && p.kpi_id === 'tasa_armado'
+    );
+  }, [peers, hubId, hub]);
 
-  const drivers = useMemo(
-    () =>
-      peers
-        .filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId)
-        .filter((p) => p.kpi_id === 'pct_tardias_reparto'),
-    [peers, hubId]
-  );
+  const drivers = useMemo(() => {
+    const withinHub = peers.filter(
+      (p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId && p.kpi_id === 'pct_tardias_reparto'
+    );
+    if (withinHub.length > 0) return withinHub;
+    return peers.filter(
+      (p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hub?.city && p.kpi_id === 'pct_tardias_reparto'
+    );
+  }, [peers, hubId, hub]);
 
-  // For the header count: unique entities across ALL KPIs in this hub (not limited to one KPI)
-  const operatorCount = useMemo(
-    () => new Set(
-      peers
-        .filter((p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId)
-        .map((p) => p.entity_key)
-    ).size,
-    [peers, hubId]
-  );
+  // For the header count: unique entities across ALL KPIs (within_hub, falling back to within_city)
+  const operatorCount = useMemo(() => {
+    const withinHub = peers.filter(
+      (p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId
+    );
+    const source = withinHub.length > 0
+      ? withinHub
+      : peers.filter((p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hub?.city);
+    return new Set(source.map((p) => p.entity_key)).size;
+  }, [peers, hubId, hub]);
 
-  const driverCount = useMemo(
-    () => new Set(
-      peers
-        .filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId)
-        .map((p) => p.entity_key)
-    ).size,
-    [peers, hubId]
-  );
+  const driverCount = useMemo(() => {
+    const withinHub = peers.filter(
+      (p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId
+    );
+    const source = withinHub.length > 0
+      ? withinHub
+      : peers.filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hub?.city);
+    return new Set(source.map((p) => p.entity_key)).size;
+  }, [peers, hubId, hub]);
 
   if (!hub) return <p className="text-[var(--muted)]">No hay hubs configurados.</p>;
 
@@ -174,17 +181,17 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
       {/* Picker/Driver rankings side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <RankList
-          title={`Pickers de ${hub.display_name} · Tasa de armado`}
+          title={`Armadores · ${operators[0]?.scope_type === 'within_city' ? hub.city : hub.display_name} · Tasa de armado`}
           items={operators}
           unit="rate"
-          subtitle="Ordenados por tasa, mejor → peor"
+          subtitle={operators[0]?.scope_type === 'within_city' ? `Ciudad ${hub.city} · ordenados por tasa, mejor → peor` : 'Ordenados por tasa, mejor → peor'}
           highlightLowest
         />
         <RankList
-          title={`Repartidores de ${hub.display_name} · % tardías`}
+          title={`Repartidores · ${drivers[0]?.scope_type === 'within_city' ? hub.city : hub.display_name} · % tardías`}
           items={drivers}
           unit="pct"
-          subtitle="Ordenados por % tardías, mejor → peor"
+          subtitle={drivers[0]?.scope_type === 'within_city' ? `Ciudad ${hub.city} · ordenados por % tardías, mejor → peor` : 'Ordenados por % tardías, mejor → peor'}
           highlightHighest
         />
       </div>
