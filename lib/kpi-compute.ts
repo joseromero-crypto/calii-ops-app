@@ -86,17 +86,20 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   const uploadById = new Map<string, UploadRef>();
   uploads.forEach((u) => uploadById.set(u.id, u as UploadRef));
 
-  // Stream rows in pages — large batch size to fit MNA volume (35k rows/week) within Netlify's 10s timeout
+  // Stream rows in pages. Supabase caps each response at ~1000 rows by default
+  // regardless of the range we ask for, so we increment `from` by what we actually
+  // got and stop when an empty page comes back.
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
   let from = 0;
-  const PAGE = 10000;
+  const CHUNK = 1000;
   while (true) {
     const { data: page, error } = await sb
       .from('upload_rows')
       .select('upload_id, data')
       .in('upload_id', uploads.map((u) => u.id))
       .eq('is_excluded', false)
-      .range(from, from + PAGE - 1);
+      .order('id', { ascending: true })
+      .range(from, from + CHUNK - 1);
     if (error) throw error;
     if (!page || page.length === 0) break;
     for (const r of page as RawRow[]) {
@@ -105,8 +108,8 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
       if (!rowsByApp.has(u.app_id)) rowsByApp.set(u.app_id, []);
       rowsByApp.get(u.app_id)!.push({ upload: u, data: r.data });
     }
-    if (page.length < PAGE) break;
-    from += PAGE;
+    from += page.length;            // advance by what we got, not what we asked for
+    if (page.length < CHUNK) break; // last page (less than full chunk) → done
   }
 
   // Compute per KPI — keep entityValues around for peer comparison
