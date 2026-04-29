@@ -31,6 +31,8 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
 
   // -1 = YTD, otherwise number of weeks to show
   const [weeksShown, setWeeksShown] = useState(5);
+  // city filter for the per-entity drill table
+  const [drillCity, setDrillCity] = useState<string | null>(null);
 
   if (!kpi) return <p className="text-[var(--muted)]">No hay KPIs configurados.</p>;
 
@@ -118,6 +120,33 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       return (a.value ?? 0) - (b.value ?? 0);
     });
   }, [peers, kpi]);
+
+  // Cities available in the current drill data (for the city filter chips)
+  const drillCities = useMemo(() => {
+    if (!drillEntities) return [];
+    const cities = new Set<string>();
+    for (const p of drillEntities) {
+      // within_hub: scope_key is a hub id → look up hub.city
+      // within_city: scope_key IS the city name
+      const city =
+        p.scope_type === 'within_hub'
+          ? hubs.find((h) => h.id === p.scope_key)?.city
+          : p.scope_key;
+      if (city) cities.add(city);
+    }
+    return [...cities].sort();
+  }, [drillEntities, hubs]);
+
+  const filteredDrillEntities = useMemo(() => {
+    if (!drillEntities || !drillCity) return drillEntities;
+    return drillEntities.filter((p) => {
+      const city =
+        p.scope_type === 'within_hub'
+          ? hubs.find((h) => h.id === p.scope_key)?.city
+          : p.scope_key;
+      return city === drillCity;
+    });
+  }, [drillEntities, drillCity, hubs]);
 
   // ------------------------------ Heatmap pivot ------------------------------
   const heatmapData = useMemo(() => {
@@ -280,18 +309,44 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       {/* Per-entity drill table */}
       {drillEntities && drillEntities.length > 0 && (
         <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
-          <div className="px-5 py-3 border-b border-[var(--line)]">
-            <h3 className="text-[14px] font-semibold">Acercamiento por entidad · esta sem.</h3>
-            <p className="text-[11.5px] text-[var(--muted)]">
-              {drillEntities[0].entity_type === 'operator' ? 'Armadores' : 'Repartidores'} ordenados peor → mejor (según dirección del KPI).
-            </p>
+          <div className="px-5 py-3 border-b border-[var(--line)] flex items-start justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-[14px] font-semibold">Acercamiento por entidad · esta sem.</h3>
+              <p className="text-[11.5px] text-[var(--muted)]">
+                {drillEntities[0].entity_type === 'operator' ? 'Armadores' : 'Repartidores'} ordenados peor → mejor (según dirección del KPI).
+              </p>
+            </div>
+            {drillCities.length > 1 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10.5px] uppercase tracking-wide text-[var(--muted)] font-bold">Ciudad:</span>
+                <button
+                  onClick={() => setDrillCity(null)}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                    !drillCity ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
+                  }`}
+                >
+                  Todas
+                </button>
+                {drillCities.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setDrillCity(c)}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                      drillCity === c ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <table className="w-full text-[12.5px]">
             <thead className="bg-slate-50 text-[10.5px] uppercase tracking-wide text-[var(--muted)] font-bold">
               <tr>
                 <th className="px-5 py-2 text-left">Rank</th>
                 <th className="px-5 py-2 text-left">Nombre</th>
-                <th className="px-5 py-2 text-left">Hub</th>
+                <th className="px-5 py-2 text-left">Hub / Ciudad</th>
                 <th className="px-5 py-2 text-right">Valor</th>
                 <th className="px-5 py-2 text-right">Peer mean</th>
                 <th className="px-5 py-2 text-right">z-score</th>
@@ -299,8 +354,11 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
               </tr>
             </thead>
             <tbody>
-              {drillEntities.slice(0, 25).map((p) => {
-                const hub = hubs.find((h) => h.id === p.scope_key);
+              {(filteredDrillEntities ?? []).slice(0, 25).map((p) => {
+                const hubMatch = hubs.find((h) => h.id === p.scope_key);
+                const scopeLabel = hubMatch
+                  ? `${hubMatch.display_name} · ${hubMatch.city}`
+                  : p.scope_key; // within_city → scope_key is the city name
                 const z = p.z_score ?? 0;
                 const flip = kpi.direction === 'higher_is_better' ? -1 : 1;
                 const adj = z * flip;
@@ -309,7 +367,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
                   <tr key={`${p.entity_key}-${p.scope_key}`} className={`border-t border-slate-100 ${rowClass}`}>
                     <td className="px-5 py-2 text-[var(--muted)] font-bold">{p.rank ?? '—'}</td>
                     <td className="px-5 py-2 font-medium">{p.entity_key}</td>
-                    <td className="px-5 py-2">{hub?.display_name ?? p.scope_key}</td>
+                    <td className="px-5 py-2 text-[var(--muted)]">{scopeLabel}</td>
                     <td className="px-5 py-2 text-right font-semibold">{formatValue(p.value, kpi.unit)}</td>
                     <td className="px-5 py-2 text-right text-[var(--muted)]">{formatValue(p.peer_mean, kpi.unit)}</td>
                     <td className="px-5 py-2 text-right text-[var(--muted)] font-mono">{p.z_score === null ? '—' : p.z_score.toFixed(2)}</td>
@@ -319,10 +377,13 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
               })}
             </tbody>
           </table>
-          {drillEntities.length > 25 && (
+          {(filteredDrillEntities?.length ?? 0) > 25 && (
             <div className="px-5 py-2 text-center text-[11.5px] text-[var(--muted)] bg-slate-50 border-t border-slate-100">
-              Mostrando 25 de {drillEntities.length}.
+              Mostrando 25 de {filteredDrillEntities!.length}.
             </div>
+          )}
+          {(filteredDrillEntities?.length ?? 0) === 0 && (
+            <div className="px-5 py-6 text-center text-[12px] text-[var(--muted)]">Sin datos para esta ciudad esta semana.</div>
           )}
         </div>
       )}
