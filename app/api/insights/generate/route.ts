@@ -11,6 +11,8 @@ const Body = z.object({
   week_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   mode: z.enum(['weekly_priorities', 'focus_plan']).default('weekly_priorities'),
   focus_areas: z.array(z.string()).optional(),
+  view: z.enum(['global', 'per_hub', 'per_category']).optional(),
+  view_key: z.string().nullable().optional(),
 });
 
 export async function POST(req: Request) {
@@ -34,6 +36,8 @@ export async function POST(req: Request) {
       weekStart: parsed.data.week_start,
       mode: parsed.data.mode,
       focusAreas: parsed.data.focus_areas,
+      view: parsed.data.view,
+      viewKey: parsed.data.view_key ?? undefined,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e: any) {
