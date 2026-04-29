@@ -1,7 +1,6 @@
 'use client';
-
 import { useMemo } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
@@ -23,24 +22,20 @@ interface Props {
 
 export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, selectedKpi }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
 
   const defaultKpi = kpis.find((k) => k.watched_globally)?.id ?? kpis[0]?.id;
   const kpiId = selectedKpi || defaultKpi;
   const kpi = kpis.find((k) => k.id === kpiId);
+
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
 
   if (!kpi) return <p className="text-[var(--muted)]">No hay KPIs configurados.</p>;
 
   function pickKpi(id: string) {
-    const params = new URLSearchParams(sp);
-    params.set('kpi', id);
-    router.push(`${pathname}?${params.toString()}`);
+    router.push(`/historicos?tab=kpi&kpi=${id}`);
   }
 
   // ------------------------------ Top movers ------------------------------
-  // Across all watched KPIs at hub level: biggest |WoW deltas| this week.
   const topMovers = useMemo(() => {
     const watchedIds = new Set(kpis.filter((k) => k.watched_globally).map((k) => k.id));
     const thisWeekHub = snapshots.filter(
@@ -81,7 +76,6 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
   }, [snapshots, kpi.id, currentWeek]);
 
   // ------------------------------ Per-entity drill ------------------------------
-  // Use peer_comparisons within_hub for operator/driver level visibility.
   const drillEntities = useMemo(() => {
     const entityType = ['tasa_armado', 'pct_armado_tardio', 'incidentes_manuales_pct', 'incidentes_calidad_pct',
       'incidentes_faltantes_pct', 'incidentes_faltantes_completos_pct', 'incidentes_faltantes_parciales_pct'].includes(kpi.id) ? 'operator' :
@@ -90,7 +84,6 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
     return peers
       .filter((p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.value !== null)
       .sort((a, b) => {
-        // worst first (depends on direction)
         if (kpi.direction === 'lower_is_better') return (b.value ?? 0) - (a.value ?? 0);
         return (a.value ?? 0) - (b.value ?? 0);
       });
@@ -99,10 +92,9 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
   // ------------------------------ Heatmap pivot ------------------------------
   const heatmapData = useMemo(() => {
     const weeks = [...new Set(snapshots.filter((s) => s.kpi_id === kpi.id).map((s) => s.week_start))]
-      .sort((a, b) => (a > b ? -1 : 1)); // most recent first
+      .sort((a, b) => (a > b ? -1 : 1));
     const cells: Record<string, Record<string, { value: number | null; z: number | null }>> = {};
     for (const h of hubs) cells[h.id] = {};
-    // Compute z-scores per week using std dev across hubs
     for (const wk of weeks) {
       const hubVals: Array<{ hubId: string; v: number }> = [];
       for (const s of snapshots) {
