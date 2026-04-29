@@ -11,11 +11,27 @@ interface PageProps {
 export default async function HistoricosPage({ searchParams }: PageProps) {
   const sb = createServerClient();
 
+  // 1. Try the current_week view first.
+  // 2. If null (view missing or no uploads yet), fall back to the most recent week
+  //    that actually has snapshot data — avoids the off-by-one where
+  //    lastCompletedWeekStart() returns the week AFTER the last uploaded week.
   const { data: cw } = await sb.from('current_week').select('week_start').single();
-  const currentWeek = cw?.week_start ?? lastCompletedWeekStart(new Date()).toISOString().slice(0, 10);
+  let currentWeek = cw?.week_start as string | undefined;
+
+  if (!currentWeek) {
+    const { data: latestSnap } = await sb
+      .from('kpi_snapshots')
+      .select('week_start')
+      .order('week_start', { ascending: false })
+      .limit(1)
+      .single();
+    currentWeek =
+      (latestSnap?.week_start as string | undefined) ??
+      lastCompletedWeekStart(new Date()).toISOString().slice(0, 10);
+  }
 
   const since = new Date(currentWeek + 'T00:00:00');
-  since.setDate(since.getDate() - 7 * 11);    // 12 weeks total including current
+  since.setDate(since.getDate() - 7 * 11); // 12 weeks total including current
   const sinceIso = since.toISOString().slice(0, 10);
 
   const [kpisRes, hubsRes, snapshotsRes, peersRes, rolesRes] = await Promise.all([
