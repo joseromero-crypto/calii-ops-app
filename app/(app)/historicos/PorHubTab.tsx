@@ -1,7 +1,6 @@
 'use client';
-
 import { useMemo } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
@@ -20,16 +19,12 @@ interface Props {
 
 export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedHub }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
 
   const hubId = selectedHub || hubs[0]?.id;
   const hub = hubs.find((h) => h.id === hubId);
 
   function pickHub(id: string) {
-    const params = new URLSearchParams(sp);
-    params.set('hub', id);
-    router.push(`${pathname}?${params.toString()}`);
+    router.push(`/historicos?tab=hub&hub=${id}`);
   }
 
   // KPI tiles for this hub
@@ -45,12 +40,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
         .filter((s) => s.kpi_id === k.id && s.scope_level === 'hub' && s.scope_key === hubId)
         .sort((a, b) => (a.week_start > b.week_start ? 1 : -1))
         .map((s) => ({ week: weekEndLabel(s.week_start), value: s.value === null ? null : Number(s.value) }));
-      return {
-        kpi: k,
-        thisWeek,
-        peerThis,
-        trend,
-      };
+      return { kpi: k, thisWeek, peerThis, trend };
     });
   }, [kpis, snapshots, hubId, currentWeek]);
 
@@ -62,6 +52,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
         .filter((p) => p.kpi_id === 'tasa_armado'),
     [peers, hubId]
   );
+
   const drivers = useMemo(
     () =>
       peers
@@ -113,7 +104,6 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
           const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
           const peerVal = peerThis?.value ?? null;
 
-          // Compare current vs peer mean
           let z: 'good' | 'mid' | 'bad' | null = null;
           if (value !== null && peerVal !== null && peerVal !== 0) {
             const pctDiff = ((value - peerVal) / Math.abs(peerVal)) * 100;
@@ -122,6 +112,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
             const badDiff = wantsLow ? pctDiff > 10 : pctDiff < -10;
             z = goodDiff ? 'good' : badDiff ? 'bad' : 'mid';
           }
+
           const tileClass =
             z === 'good' ? 'border-emerald-200 bg-emerald-50' :
             z === 'bad' ? 'border-red-200 bg-red-50' :
@@ -193,9 +184,10 @@ function RankList({
   highlightHighest?: boolean;
 }) {
   const sorted = [...items].sort((a, b) => {
-    if (highlightLowest) return (b.value ?? 0) - (a.value ?? 0);  // higher first (best)
-    return (a.value ?? 0) - (b.value ?? 0);                       // lower first (best)
+    if (highlightLowest) return (b.value ?? 0) - (a.value ?? 0);
+    return (a.value ?? 0) - (b.value ?? 0);
   });
+
   return (
     <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--line)]">
