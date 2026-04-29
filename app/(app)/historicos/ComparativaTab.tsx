@@ -20,9 +20,9 @@ export function ComparativaTab({ kpis, hubs, snapshots, currentWeek, selectedCit
 
   function pickCity(c: string | null) {
     if (c) {
-      router.push(`/historicos?tab=comparativa&city=${encodeURIComponent(c)}`);
+      router.push(`/historicos?tab=cmp&city=${encodeURIComponent(c)}`);
     } else {
-      router.push('/historicos?tab=comparativa');
+      router.push('/historicos?tab=cmp');
     }
   }
 
