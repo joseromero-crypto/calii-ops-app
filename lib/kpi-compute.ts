@@ -9,7 +9,6 @@
  * Trigger: `POST /api/recompute` after uploads finalize for a week,
  * or on a Friday-evening cron.
  */
-
 import { createAdminSupabase } from './supabase-server';
 import type { Kpi, City } from './types';
 
@@ -33,7 +32,7 @@ interface EntityValue {
   city: City | null;
   hub_id: string | null;
   numerator: number;
-  denominator: number;          // 1 for absolute / rate metrics that don't divide
+  denominator: number; // 1 for absolute / rate metrics that don't divide
 }
 
 interface Snapshot {
@@ -57,7 +56,6 @@ interface ComputeResult {
 // ----------------------------------------------------------------------------
 // Public entry point
 // ----------------------------------------------------------------------------
-
 export async function computeSnapshotsForWeek(weekStart: string): Promise<ComputeResult> {
   const sb = createAdminSupabase();
   const warnings: string[] = [];
@@ -86,9 +84,7 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   const uploadById = new Map<string, UploadRef>();
   uploads.forEach((u) => uploadById.set(u.id, u as UploadRef));
 
-  // Stream rows in pages. Supabase caps each response at ~1000 rows by default
-  // regardless of the range we ask for, so we increment `from` by what we actually
-  // got and stop when an empty page comes back.
+  // Stream rows in pages
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
   let from = 0;
   const CHUNK = 1000;
@@ -108,14 +104,15 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
       if (!rowsByApp.has(u.app_id)) rowsByApp.set(u.app_id, []);
       rowsByApp.get(u.app_id)!.push({ upload: u, data: r.data });
     }
-    from += page.length;            // advance by what we got, not what we asked for
-    if (page.length < CHUNK) break; // last page (less than full chunk) → done
+    from += page.length;
+    if (page.length < CHUNK) break;
   }
 
-  // Compute per KPI — keep entityValues around for peer comparison
+  // Compute per KPI
   const allSnapshots: Snapshot[] = [];
   const allPeers: any[] = [];
   let kpisProcessed = 0;
+
   for (const kpi of kpis as Kpi[]) {
     try {
       const entityValues = computeEntityValues(kpi, rowsByApp, hubCity);
@@ -133,7 +130,7 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
     }
   }
 
-  // Enrich with prev_week_value + rolling stats from prior snapshots
+  // Enrich with prev_week_value + rolling stats
   const enriched = await enrichWithHistory(sb, allSnapshots, weekStart);
 
   // Upsert snapshots
@@ -164,22 +161,16 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
 // ----------------------------------------------------------------------------
 // Per-KPI: derive entity-level values from raw rows
 // ----------------------------------------------------------------------------
-
 function computeEntityValues(
   kpi: Kpi,
   rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  // Special-case cross-app KPIs first
   if (kpi.id === 'faltantes_armador_pct') {
     return computeFaltantesArmadorPct(rowsByApp, hubCity);
   }
-
-  // Default path: single-app KPI driven by registry metadata.
   if (!kpi.source_app_id) return [];
   const rows = rowsByApp.get(kpi.source_app_id) ?? [];
-
-  // App-specific entity extraction
   switch (kpi.source_app_id) {
     case 'desempeno_operadores':
       return extractOperatorValues(rows, kpi);
@@ -188,9 +179,6 @@ function computeEntityValues(
     case 'mna':
       return extractMnaValues(rows, kpi, hubCity);
     case 'incidentes':
-      // Currently no incidentes-direct KPI is wired (entregas_erroneas comes from
-      // classifier output on Notas — implemented in the AI pipeline). When that
-      // lands, this case will read upload_rows.labels.primary == 'entrega_erronea'.
       return [];
     default:
       return [];
@@ -204,6 +192,9 @@ function extractOperatorValues(
   const out: EntityValue[] = [];
   for (const r of rows) {
     const opId = String(r.data['operator_id'] ?? '');
+    // Use human-readable name for entity_key; fall back to operator_id if missing.
+    const opName = String(r.data['assembler'] ?? '').trim() || opId;
+
     const hubName = String(r.data['geofence'] ?? '').trim();
     const hubId = hubNameToId(hubName);
     const numField = kpi.numerator_field ?? '';
@@ -213,7 +204,7 @@ function extractOperatorValues(
     if (!Number.isFinite(numerator)) continue;
     out.push({
       entity_type: 'operator',
-      entity_key: opId,
+      entity_key: opName,
       city: r.upload.city ?? null,
       hub_id: hubId ?? r.upload.hub_id ?? null,
       numerator,
@@ -230,6 +221,12 @@ function extractDriverValues(
   const out: EntityValue[] = [];
   for (const r of rows) {
     const drvId = String(r.data['driver_id'] ?? '');
+    // Use human-readable name; prefer driver_name, then driver_nickname, then driver_id.
+    const drvName =
+      String(r.data['driver_name'] ?? '').trim() ||
+      String(r.data['driver_nickname'] ?? '').trim() ||
+      drvId;
+
     const hubName = String(r.data['hub'] ?? '').trim();
     const hubId = hubNameToId(hubName);
     if (!hubId) continue; // CH or excluded driver
@@ -240,7 +237,7 @@ function extractDriverValues(
     if (!Number.isFinite(numerator)) continue;
     out.push({
       entity_type: 'driver',
-      entity_key: drvId,
+      entity_key: drvName,
       city: r.upload.city ?? null,
       hub_id: hubId,
       numerator,
@@ -255,17 +252,7 @@ function extractMnaValues(
   kpi: Kpi,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  // MNA is per-hub × per-SKU. Use the upload's hub_id (CSV is one per hub).
-  // The CSV already provides per-row `MNA (%)` (a fraction 0-1). To produce a
-  // meaningful HUB-level MNA %, we weight each row's percentage by the units
-  // received that week:
-  //    hub MNA % = sum(MNA% × Recibido) / sum(Recibido)
-  // So per row: numerator = MNA% * Recibido, denominator = Recibido.
-  // (Don't divide MNA $ by Recibido directly — that's $/kg, not a percentage.)
-  // For mna_*_pct sub-KPIs (graneles/carnes/fyv): same idea but filtered by SKU's
-  // subdivision — needs a SKU master to map. Skipping in v1.
   if (kpi.parent_kpi_id) return [];
-
   const out: EntityValue[] = [];
   for (const r of rows) {
     const sku = String(r.data['SKU Calii'] ?? '');
@@ -286,11 +273,6 @@ function extractMnaValues(
   return out;
 }
 
-/**
- * faltantes_armador_pct = count of faltante events / total armed orders.
- *  numerator: rows in `faltantes_armador` (one row per event), grouped by hub
- *  denominator: SUM(num_assembled) from `desempeno_operadores`, grouped by hub
- */
 function computeFaltantesArmadorPct(
   rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
   hubCity: Map<string, City>
@@ -334,20 +316,14 @@ function computeFaltantesArmadorPct(
 // ----------------------------------------------------------------------------
 // Aggregation: entity → hub → city → global
 // ----------------------------------------------------------------------------
-
 function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string): Snapshot[] {
   const snapshots: Snapshot[] = [];
 
-  // Entity-level snapshots — only for operators and drivers (small entity sets, ~30-100 each).
-  // Skip per-SKU snapshots: there are ~5,000 SKUs × 7 hubs = 35,000 entities per week,
-  // which blows Netlify's 10s function timeout. SKU-level details are surfaced by the AI
-  // by reading upload_rows directly when relevant. Hub/city/global aggregates still run
-  // below and are what charts read from.
   const isAlreadyHubLevel = values.length > 0 && values[0].entity_type === 'hub';
   if (!isAlreadyHubLevel) {
     const seen = new Set<string>();
     for (const v of values) {
-      if (v.entity_type === 'sku') continue;     // ← skip per-SKU snapshots
+      if (v.entity_type === 'sku') continue;
       const scopeLevel = v.entity_type === 'driver' ? 'driver' : 'operator';
       const scopeKey = v.entity_key;
       const dedupeKey = `${scopeLevel}|${scopeKey}`;
@@ -365,7 +341,7 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
     }
   }
 
-  // Hub-level: SUM numerators / SUM denominators within hub
+  // Hub-level
   const byHub = groupBy(values, (v) => v.hub_id ?? '_unassigned');
   for (const [hubId, vs] of byHub) {
     if (hubId === '_unassigned') continue;
@@ -420,27 +396,21 @@ function ratio(numerator: number, denominator: number, kpi: Kpi): number | null 
     return numerator;
   }
   if (kpi.unit === 'rate') {
-    // SKUs/hr: weighted by denominator (acts as the count). With den=1, just averages per row's value.
     if (denominator <= 0) return null;
     return numerator / denominator;
   }
-  // pct, minutes, days — ratio
   if (denominator <= 0) return null;
   return numerator / denominator;
 }
 
 // ----------------------------------------------------------------------------
-// Enrichment: prev_week_value + rolling 4-week mean/std from prior snapshots
+// Enrichment: prev_week_value + rolling 4-week mean/std
 // ----------------------------------------------------------------------------
-
 async function enrichWithHistory(sb: SB, snapshots: Snapshot[], weekStart: string): Promise<any[]> {
   if (snapshots.length === 0) return [];
-
-  // Pull the last 4 weeks of snapshots for these KPIs
   const since = new Date(weekStart);
   since.setDate(since.getDate() - 7 * 5);
   const sinceIso = since.toISOString().slice(0, 10);
-
   const kpiIds = [...new Set(snapshots.map((s) => s.kpi_id))];
   const { data: history } = await sb
     .from('kpi_snapshots')
@@ -448,14 +418,12 @@ async function enrichWithHistory(sb: SB, snapshots: Snapshot[], weekStart: strin
     .in('kpi_id', kpiIds)
     .gte('week_start', sinceIso)
     .lt('week_start', weekStart);
-
   const histMap = new Map<string, { week_start: string; value: number | null }[]>();
   for (const h of history ?? []) {
     const k = `${h.kpi_id}|${h.scope_level}|${h.scope_key ?? ''}`;
     if (!histMap.has(k)) histMap.set(k, []);
     histMap.get(k)!.push({ week_start: h.week_start as string, value: h.value as number | null });
   }
-
   return snapshots.map((s) => {
     const k = `${s.kpi_id}|${s.scope_level}|${s.scope_key ?? ''}`;
     const past = (histMap.get(k) ?? []).sort((a, b) => b.week_start.localeCompare(a.week_start));
@@ -466,20 +434,13 @@ async function enrichWithHistory(sb: SB, snapshots: Snapshot[], weekStart: strin
       last4.length > 1
         ? Math.sqrt(sum(last4, (x) => Math.pow(x - (rollingMean ?? 0), 2)) / (last4.length - 1))
         : null;
-    return {
-      ...s,
-      prev_week_value: prevWeek,
-      rolling_mean_4w: rollingMean,
-      rolling_std_4w: rollingStd,
-    };
+    return { ...s, prev_week_value: prevWeek, rolling_mean_4w: rollingMean, rolling_std_4w: rollingStd };
   });
 }
 
 // ----------------------------------------------------------------------------
-// Peer comparisons (z-scores) — operates on entity values which still have
-// hub_id and city, so we can group by either without joining anything.
+// Peer comparisons (z-scores)
 // ----------------------------------------------------------------------------
-
 function computePeersForKpi(
   kpi: Kpi,
   values: EntityValue[],
@@ -487,26 +448,16 @@ function computePeersForKpi(
   hubCity: Map<string, City>
 ): any[] {
   if (values.length === 0) return [];
-
-  // Skip SKU peer comparisons — too many entities per week (35k+) for Netlify's 10s window.
-  // Hub-level peer comparisons (hub vs other hubs in the same city) still run below.
   if (values[0].entity_type === 'sku') return [];
 
-  // Compute the per-entity ratio value once
   const points = values
-    .map((v) => ({
-      ...v,
-      value: ratio(v.numerator, v.denominator, kpi),
-    }))
+    .map((v) => ({ ...v, value: ratio(v.numerator, v.denominator, kpi) }))
     .filter((p): p is EntityValue & { value: number } => typeof p.value === 'number');
 
   if (points.length < 2) return [];
+
   const entityType = points[0].entity_type;
 
-  // Define scope hierarchy depending on entity_type:
-  //  - operator/driver: within_hub, within_city, global
-  //  - sku:             within_hub, global  (subdivision filter handled at KPI level)
-  //  - hub:             within_city, global
   type Scope = { type: 'within_hub' | 'within_city' | 'global'; getKey: (p: typeof points[number]) => string | null };
   const scopes: Scope[] = [];
 
@@ -524,9 +475,7 @@ function computePeersForKpi(
   }
 
   const out: any[] = [];
-
   for (const scope of scopes) {
-    // Bucket points by scope key
     const buckets = new Map<string, typeof points>();
     for (const p of points) {
       const k = scope.getKey(p);
@@ -542,15 +491,12 @@ function computePeersForKpi(
       const sorted = [...vals].sort((a, b) => a - b);
       const p50 = sorted[Math.floor(sorted.length / 2)];
       const p90 = sorted[Math.floor(sorted.length * 0.9)];
-
-      // Rank by direction (lower-is-better → asc; higher-is-better → desc)
       const dir = kpi.direction;
       const ranked = [...group].sort((a, b) =>
         dir === 'lower_is_better' ? a.value - b.value : b.value - a.value
       );
       const rankByKey = new Map<string, number>();
       ranked.forEach((g, i) => rankByKey.set(g.entity_key, i + 1));
-
       for (const g of group) {
         out.push({
           kpi_id: kpi.id,
@@ -570,14 +516,12 @@ function computePeersForKpi(
       }
     }
   }
-
   return out;
 }
 
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
-
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
   if (typeof v === 'string') {
@@ -616,9 +560,8 @@ function hubNameToId(name: string): string | null {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, '_');
-  if (cleaned.startsWith('ch_')) return null;          // CH Guadalupe excluded
+  if (cleaned.startsWith('ch_')) return null; // CH Guadalupe excluded
   if (cleaned === 'mh_san_nicolas') return 'mh_san_nicolas';
   if (cleaned.startsWith('mh_')) return cleaned;
   return null;
 }
-
