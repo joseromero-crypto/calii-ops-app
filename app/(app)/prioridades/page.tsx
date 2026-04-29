@@ -7,10 +7,18 @@ export const dynamic = 'force-dynamic';
 
 interface PageProps { searchParams: { week?: string; tab?: string } }
 
+const CATEGORIES = [
+  { id: 'calidad',       label: 'Calidad' },
+  { id: 'inventario',    label: 'Inventario' },
+  { id: 'logistica',     label: 'Logística' },
+  { id: 'productividad', label: 'Productividad' },
+  { id: 'asistencia',    label: 'Asistencia' },
+  { id: 'incidentes',    label: 'Incidentes' },
+];
+
 export default async function PrioridadesPage({ searchParams }: PageProps) {
   const supabase = createServerClient();
 
-  // Default week: most recently uploaded
   const { data: cw } = await supabase.from('current_week').select('week_start').single();
   const defaultIso = cw?.week_start ?? lastCompletedWeekStart(new Date()).toISOString().slice(0, 10);
   const weekStartIso = (searchParams.week && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.week))
@@ -19,15 +27,10 @@ export default async function PrioridadesPage({ searchParams }: PageProps) {
   const week = new Date(weekStartIso + 'T00:00:00');
   const tab = (searchParams.tab as 'general' | 'mh' | 'cat' | undefined) ?? 'general';
 
-  // Fetch insights for the week + KPI metadata for display
   const [{ data: insights }, { data: kpis }, { data: hubs }, { data: roles }] = await Promise.all([
-    supabase.from('ai_insights')
-      .select('*')
-      .eq('week_start', weekStartIso)
-      .eq('mode', 'weekly_priorities')
-      .order('rank', { ascending: true }),
+    supabase.from('ai_insights').select('*').eq('week_start', weekStartIso).eq('mode', 'weekly_priorities').order('rank', { ascending: true }),
     supabase.from('kpis').select('id, name_es, owner_role_id, category, watched_globally'),
-    supabase.from('hubs').select('id, display_name, city'),
+    supabase.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
     supabase.from('hub_roles').select('id, name_es'),
   ]);
 
@@ -35,11 +38,6 @@ export default async function PrioridadesPage({ searchParams }: PageProps) {
   const hubById = new Map((hubs ?? []).map((h: any) => [h.id, h]));
   const roleById = new Map((roles ?? []).map((r: any) => [r.id, r]));
 
-  const hasAny = (insights ?? []).length > 0;
-  const generatedAt = (insights ?? [])[0]?.generated_at;
-  const promptVersion = (insights ?? [])[0]?.prompt_version;
-
-  // Group by view for the tab structure
   const general = (insights ?? []).filter((i: any) => i.view === 'global');
   const byHub = groupBy((insights ?? []).filter((i: any) => i.view === 'per_hub'), (i: any) => i.view_key ?? 'unknown');
   const byCat = groupBy((insights ?? []).filter((i: any) => i.view === 'per_category'), (i: any) => i.view_key ?? 'unknown');
@@ -50,25 +48,13 @@ export default async function PrioridadesPage({ searchParams }: PageProps) {
         <div>
           <h1 className="text-[22px] font-bold tracking-tight">Prioridades de la semana</h1>
           <div className="text-[var(--muted)] text-[13px] mt-1">
-            Insights generados por AI a partir de los archivos subidos. Cada item incluye evidencia, owner sugerido y fuente de datos.
+            Insights generados por AI. Genera uno por uno por scope — más rápido y permite re-generar sólo lo que necesitas.
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 bg-white border border-[var(--line)] rounded-full px-3 py-1.5 text-[12.5px] shadow-soft">
-            <span className="w-2 h-2 rounded-full bg-teal-400" />
-            {formatWeekRange(week)}
-            {generatedAt && (
-              <>
-                {' · '}
-                <span className="text-[var(--muted)]">
-                  Generado {new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(generatedAt))}
-                  {promptVersion ? ` · prompt v${promptVersion}` : ''}
-                </span>
-              </>
-            )}
-          </span>
-          <GenerateInsightsButton weekStart={weekStartIso} label={hasAny ? '↻ Regenerar' : '✨ Generar insights'} />
-        </div>
+        <span className="inline-flex items-center gap-2 bg-white border border-[var(--line)] rounded-full px-3 py-1.5 text-[12.5px] shadow-soft">
+          <span className="w-2 h-2 rounded-full bg-teal-400" />
+          {formatWeekRange(week)}
+        </span>
       </div>
 
       {/* Tabs */}
@@ -78,14 +64,29 @@ export default async function PrioridadesPage({ searchParams }: PageProps) {
         <Tab href={tabHref(weekStartIso, 'cat')} active={tab === 'cat'}>Por categoría</Tab>
       </div>
 
-      {!hasAny ? (
-        <Empty weekStartIso={weekStartIso} />
-      ) : tab === 'general' ? (
-        <GeneralTab insights={general} kpiById={kpiById} roleById={roleById} />
+      {tab === 'general' ? (
+        <GeneralTab
+          insights={general}
+          kpiById={kpiById}
+          roleById={roleById}
+          weekStartIso={weekStartIso}
+        />
       ) : tab === 'mh' ? (
-        <PerHubTab byHub={byHub} hubById={hubById} kpiById={kpiById} roleById={roleById} />
+        <PerHubTab
+          byHub={byHub}
+          hubs={hubs ?? []}
+          hubById={hubById}
+          kpiById={kpiById}
+          roleById={roleById}
+          weekStartIso={weekStartIso}
+        />
       ) : (
-        <PerCategoryTab byCat={byCat} kpiById={kpiById} roleById={roleById} />
+        <PerCategoryTab
+          byCat={byCat}
+          kpiById={kpiById}
+          roleById={roleById}
+          weekStartIso={weekStartIso}
+        />
       )}
     </div>
   );
@@ -109,128 +110,135 @@ function Tab({ href, active, children }: { href: string; active: boolean; childr
   );
 }
 
-function GeneralTab({ insights, kpiById, roleById }: any) {
-  const top3 = insights.filter((i: any) => i.rank !== null && i.rank <= 3);
-  const more = insights.filter((i: any) => i.rank !== null && i.rank > 3);
-
+function GeneralTab({ insights, kpiById, roleById, weekStartIso }: any) {
   return (
     <div className="space-y-3">
-      <div className="bg-teal-50 border border-teal-200 rounded-md p-3 text-[12.5px] text-teal-800 flex items-start gap-2.5">
-        <div className="w-5 h-5 rounded-full bg-teal-400 text-white flex items-center justify-center text-[12px] font-bold flex-shrink-0">i</div>
-        <div>
-          <b className="text-[var(--ink)]">Top 3 destacadas</b> de tus KPIs personales (MNA, Faltantes, Incidentes, Tasa de armado, % tardías reparto, Entregas erróneas).
-          Cada tarjeta tiene 👍/👎 (entrena al sistema), <b>Reformular</b> (regenera con otra perspectiva), y <b>Fuera de scope</b> (crea regla en Configuración).
+      <div className="bg-white border border-[var(--line)] rounded-xl p-4 shadow-soft flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[12.5px] text-[var(--muted)]">
+          <b className="text-[var(--ink)]">3 prioridades generales</b> de tus KPIs personales — los items que <b>tú</b> sigues semana a semana.
         </div>
+        <GenerateInsightsButton
+          weekStart={weekStartIso}
+          view="global"
+          label={insights.length > 0 ? '↻ Regenerar generales' : '✨ Generar 3 insights generales'}
+        />
       </div>
 
-      {top3.map((i: any) => (
-        <InsightCard
-          key={i.id}
-          insight={i}
-          kpiName={kpiById.get(i.kpi_id ?? '')?.name_es}
-          ownerRole={roleById.get(kpiById.get(i.kpi_id ?? '')?.owner_role_id ?? '')?.name_es}
-        />
-      ))}
-
-      {more.length > 0 && (
-        <details className="mt-4">
-          <summary className="cursor-pointer px-3 py-2.5 border border-dashed border-[var(--line)] rounded-md text-[12.5px] font-semibold text-[var(--muted)] hover:border-teal-400 hover:text-teal-700">
-            ▾ Más para esta semana ({more.length} ítems adicionales)
-          </summary>
-          <div className="mt-3 space-y-2">
-            {more.map((i: any) => (
-              <InsightCard
-                key={i.id}
-                insight={i}
-                kpiName={kpiById.get(i.kpi_id ?? '')?.name_es}
-                ownerRole={roleById.get(kpiById.get(i.kpi_id ?? '')?.owner_role_id ?? '')?.name_es}
-              />
-            ))}
-          </div>
-        </details>
+      {insights.length === 0 ? (
+        <EmptyScopeMsg label="generales" />
+      ) : (
+        insights.map((i: any) => (
+          <InsightCard
+            key={i.id}
+            insight={i}
+            kpiName={kpiById.get(i.kpi_id ?? '')?.name_es}
+            ownerRole={roleById.get(kpiById.get(i.kpi_id ?? '')?.owner_role_id ?? '')?.name_es}
+          />
+        ))
       )}
     </div>
   );
 }
 
-function PerHubTab({ byHub, hubById, kpiById, roleById }: any) {
-  if (byHub.size === 0) {
-    return <p className="text-[12.5px] text-[var(--muted)]">Sin insights por micro-hub esta semana. Regenerar para producir.</p>;
-  }
+function PerHubTab({ byHub, hubs, hubById, kpiById, roleById, weekStartIso }: any) {
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
-      {[...byHub.entries()].map(([hubId, items]: any) => {
-        const hub = hubById.get(hubId);
-        return (
-          <div key={hubId} className="bg-white border border-[var(--line)] rounded-xl p-4 shadow-soft">
-            <div className="flex items-baseline justify-between mb-2 pb-2 border-b border-slate-100">
-              <h3 className="text-[14px] font-bold">{hub?.display_name ?? hubId}</h3>
-              <span className="text-[11px] text-[var(--muted)]">{hub?.city ?? ''}</span>
-            </div>
-            <div className="space-y-2">
-              {items.slice(0, 3).map((i: any) => (
-                <div key={i.id} className="text-[12.5px]">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate">{i.headline_es}</span>
-                    <span className="text-[10.5px] text-[var(--muted)] flex-shrink-0">#{i.rank}</span>
-                  </div>
-                  <div className="text-[10.5px] text-[var(--muted)] mt-0.5">
-                    {kpiById.get(i.kpi_id ?? '')?.name_es ?? i.kpi_id}
-                    {i.kpi_id && roleById.get(kpiById.get(i.kpi_id)?.owner_role_id ?? '')?.name_es &&
-                      ` · ${roleById.get(kpiById.get(i.kpi_id).owner_role_id).name_es}`}
-                  </div>
+    <div>
+      <p className="text-[12.5px] text-[var(--muted)] mb-3">
+        Cada hub tiene su propio botón. Genera o re-genera sólo el hub que necesitas analizar.
+      </p>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+        {hubs.map((hub: any) => {
+          const items = byHub.get(hub.id) ?? [];
+          return (
+            <div key={hub.id} className="bg-white border border-[var(--line)] rounded-xl p-4 shadow-soft">
+              <div className="flex items-baseline justify-between mb-2 pb-2 border-b border-slate-100 gap-2">
+                <div>
+                  <h3 className="text-[14px] font-bold">{hub.display_name}</h3>
+                  <span className="text-[11px] text-[var(--muted)]">{hub.city}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function PerCategoryTab({ byCat, kpiById, roleById }: any) {
-  if (byCat.size === 0) {
-    return <p className="text-[12.5px] text-[var(--muted)]">Sin insights por categoría esta semana. Regenerar para producir.</p>;
-  }
-  return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))' }}>
-      {[...byCat.entries()].map(([cat, items]: any) => (
-        <div key={cat} className="bg-white border border-[var(--line)] rounded-xl p-4 shadow-soft">
-          <h3 className="text-[14px] font-bold mb-2 capitalize flex items-center gap-2">
-            {cat}
-            <span className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-800 rounded font-bold">{items.length}</span>
-          </h3>
-          <div className="space-y-1.5">
-            {items.slice(0, 4).map((i: any) => (
-              <div key={i.id} className="text-[12.5px] py-1.5 border-t border-slate-100 first:border-0">
-                <div className="font-medium text-slate-700">{i.headline_es}</div>
-                <div className="text-[10.5px] text-[var(--muted)] mt-0.5">
-                  {i.scope_key ?? '—'} · {kpiById.get(i.kpi_id ?? '')?.name_es ?? i.kpi_id}
-                </div>
+                <GenerateInsightsButton
+                  weekStart={weekStartIso}
+                  view="per_hub"
+                  viewKey={hub.id}
+                  size="sm"
+                  label={items.length > 0 ? '↻' : '✨ Generar 3'}
+                />
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
+              {items.length === 0 ? (
+                <p className="text-[11.5px] text-[var(--muted)] py-3">Sin insights todavía.</p>
+              ) : (
+                <div className="space-y-2">
+                  {items.slice(0, 3).map((i: any) => (
+                    <div key={i.id} className="text-[12.5px]">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span>{i.headline_es}</span>
+                        <span className="text-[10.5px] text-[var(--muted)] flex-shrink-0">#{i.rank}</span>
+                      </div>
+                      <div className="text-[10.5px] text-[var(--muted)] mt-0.5">
+                        {kpiById.get(i.kpi_id ?? '')?.name_es ?? i.kpi_id ?? '—'}
+                        {i.kpi_id && roleById.get(kpiById.get(i.kpi_id)?.owner_role_id ?? '')?.name_es &&
+                          ` · ${roleById.get(kpiById.get(i.kpi_id).owner_role_id).name_es}`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function Empty({ weekStartIso }: { weekStartIso: string }) {
+function PerCategoryTab({ byCat, kpiById, roleById, weekStartIso }: any) {
   return (
-    <div className="bg-white border border-dashed border-[var(--line)] rounded-xl p-12 text-center text-[var(--muted)]">
-      <div className="text-3xl mb-2">🤖</div>
-      <div className="font-semibold text-[var(--ink)] mb-1">Sin insights generados para esta semana</div>
-      <div className="text-[12px] max-w-md mx-auto leading-relaxed mb-4">
-        Sube los CSVs de la semana → corre <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">Recomputar snapshots</code> en /upload → regresa aquí y haz click en <b>Generar insights</b>.
+    <div>
+      <p className="text-[12.5px] text-[var(--muted)] mb-3">
+        Cada categoría tiene su propio botón. Útil para coordinadores externos (Calidad, etc.) que sólo siguen su área.
+      </p>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))' }}>
+        {CATEGORIES.map((cat) => {
+          const items = byCat.get(cat.id) ?? [];
+          return (
+            <div key={cat.id} className="bg-white border border-[var(--line)] rounded-xl p-4 shadow-soft">
+              <div className="flex items-baseline justify-between mb-2 pb-2 border-b border-slate-100 gap-2">
+                <h3 className="text-[14px] font-bold">{cat.label}</h3>
+                <GenerateInsightsButton
+                  weekStart={weekStartIso}
+                  view="per_category"
+                  viewKey={cat.id}
+                  size="sm"
+                  label={items.length > 0 ? '↻' : '✨ Generar 3'}
+                />
+              </div>
+              {items.length === 0 ? (
+                <p className="text-[11.5px] text-[var(--muted)] py-3">Sin insights todavía.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {items.slice(0, 3).map((i: any) => (
+                    <div key={i.id} className="text-[12.5px] py-1.5 border-t border-slate-100 first:border-0">
+                      <div className="font-medium text-slate-700">{i.headline_es}</div>
+                      <div className="text-[10.5px] text-[var(--muted)] mt-0.5">
+                        {i.scope_key ?? '—'} · {kpiById.get(i.kpi_id ?? '')?.name_es ?? i.kpi_id ?? '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <div className="inline-flex gap-2">
-        <a href={`/upload?week=${weekStartIso}`} className="px-3 py-1.5 border border-[var(--line)] rounded-lg text-[12px] font-medium hover:border-black">
-          Ir a uploads →
-        </a>
-        <GenerateInsightsButton weekStart={weekStartIso} label="✨ Generar insights ahora" />
-      </div>
+    </div>
+  );
+}
+
+function EmptyScopeMsg({ label }: { label: string }) {
+  return (
+    <div className="bg-white border border-dashed border-[var(--line)] rounded-xl p-8 text-center text-[var(--muted)]">
+      <div className="text-2xl mb-1">🤖</div>
+      <div className="text-[12.5px]">Sin insights {label} todavía. Click en el botón de arriba para generar.</div>
     </div>
   );
 }
