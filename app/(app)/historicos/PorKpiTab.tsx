@@ -236,7 +236,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
             <thead className="bg-slate-50 text-[10.5px] uppercase tracking-wide text-[var(--muted)] font-bold">
               <tr>
                 <th className="px-5 py-2 text-left">Rank</th>
-                <th className="px-5 py-2 text-left">{drillEntities[0].entity_type === 'operator' ? 'Armador ID' : 'Repartidor ID'}</th>
+                <th className="px-5 py-2 text-left">Nombre</th>
                 <th className="px-5 py-2 text-left">Hub</th>
                 <th className="px-5 py-2 text-right">Valor</th>
                 <th className="px-5 py-2 text-right">Peer mean</th>
