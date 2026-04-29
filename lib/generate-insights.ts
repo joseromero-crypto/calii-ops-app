@@ -20,6 +20,10 @@ interface GenerateOpts {
   weekStart: string;
   mode: 'weekly_priorities' | 'focus_plan';
   focusAreas?: string[];   // for focus_plan mode: ['mna', 'faltantes', ...]
+  /** Scope this generation to a single view (and optional view_key). When set,
+   *  the bundle is filtered to that scope and only 3 insights are produced. */
+  view?: 'global' | 'per_hub' | 'per_category';
+  viewKey?: string | null;     // hub_id for per_hub, category for per_category
 }
 
 export interface GenerationResult {
@@ -88,21 +92,30 @@ export async function generateWeeklyInsights(opts: GenerateOpts): Promise<Genera
     return { inserted: 0, cost_usd: cost, prompt_version: promptVersion, warnings: [`parse_error: ${e.message}`, `raw_first_500: ${text.slice(0, 500)}`] };
   }
 
-  // 6. Replace prior insights for this (week, mode, focus_areas) and insert new
-  await sb
+  // 6. Replace prior insights for this (week, mode, view, view_key) and insert new
+  let deleteQuery = sb
     .from('ai_insights')
     .delete()
     .eq('week_start', opts.weekStart)
-    .eq('mode', opts.mode)
-    .filter('focus_areas', opts.mode === 'focus_plan' ? 'eq' : 'is', opts.mode === 'focus_plan' ? `{${(opts.focusAreas ?? []).join(',')}}` : null);
+    .eq('mode', opts.mode);
+  if (opts.mode === 'focus_plan') {
+    // dummy clause; in practice focus_plan replaces by focus_areas, handled separately
+  } else if (opts.view) {
+    deleteQuery = deleteQuery.eq('view', opts.view);
+    if (opts.viewKey) deleteQuery = deleteQuery.eq('view_key', opts.viewKey);
+    else deleteQuery = deleteQuery.is('view_key', null);
+  }
+  await deleteQuery;
 
-  const toInsert = parsed.map((p) => ({
+  const toInsert = parsed.map((p, i) => ({
     week_start: opts.weekStart,
     mode: opts.mode,
     focus_areas: opts.mode === 'focus_plan' ? (opts.focusAreas ?? null) : null,
-    view: opts.mode === 'weekly_priorities' ? p.view : null,
-    view_key: p.view_key ?? null,
-    rank: p.rank,
+    // When the caller specifies a view, force every insight to that view —
+    // ignore whatever the model put in p.view (the model sometimes hallucinates).
+    view: opts.mode === 'weekly_priorities' ? (opts.view ?? p.view) : null,
+    view_key: opts.viewKey ?? p.view_key ?? null,
+    rank: p.rank ?? (i + 1),
     kpi_id: p.kpi_id ?? null,
     scope_type: p.scope_type ?? null,
     scope_key: p.scope_key ?? null,
@@ -280,10 +293,19 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
 function buildUserMessage(bundle: DataBundle, opts: GenerateOpts): string {
   const isWeekly = opts.mode === 'weekly_priorities';
 
-  const taskInstruction = isWeekly
-    ? `Genera la lista de prioridades de la semana en JSON.
+  // Scope-specific instruction
+  const viewScope = opts.view;
+  const viewKey = opts.viewKey;
+  const scopeLabel =
+    viewScope === 'global' ? 'GENERAL (KPIs personales que sigues tú)' :
+    viewScope === 'per_hub' ? `MICRO-HUB ${viewKey}` :
+    viewScope === 'per_category' ? `CATEGORÍA ${viewKey}` :
+    'TODAS LAS VISTAS';
 
-GENERAR EXACTAMENTE 9 INSIGHTS TOTALES: 3 con view='global', 3 con view='per_hub' (uno por hub crítico), 3 con view='per_category'. No más, no menos. Cada insight debe ser conciso: headline ≤120 chars, evidence_md ≤200 chars, recommended_actions_md ≤200 chars.
+  const taskInstruction = isWeekly
+    ? `Genera EXACTAMENTE 3 prioridades para el scope: ${scopeLabel}.
+
+Cada insight debe ser conciso: headline ≤120 chars, evidence_md ≤180 chars, recommended_actions_md ≤180 chars. NO MÁS DE 3. Devuelve un array JSON.
 [
   {
     "view": "global" | "per_hub" | "per_category",
