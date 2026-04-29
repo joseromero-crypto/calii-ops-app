@@ -86,10 +86,10 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   const uploadById = new Map<string, UploadRef>();
   uploads.forEach((u) => uploadById.set(u.id, u as UploadRef));
 
-  // Stream rows in pages
+  // Stream rows in pages — large batch size to fit MNA volume (35k rows/week) within Netlify's 10s timeout
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
   let from = 0;
-  const PAGE = 1000;
+  const PAGE = 10000;
   while (true) {
     const { data: page, error } = await sb
       .from('upload_rows')
@@ -331,16 +331,18 @@ function computeFaltantesArmadorPct(
 function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string): Snapshot[] {
   const snapshots: Snapshot[] = [];
 
-  // Entity-level (skip if values are already at hub level, like faltantes_armador_pct)
+  // Entity-level snapshots — only for operators and drivers (small entity sets, ~30-100 each).
+  // Skip per-SKU snapshots: there are ~5,000 SKUs × 7 hubs = 35,000 entities per week,
+  // which blows Netlify's 10s function timeout. SKU-level details are surfaced by the AI
+  // by reading upload_rows directly when relevant. Hub/city/global aggregates still run
+  // below and are what charts read from.
   const isAlreadyHubLevel = values.length > 0 && values[0].entity_type === 'hub';
   if (!isAlreadyHubLevel) {
-    // De-dupe within this run: SKUs appear across multiple hubs (same SKU = same string),
-    // operators/drivers don't, but be defensive on all of them.
     const seen = new Set<string>();
     for (const v of values) {
-      const scopeLevel = v.entity_type === 'sku' ? 'sku' : v.entity_type === 'driver' ? 'driver' : 'operator';
-      // Compound key for SKU so the same SKU id in two hubs becomes two distinct rows.
-      const scopeKey = v.entity_type === 'sku' ? `${v.hub_id ?? '_'}:${v.entity_key}` : v.entity_key;
+      if (v.entity_type === 'sku') continue;     // ← skip per-SKU snapshots
+      const scopeLevel = v.entity_type === 'driver' ? 'driver' : 'operator';
+      const scopeKey = v.entity_key;
       const dedupeKey = `${scopeLevel}|${scopeKey}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
@@ -478,6 +480,10 @@ function computePeersForKpi(
   hubCity: Map<string, City>
 ): any[] {
   if (values.length === 0) return [];
+
+  // Skip SKU peer comparisons — too many entities per week (35k+) for Netlify's 10s window.
+  // Hub-level peer comparisons (hub vs other hubs in the same city) still run below.
+  if (values[0].entity_type === 'sku') return [];
 
   // Compute the per-entity ratio value once
   const points = values
