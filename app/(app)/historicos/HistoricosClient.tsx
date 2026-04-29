@@ -47,15 +47,20 @@ export function HistoricosClient({
 
   const currentKpi = kpis.find((k) => k.id === selectedKpi);
 
-  // Build chart data: one row per week, one column per hub
+  // Build chart data: one row per week, one column per hub.
+  // Sort by ISO date (chronological), not by the human label string.
   const chartData = useMemo(() => {
     const byWeek = new Map<string, Record<string, any>>();
     for (const s of snapshots) {
       if (s.scope_level !== 'hub' || !s.scope_key) continue;
-      if (!byWeek.has(s.week_start)) byWeek.set(s.week_start, { week: shortLabel(s.week_start) });
+      if (!byWeek.has(s.week_start)) {
+        byWeek.set(s.week_start, { week: shortLabel(s.week_start), _iso: s.week_start });
+      }
       byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
     }
-    return [...byWeek.values()].sort((a, b) => (a.week > b.week ? 1 : -1));
+    return [...byWeek.values()]
+      .sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0))
+      .map(({ _iso, ...rest }) => rest);
   }, [snapshots]);
 
   // Latest week per hub for the table
