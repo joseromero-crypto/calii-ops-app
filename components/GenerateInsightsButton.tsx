@@ -7,12 +7,18 @@ export function GenerateInsightsButton({
   weekStart,
   mode = 'weekly_priorities',
   focusAreas,
+  view,
+  viewKey,
   label,
+  size = 'md',
 }: {
   weekStart: string;
   mode?: 'weekly_priorities' | 'focus_plan';
   focusAreas?: string[];
+  view?: 'global' | 'per_hub' | 'per_category';
+  viewKey?: string | null;
   label?: string;
+  size?: 'sm' | 'md';
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -28,35 +34,45 @@ export function GenerateInsightsButton({
           week_start: weekStart,
           mode,
           ...(focusAreas ? { focus_areas: focusAreas } : {}),
+          ...(view ? { view } : {}),
+          ...(viewKey ? { view_key: viewKey } : {}),
         }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      let json: any = null;
+      try { json = JSON.parse(text); } catch {}
       if (!res.ok) {
-        setMsg(`Error: ${json.message ?? json.error}`);
-      } else {
+        const errMsg = json?.message || json?.error || (text && text.length < 200 ? text : null) || `HTTP ${res.status}`;
+        setMsg(`Error: ${errMsg}`);
+      } else if (json) {
         const cost = json.cost_usd ? `$${json.cost_usd.toFixed(3)}` : '—';
-        setMsg(`OK · ${json.inserted} insights · v${json.prompt_version} · ${cost}` + (json.warnings?.length ? ` (${json.warnings.length} warnings)` : ''));
+        const warningPreview = json.warnings?.length
+          ? ` · ${json.warnings.slice(0, 1).join('').slice(0, 80)}${json.warnings.length > 1 ? ` +${json.warnings.length - 1} más` : ''}`
+          : '';
+        setMsg(`OK · ${json.inserted} insights · v${json.prompt_version} · ${cost}${warningPreview}`);
         router.refresh();
       }
     } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
+      setMsg(`Error: ${e?.message ?? 'fetch falló'}`);
     } finally {
       setBusy(false);
     }
   }
 
+  const sizeClasses = size === 'sm'
+    ? 'px-2 py-1 text-[11px]'
+    : 'px-3 py-1.5 text-[12.5px]';
+
   return (
-    <div className="inline-flex items-center gap-2">
+    <div className="inline-flex items-center gap-2 flex-wrap">
       <button
         onClick={go}
         disabled={busy}
-        className="bg-black text-white rounded-lg px-3 py-1.5 text-[12.5px] font-medium hover:bg-slate-800 disabled:opacity-50"
+        className={`bg-black text-white rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 ${sizeClasses}`}
       >
-        {busy
-          ? (mode === 'focus_plan' ? 'Generando plan…' : 'Generando insights…')
-          : (label ?? (mode === 'focus_plan' ? '✨ Generar plan' : '✨ Generar insights'))}
+        {busy ? 'Generando…' : (label ?? '✨ Generar insights')}
       </button>
-      {msg && <span className="text-[11.5px] text-[var(--muted)] max-w-[420px]">{msg}</span>}
+      {msg && <span className="text-[11px] text-[var(--muted)] max-w-[480px]">{msg}</span>}
     </div>
   );
 }
