@@ -105,6 +105,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       const variance = hubVals.length > 1 ? hubVals.reduce((a, b) => a + (b.v - mean) ** 2, 0) / (hubVals.length - 1) : 0;
       const std = Math.sqrt(variance);
       for (const { hubId, v } of hubVals) {
+        if (!cells[hubId]) continue; // skip hub IDs in snapshots that aren't in the hubs list
         cells[hubId][wk] = { value: v, z: std > 0 ? (v - mean) / std : null };
       }
     }
