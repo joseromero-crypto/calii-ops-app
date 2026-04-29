@@ -44,17 +44,73 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     });
   }, [kpis, snapshots, hubId, currentWeek]);
 
-  // Operator/driver rankings — prefer within_hub; fall back to within_city for
-  // hubs that are the only hub in their city (Retool doesn't assign a hub name there).
+  // Resolve the within_city scope_key for this hub.
+  //
+  // peer_comparisons.scope_key for within_city rows = upload.city (a City enum like 'mty', 'slp', …)
+  // hubs.city = a display name like 'Monterrey', 'Saltillo', … — they may NOT match as strings.
+  //
+  // Strategy (in order):
+  //   1. Exact string match of hub.city against existing within_city scope_keys.
+  //   2. Cross-reference: find the within_city scope_key whose entity_keys overlap most
+  //      with this hub's within_hub entities (reliable when within_hub data exists).
+  //   3. Case/accent-insensitive match.
+  //   4. For single-hub cities: the only within_city scope_key for that entity_type.
+  const hubCityKey = useMemo((): string | null => {
+    if (!hub) return null;
+    const normalize = (s: string) =>
+      s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const allCityKeys = [
+      ...new Set(
+        peers
+          .filter((p) => p.scope_type === 'within_city' && p.scope_key)
+          .map((p) => p.scope_key as string)
+      ),
+    ];
+
+    // 1. Exact match
+    if (allCityKeys.includes(hub.city)) return hub.city;
+
+    // 2. Cross-reference via within_hub entity_keys
+    const withinHubEntities = new Set(
+      peers.filter((p) => p.scope_type === 'within_hub' && p.scope_key === hubId).map((p) => p.entity_key)
+    );
+    if (withinHubEntities.size > 0) {
+      const counts = new Map<string, number>();
+      for (const p of peers) {
+        if (p.scope_type !== 'within_city' || !p.scope_key) continue;
+        if (withinHubEntities.has(p.entity_key)) {
+          counts.set(p.scope_key, (counts.get(p.scope_key) ?? 0) + 1);
+        }
+      }
+      if (counts.size > 0) {
+        return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      }
+    }
+
+    // 3. Normalize (strip accents, lowercase, non-alphanumeric)
+    const normCity = normalize(hub.city);
+    const normMatch = allCityKeys.find((k) => normalize(k) === normCity);
+    if (normMatch) return normMatch;
+
+    // 4. For single-hub-city scenario: if this hub is the only hub in its city AND
+    //    only one within_city scope_key has data, pick that one.
+    const siblingsInCity = hubs.filter((h) => h.city === hub.city);
+    if (siblingsInCity.length === 1 && allCityKeys.length === 1) return allCityKeys[0];
+
+    return hub.city; // last resort — may not match but won't crash
+  }, [peers, hub, hubId, hubs]);
+
+  // Operator/driver rankings — prefer within_hub; fall back to within_city.
   const operators = useMemo(() => {
     const withinHub = peers.filter(
       (p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId && p.kpi_id === 'tasa_armado'
     );
     if (withinHub.length > 0) return withinHub;
     return peers.filter(
-      (p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hub?.city && p.kpi_id === 'tasa_armado'
+      (p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hubCityKey && p.kpi_id === 'tasa_armado'
     );
-  }, [peers, hubId, hub]);
+  }, [peers, hubId, hubCityKey]);
 
   const drivers = useMemo(() => {
     const withinHub = peers.filter(
@@ -62,20 +118,20 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     );
     if (withinHub.length > 0) return withinHub;
     return peers.filter(
-      (p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hub?.city && p.kpi_id === 'pct_tardias_reparto'
+      (p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hubCityKey && p.kpi_id === 'pct_tardias_reparto'
     );
-  }, [peers, hubId, hub]);
+  }, [peers, hubId, hubCityKey]);
 
-  // For the header count: unique entities across ALL KPIs (within_hub, falling back to within_city)
+  // Header count: unique entities across ALL KPIs (within_hub, falling back to within_city)
   const operatorCount = useMemo(() => {
     const withinHub = peers.filter(
       (p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId
     );
     const source = withinHub.length > 0
       ? withinHub
-      : peers.filter((p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hub?.city);
+      : peers.filter((p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hubCityKey);
     return new Set(source.map((p) => p.entity_key)).size;
-  }, [peers, hubId, hub]);
+  }, [peers, hubId, hubCityKey]);
 
   const driverCount = useMemo(() => {
     const withinHub = peers.filter(
@@ -83,9 +139,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     );
     const source = withinHub.length > 0
       ? withinHub
-      : peers.filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hub?.city);
+      : peers.filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hubCityKey);
     return new Set(source.map((p) => p.entity_key)).size;
-  }, [peers, hubId, hub]);
+  }, [peers, hubId, hubCityKey]);
 
   if (!hub) return <p className="text-[var(--muted)]">No hay hubs configurados.</p>;
 
