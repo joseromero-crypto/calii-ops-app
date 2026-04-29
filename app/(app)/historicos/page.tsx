@@ -31,7 +31,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   }
 
   const since = new Date(currentWeek + 'T00:00:00');
-  since.setDate(since.getDate() - 7 * 11); // 12 weeks total including current
+  since.setDate(since.getDate() - 7 * 51); // fetch 52 weeks so timeline selector has full range
   const sinceIso = since.toISOString().slice(0, 10);
 
   const [kpisRes, hubsRes, snapshotsRes, peersRes, rolesRes] = await Promise.all([
