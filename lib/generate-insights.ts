@@ -61,15 +61,19 @@ export async function generateWeeklyInsights(opts: GenerateOpts): Promise<Genera
   // 3. User message: instruction + data bundle
   const userMessage = buildUserMessage(bundle, opts);
 
-  // 4. Call Sonnet
+  // 4. Call the model. Using Haiku for v1 — it fits within Netlify's 10s function
+  // timeout. Sonnet's better at this task but takes 30-60s which serverless can't
+  // reach without background-function plumbing. Upgrade path: switch to Sonnet
+  // once we move generation off the request path.
+  const model = MODELS.haiku;
   const resp = await anthropic().messages.create({
-    model: MODELS.sonnet,
-    max_tokens: 8192,
+    model,
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   });
 
-  const cost = estimateCost(MODELS.sonnet, resp.usage.input_tokens, resp.usage.output_tokens);
+  const cost = estimateCost(model, resp.usage.input_tokens, resp.usage.output_tokens);
 
   // 5. Parse insights
   const text = resp.content
@@ -110,9 +114,9 @@ export async function generateWeeklyInsights(opts: GenerateOpts): Promise<Genera
     linked_entities: p.linked_entities ?? null,
     why_now_es: p.why_now_es ?? null,
     source_files: p.source_files ?? null,
-    model_used: MODELS.sonnet,
+    model_used: model,
     prompt_version: promptVersion,
-    cost_usd: cost / Math.max(parsed.length, 1),  // distribute cost across insights
+    cost_usd: cost / Math.max(parsed.length, 1),
   }));
 
   const { error } = await sb.from('ai_insights').insert(toInsert);
