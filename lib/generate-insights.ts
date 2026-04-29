@@ -65,13 +65,12 @@ export async function generateWeeklyInsights(opts: GenerateOpts): Promise<Genera
   // 3. User message: instruction + data bundle
   const userMessage = buildUserMessage(bundle, opts);
 
-  // 4. Call the model. Using Haiku for v1 — it fits within Netlify's function
-  // timeout. Sonnet's better but takes 30-60s which our request path can't
-  // accommodate without background-function plumbing.
+  // 4. Call the model. Haiku fits within Netlify's 26s timeout; we ask for ≤3
+  // insights so 3072 max_tokens is plenty (avoids the truncation issue).
   const model = MODELS.haiku;
   const resp = await anthropic().messages.create({
     model,
-    max_tokens: 2048,           // tight cap — output is what dominates latency
+    max_tokens: 3072,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   });
@@ -160,18 +159,41 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
   const { data: kpis } = await sb.from('kpis').select('*').eq('active', true).order('display_order');
   const watchedKpis = (kpis ?? []).filter((k: any) => k.watched_globally);
 
-  // Just this week + previous (for WoW context), at hub/global level only.
-  // 12-week history was overkill for a 2K-token output and was blowing prompt size.
-  const prev = new Date(weekStart + 'T00:00:00');
-  prev.setDate(prev.getDate() - 7);
-  const prevIso = prev.toISOString().slice(0, 10);
+  // Get last 4 weeks for trend context (small enough to keep prompt tight)
+  const since = new Date(weekStart + 'T00:00:00');
+  since.setDate(since.getDate() - 7 * 4);
+  const sinceIso = since.toISOString().slice(0, 10);
 
-  const { data: snapshots } = await sb
+  // Filter snapshots by scope:
+  //   per_hub  → only this hub + global rows (for peer benchmark)
+  //   per_cat  → only KPIs in this category
+  //   global   → only global + hub rows for watched KPIs
+  let snapshotQuery = sb
     .from('kpi_snapshots')
-    .select('kpi_id, week_start, scope_level, scope_key, value, prev_week_value')
-    .in('week_start', [weekStart, prevIso])
-    .in('scope_level', ['hub', 'global'])
-    .order('week_start', { ascending: true });
+    .select('kpi_id, week_start, scope_level, scope_key, value, prev_week_value, rolling_mean_4w')
+    .gte('week_start', sinceIso)
+    .lte('week_start', weekStart)
+    .in('scope_level', ['hub', 'global']);
+
+  if (opts.view === 'per_hub' && opts.viewKey) {
+    snapshotQuery = snapshotQuery.or(
+      `scope_key.eq.${opts.viewKey},and(scope_level.eq.global,scope_key.is.null)`
+    );
+  } else if (opts.view === 'per_category' && opts.viewKey) {
+    const catKpiIds = (kpis ?? [])
+      .filter((k: any) => k.category === opts.viewKey)
+      .map((k: any) => k.id);
+    if (catKpiIds.length > 0) {
+      snapshotQuery = snapshotQuery.in('kpi_id', catKpiIds);
+    }
+  } else if (opts.view === 'global') {
+    const watchedIds = watchedKpis.map((k: any) => k.id);
+    if (watchedIds.length > 0) {
+      snapshotQuery = snapshotQuery.in('kpi_id', watchedIds);
+    }
+  }
+
+  const { data: snapshots } = await snapshotQuery.order('week_start', { ascending: true });
 
   if (!snapshots || snapshots.length === 0) {
     return {
@@ -195,10 +217,27 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
     .select('*')
     .eq('week_start', weekStart);
 
-  const entityOutliers = (peers ?? [])
-    .filter((p: any) => typeof p.z_score === 'number' && Math.abs(p.z_score) >= 1.5)
+  // Filter peer comparisons by scope.
+  let entityOutliers = (peers ?? [])
+    .filter((p: any) => typeof p.z_score === 'number' && Math.abs(p.z_score) >= 1.0);
+
+  if (opts.view === 'per_hub' && opts.viewKey) {
+    // Only entities IN this hub (their scope_key == hub_id, or they ARE this hub)
+    entityOutliers = entityOutliers.filter(
+      (p: any) =>
+        (p.entity_type === 'hub' && p.entity_key === opts.viewKey) ||
+        (p.scope_type === 'within_hub' && p.scope_key === opts.viewKey)
+    );
+  } else if (opts.view === 'per_category' && opts.viewKey) {
+    const catKpiIds = new Set(
+      (kpis ?? []).filter((k: any) => k.category === opts.viewKey).map((k: any) => k.id)
+    );
+    entityOutliers = entityOutliers.filter((p: any) => catKpiIds.has(p.kpi_id));
+  }
+
+  entityOutliers = entityOutliers
     .sort((a: any, b: any) => Math.abs(b.z_score) - Math.abs(a.z_score))
-    .slice(0, 20);                  // top 20 outliers max
+    .slice(0, 15);
 
   // performance_alerts text from this week's operator rows
   const { data: uploads } = await sb
@@ -219,13 +258,20 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
       .eq('is_excluded', false)
       .limit(80);                  // smaller — we only show 10 alerts in prompt anyway
 
+    // For per_hub scope, only include rows whose geofence matches this hub.
+    const hubFilter = opts.view === 'per_hub' && opts.viewKey ? opts.viewKey : null;
     for (const r of rowsAlerts ?? []) {
       if (alertsText.length >= 10 && freeTextSamples.length >= 10) break;
+      const hubName = String((r.data as any).geofence ?? '').trim();
+      if (hubFilter) {
+        // crude match: any of the hub_id segments inside the geofence string
+        const normalized = hubName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
+        if (!normalized.includes(hubFilter.replace('mh_', ''))) continue;
+      }
       const alert = (r.data as any).performance_alerts;
       if (alertsText.length < 10 && alert && typeof alert === 'string' && alert.trim() !== '') {
         const who = (r.data as any).assembler ?? (r.data as any).operator_id;
-        const hub = (r.data as any).geofence;
-        alertsText.push(`${who} (${hub}): ${alert}`);
+        alertsText.push(`${who} (${hubName}): ${alert}`);
       }
       const issues = (r.data as any).issues_comments;
       if (Array.isArray(issues) && freeTextSamples.length < 10) {
@@ -305,7 +351,16 @@ function buildUserMessage(bundle: DataBundle, opts: GenerateOpts): string {
   const taskInstruction = isWeekly
     ? `Genera EXACTAMENTE 3 prioridades para el scope: ${scopeLabel}.
 
-Cada insight debe ser conciso: headline ≤120 chars, evidence_md ≤180 chars, recommended_actions_md ≤180 chars. NO MÁS DE 3. Devuelve un array JSON.
+REGLAS DURAS:
+- Sólo usa los datos abajo. Si los datos no muestran nada problemático para este scope, devuelve un array vacío [].
+- Cada insight DEBE referirse al scope solicitado (ej: si es MH Contry, NO menciones Zapopan).
+- Ranquea por SEVERIDAD: peor primero (#1 = lo más urgente).
+- Para cada KPI, considera la dirección: lower_is_better (ej MNA, faltantes, incidentes) → valor alto = malo. higher_is_better (tasa de armado) → valor bajo = malo.
+- Cada insight debe citar valores reales del bundle: número actual, peer mean, z-score si está, WoW si está.
+- Evidencia y acciones máximo 150 chars cada uno. Headlines máximo 120 chars.
+- No inventes hubs/operadores que no estén en los datos.
+
+Devuelve SÓLO el array JSON, sin texto antes o después.
 [
   {
     "view": "global" | "per_hub" | "per_category",
