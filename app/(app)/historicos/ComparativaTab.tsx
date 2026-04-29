@@ -1,7 +1,6 @@
 'use client';
-
 import { useMemo } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   HUB_COLORS, formatValue, weekEndLabel,
@@ -18,13 +17,13 @@ interface Props {
 
 export function ComparativaTab({ kpis, hubs, snapshots, currentWeek, selectedCity }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
 
   function pickCity(c: string | null) {
-    const params = new URLSearchParams(sp);
-    if (c) params.set('city', c); else params.delete('city');
-    router.push(`${pathname}?${params.toString()}`);
+    if (c) {
+      router.push(`/historicos?tab=comparativa&city=${encodeURIComponent(c)}`);
+    } else {
+      router.push('/historicos?tab=comparativa');
+    }
   }
 
   const filteredHubs = selectedCity ? hubs.filter((h) => h.city === selectedCity) : hubs;
@@ -53,7 +52,6 @@ export function ComparativaTab({ kpis, hubs, snapshots, currentWeek, selectedCit
           {filteredHubs.length} hubs · {kpis.length} KPIs
         </span>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {kpis.map((kpi) => (
           <KpiCompareCard key={kpi.id} kpi={kpi} hubs={filteredHubs} snapshots={snapshots} currentWeek={currentWeek} />
@@ -86,12 +84,10 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
       );
       if (s && s.value !== null) list.push({ hubId: h.id, value: Number(s.value), hub: h });
     }
-    // Sort: worst → best (so worst is on top)
     list.sort((a, b) => kpi.direction === 'lower_is_better' ? b.value - a.value : a.value - b.value);
     return list;
   }, [snapshots, hubs, kpi.id, kpi.direction, currentWeek]);
 
-  // For bar widths: normalize against max in this set
   const maxVal = thisWeekValues.reduce((m, v) => Math.max(m, Math.abs(v.value)), 0) || 1;
 
   return (
@@ -104,7 +100,6 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
           </div>
         </div>
       </div>
-
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={80}>
           <LineChart data={chartData}>
@@ -132,7 +127,6 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
       ) : (
         <div className="h-[80px] flex items-center justify-center text-[11px] text-[var(--muted)]">Sin datos</div>
       )}
-
       <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
         {thisWeekValues.map((v, i) => {
           const isWorst = i === 0 && thisWeekValues.length > 1;
