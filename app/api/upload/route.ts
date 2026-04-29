@@ -120,7 +120,7 @@ export async function POST(req: Request) {
       file_storage_path: filename,
       file_size_bytes: file.size,
       row_count: csv.rows.length,
-      status: report.warnings.length > 0 ? 'pending' : 'validated',
+      status: 'validated',
       validation_report: report,
       prompt_version: promptVersion,
     }, { onConflict: 'app_id,week_start,city,hub_id' })
