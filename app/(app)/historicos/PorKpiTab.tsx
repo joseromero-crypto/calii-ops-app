@@ -1,5 +1,5 @@
 'use client';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ReferenceLine,
@@ -29,17 +29,20 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
 
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
 
+  // -1 = YTD, otherwise number of weeks to show
+  const [weeksShown, setWeeksShown] = useState(5);
+
   if (!kpi) return <p className="text-[var(--muted)]">No hay KPIs configurados.</p>;
 
   function pickKpi(id: string) {
     router.push(`/historicos?tab=kpi&kpi=${id}`);
   }
 
-  // ------------------------------ Top movers ------------------------------
+  // ------------------------------ Top movers (all KPIs, biggest WoW) -------
   const topMovers = useMemo(() => {
-    const watchedIds = new Set(kpis.filter((k) => k.watched_globally).map((k) => k.id));
+    // All KPIs, not just watched — user wants to see the biggest absolute changes
     const thisWeekHub = snapshots.filter(
-      (s) => s.week_start === currentWeek && s.scope_level === 'hub' && watchedIds.has(s.kpi_id) && s.value !== null && s.prev_week_value !== null
+      (s) => s.week_start === currentWeek && s.scope_level === 'hub' && s.value !== null && s.prev_week_value !== null
     );
     const enriched = thisWeekHub.map((s) => {
       const kp = kpis.find((k) => k.id === s.kpi_id)!;
@@ -54,7 +57,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
   }, [snapshots, kpis, currentWeek]);
 
   // ------------------------------ Chart data ------------------------------
-  const chartData = useMemo(() => {
+  const allChartData = useMemo(() => {
     const byWeek = new Map<string, Record<string, any>>();
     for (const s of snapshots) {
       if (s.kpi_id !== kpi.id) continue;
@@ -64,10 +67,20 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       }
       byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
     }
-    return [...byWeek.values()]
-      .sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0))
-      .map(({ _iso, ...rest }) => rest);
+    return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0));
   }, [snapshots, kpi.id]);
+
+  const chartData = useMemo(() => {
+    let filtered = allChartData;
+    if (weeksShown === -1) {
+      // YTD: from Jan 1 of the current year
+      const yearStart = `${currentWeek.slice(0, 4)}-01-01`;
+      filtered = allChartData.filter((d) => d._iso >= yearStart);
+    } else {
+      filtered = allChartData.slice(-weeksShown);
+    }
+    return filtered.map(({ _iso, ...rest }) => rest);
+  }, [allChartData, weeksShown, currentWeek]);
 
   // Peer mean from global snapshots
   const peerMeanThisWeek = useMemo(() => {
@@ -81,12 +94,29 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       'incidentes_faltantes_pct', 'incidentes_faltantes_completos_pct', 'incidentes_faltantes_parciales_pct'].includes(kpi.id) ? 'operator' :
       ['pct_tardias_reparto', 'pct_undelivered', 'eggs_issue_rate'].includes(kpi.id) ? 'driver' : null;
     if (!entityType) return null;
-    return peers
-      .filter((p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.value !== null)
-      .sort((a, b) => {
-        if (kpi.direction === 'lower_is_better') return (b.value ?? 0) - (a.value ?? 0);
-        return (a.value ?? 0) - (b.value ?? 0);
-      });
+
+    // Prefer within_hub (gives hub-specific z-scores + hub name via scope_key).
+    // Fall back to within_city when within_hub has fewer than 3 entities total
+    // (happens when a hub only has 1–2 staff with valid values that week).
+    const withinHub = peers.filter(
+      (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.value !== null
+    );
+    const source = withinHub.length >= 3 ? withinHub : peers.filter(
+      (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_city' && p.value !== null
+    );
+
+    // Deduplicate by entity_key (same person may appear in multiple hub buckets)
+    const seen = new Set<string>();
+    const deduped = source.filter((p) => {
+      if (seen.has(p.entity_key)) return false;
+      seen.add(p.entity_key);
+      return true;
+    });
+
+    return deduped.sort((a, b) => {
+      if (kpi.direction === 'lower_is_better') return (b.value ?? 0) - (a.value ?? 0);
+      return (a.value ?? 0) - (b.value ?? 0);
+    });
   }, [peers, kpi]);
 
   // ------------------------------ Heatmap pivot ------------------------------
@@ -174,7 +204,31 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
 
       {/* Main chart */}
       <div className="bg-white border border-[var(--line)] rounded-xl p-5 shadow-soft">
-        <h3 className="text-[15px] font-semibold mb-1">{kpi.name_es} · por micro-hub · 12 sem</h3>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h3 className="text-[15px] font-semibold">{kpi.name_es} · por micro-hub</h3>
+          {/* Timeline selector */}
+          <div className="flex items-center gap-1">
+            {([
+              { label: '5 sem', value: 5 },
+              { label: '3 m',   value: 13 },
+              { label: '6 m',   value: 26 },
+              { label: '1 a',   value: 52 },
+              { label: 'YTD',   value: -1 },
+            ] as const).map(({ label, value }) => (
+              <button
+                key={value}
+                onClick={() => setWeeksShown(value)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
+                  weeksShown === value
+                    ? 'bg-black text-white border-black'
+                    : 'bg-white text-slate-500 border-[var(--line)] hover:border-slate-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <p className="text-[12px] text-[var(--muted)] mb-3">
           Línea por hub. Línea punteada = peer mean global esta semana.
         </p>
