@@ -61,14 +61,13 @@ export async function generateWeeklyInsights(opts: GenerateOpts): Promise<Genera
   // 3. User message: instruction + data bundle
   const userMessage = buildUserMessage(bundle, opts);
 
-  // 4. Call the model. Using Haiku for v1 — it fits within Netlify's 10s function
-  // timeout. Sonnet's better at this task but takes 30-60s which serverless can't
-  // reach without background-function plumbing. Upgrade path: switch to Sonnet
-  // once we move generation off the request path.
+  // 4. Call the model. Using Haiku for v1 — it fits within Netlify's function
+  // timeout. Sonnet's better but takes 30-60s which our request path can't
+  // accommodate without background-function plumbing.
   const model = MODELS.haiku;
   const resp = await anthropic().messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: 2048,           // tight cap — output is what dominates latency
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }],
   });
@@ -148,16 +147,17 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
   const { data: kpis } = await sb.from('kpis').select('*').eq('active', true).order('display_order');
   const watchedKpis = (kpis ?? []).filter((k: any) => k.watched_globally);
 
-  // 12-week window of snapshots
-  const since = new Date(weekStart + 'T00:00:00');
-  since.setDate(since.getDate() - 7 * 12);
-  const sinceIso = since.toISOString().slice(0, 10);
+  // Just this week + previous (for WoW context), at hub/global level only.
+  // 12-week history was overkill for a 2K-token output and was blowing prompt size.
+  const prev = new Date(weekStart + 'T00:00:00');
+  prev.setDate(prev.getDate() - 7);
+  const prevIso = prev.toISOString().slice(0, 10);
 
   const { data: snapshots } = await sb
     .from('kpi_snapshots')
-    .select('*')
-    .gte('week_start', sinceIso)
-    .lte('week_start', weekStart)
+    .select('kpi_id, week_start, scope_level, scope_key, value, prev_week_value')
+    .in('week_start', [weekStart, prevIso])
+    .in('scope_level', ['hub', 'global'])
     .order('week_start', { ascending: true });
 
   if (!snapshots || snapshots.length === 0) {
@@ -182,9 +182,10 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
     .select('*')
     .eq('week_start', weekStart);
 
-  const entityOutliers = (peers ?? []).filter((p: any) =>
-    typeof p.z_score === 'number' && Math.abs(p.z_score) >= 1.5
-  );
+  const entityOutliers = (peers ?? [])
+    .filter((p: any) => typeof p.z_score === 'number' && Math.abs(p.z_score) >= 1.5)
+    .sort((a: any, b: any) => Math.abs(b.z_score) - Math.abs(a.z_score))
+    .slice(0, 20);                  // top 20 outliers max
 
   // performance_alerts text from this week's operator rows
   const { data: uploads } = await sb
@@ -203,35 +204,36 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
       .select('data')
       .in('upload_id', operadoresIds)
       .eq('is_excluded', false)
-      .limit(200);
+      .limit(80);                  // smaller — we only show 10 alerts in prompt anyway
 
     for (const r of rowsAlerts ?? []) {
+      if (alertsText.length >= 10 && freeTextSamples.length >= 10) break;
       const alert = (r.data as any).performance_alerts;
-      if (alert && typeof alert === 'string' && alert.trim() !== '') {
+      if (alertsText.length < 10 && alert && typeof alert === 'string' && alert.trim() !== '') {
         const who = (r.data as any).assembler ?? (r.data as any).operator_id;
         const hub = (r.data as any).geofence;
         alertsText.push(`${who} (${hub}): ${alert}`);
       }
       const issues = (r.data as any).issues_comments;
-      if (Array.isArray(issues)) {
-        for (const it of issues.slice(0, 2)) {
-          if (typeof it === 'string' && it.length > 5 && freeTextSamples.length < 50) {
-            freeTextSamples.push({ source: 'desempeno_operadores', entity: String((r.data as any).assembler ?? ''), text: it });
-          }
+      if (Array.isArray(issues) && freeTextSamples.length < 10) {
+        const it = issues[0];
+        if (typeof it === 'string' && it.length > 5) {
+          freeTextSamples.push({ source: 'desempeno_operadores', entity: String((r.data as any).assembler ?? ''), text: it });
         }
       }
     }
   }
 
-  // Sample faltantes notes
+  // Sample faltantes notes — small sample, just to seed cause/intent context
   const faltantesIds = (uploads ?? []).filter((u: any) => u.app_id === 'faltantes_armador').map((u: any) => u.id);
-  if (faltantesIds.length > 0) {
+  if (faltantesIds.length > 0 && freeTextSamples.length < 15) {
     const { data: faltantes } = await sb
       .from('upload_rows')
       .select('data')
       .in('upload_id', faltantesIds)
-      .limit(60);
+      .limit(20);
     for (const r of faltantes ?? []) {
+      if (freeTextSamples.length >= 15) break;
       const note = (r.data as any)['Notas armador'];
       if (note && String(note).trim().length > 3) {
         freeTextSamples.push({
@@ -281,7 +283,7 @@ function buildUserMessage(bundle: DataBundle, opts: GenerateOpts): string {
   const taskInstruction = isWeekly
     ? `Genera la lista de prioridades de la semana en JSON.
 
-Devuelve un array de insights estructurado así, con 3 elementos por cada vista (general/per_hub/per_category) más adicionales bajo la sección "más para esta semana" si los datos lo soportan:
+GENERAR EXACTAMENTE 9 INSIGHTS TOTALES: 3 con view='global', 3 con view='per_hub' (uno por hub crítico), 3 con view='per_category'. No más, no menos. Cada insight debe ser conciso: headline ≤120 chars, evidence_md ≤200 chars, recommended_actions_md ≤200 chars.
 [
   {
     "view": "global" | "per_hub" | "per_category",
@@ -328,23 +330,23 @@ Genera tantos pasos como los datos sustenten (típicamente 4-8 acciones de Ops +
 
   const dataSection = `# Datos esta semana (${bundle.weekStart})
 
-## Snapshots a nivel hub y global (KPIs principales, últimas 12 semanas)
-${truncateJson(bundle.hubSnapshots, 12000)}
+## Snapshots por hub + global (esta sem y la anterior, para WoW)
+${truncateJson(bundle.hubSnapshots, 4000)}
 
-## Entidades outlier esta semana (|z| ≥ 1.5)
-${truncateJson(bundle.entityOutliers, 6000)}
+## Top outliers esta sem (|z|≥1.5, top 20)
+${truncateJson(bundle.entityOutliers, 2000)}
 
-## Alertas automáticas de operadores
-${bundle.alertsText.slice(0, 30).join('\n') || '(ninguna)'}
+## Alertas (top 10)
+${bundle.alertsText.slice(0, 10).join('\n') || '(ninguna)'}
 
-## Muestra de notas / comentarios
-${bundle.freeTextSamples.slice(0, 25).map(f => `- [${f.source}] ${f.entity}: "${f.text}"`).join('\n') || '(ninguna)'}
+## Notas seleccionadas
+${bundle.freeTextSamples.slice(0, 10).map(f => `- [${f.source}] ${f.entity}: "${f.text}"`).join('\n') || '(ninguna)'}
 
-## Insights top-3 de las últimas 3 semanas (para evitar repetición)
-${bundle.pastInsightHeadlines.slice(0, 9).map(h => `- ${h}`).join('\n') || '(ninguno)'}
+## Headlines top-3 de últimas 3 sem (no repetir)
+${bundle.pastInsightHeadlines.slice(0, 6).map(h => `- ${h}`).join('\n') || '(ninguno)'}
 
-## Archivos fuente cargados esta semana
-${bundle.sourceFiles.map(f => `- ${f.app_id}: ${f.file} (${f.row_count} filas)`).join('\n')}
+## Archivos fuente
+${bundle.sourceFiles.slice(0, 10).map(f => `- ${f.app_id}: ${f.file} (${f.row_count})`).join('\n')}
 `;
 
   return `${taskInstruction}\n\n${dataSection}`;
