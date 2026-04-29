@@ -44,7 +44,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     });
   }, [kpis, snapshots, hubId, currentWeek]);
 
-  // Operator/driver rankings within this hub
+  // Operator/driver rankings within this hub (tasa_armado / pct_tardias_reparto for the ranked list)
   const operators = useMemo(
     () =>
       peers
@@ -58,6 +58,25 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
       peers
         .filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId)
         .filter((p) => p.kpi_id === 'pct_tardias_reparto'),
+    [peers, hubId]
+  );
+
+  // For the header count: unique entities across ALL KPIs in this hub (not limited to one KPI)
+  const operatorCount = useMemo(
+    () => new Set(
+      peers
+        .filter((p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId)
+        .map((p) => p.entity_key)
+    ).size,
+    [peers, hubId]
+  );
+
+  const driverCount = useMemo(
+    () => new Set(
+      peers
+        .filter((p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId)
+        .map((p) => p.entity_key)
+    ).size,
     [peers, hubId]
   );
 
@@ -89,7 +108,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
             <div className="text-[12px] text-[var(--muted)]">{hub.city} · semana del jue {weekEndLabel(currentWeek)}</div>
           </div>
           <div className="text-[11.5px] text-[var(--muted)]">
-            {operators.length} armadores · {drivers.length} repartidores con datos esta sem
+            {operatorCount} armadores · {driverCount} repartidores con datos esta sem
           </div>
         </div>
       </div>
@@ -201,7 +220,7 @@ function RankList({
           <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-[var(--muted)] font-bold">
             <tr>
               <th className="px-4 py-1.5 text-left">#</th>
-              <th className="px-4 py-1.5 text-left">ID</th>
+              <th className="px-4 py-1.5 text-left">Nombre</th>
               <th className="px-4 py-1.5 text-right">Valor</th>
               <th className="px-4 py-1.5 text-right">z</th>
             </tr>
