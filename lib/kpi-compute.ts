@@ -549,9 +549,34 @@ function groupBy<T, K>(arr: T[], f: (t: T) => K): Map<K, T[]> {
 }
 
 /**
- * Map "MH Contry " → "mh_contry". Trims trailing spaces (Retool exports often
- * have these), lowercases, replaces spaces with underscores, strips diacritics.
+ * Map a geofence/hub string from any CSV to a canonical hub slug.
+ *
+ * Handles both prefixed ("MH Avícola") and bare ("Avícola") forms — the
+ * per_city CSVs for single-hub cities (Saltillo, GDL, CDMX) often omit the
+ * "MH " prefix since there is only one hub in that city.
+ * CH Guadalupe is always excluded (returns null).
  */
+const HUB_ALIAS_MAP: Record<string, string> = {
+  // Monterrey
+  'mh_contry':      'mh_contry',
+  'contry':         'mh_contry',
+  'mh_cumbres':     'mh_cumbres',
+  'cumbres':        'mh_cumbres',
+  'mh_san_nicolas': 'mh_san_nicolas',
+  'san_nicolas':    'mh_san_nicolas',
+  'mh_guadalupe':   'mh_guadalupe',
+  'guadalupe':      'mh_guadalupe',
+  // Saltillo
+  'mh_avicola':     'mh_avicola',
+  'avicola':        'mh_avicola',
+  // Guadalajara
+  'mh_zapopan':     'mh_zapopan',
+  'zapopan':        'mh_zapopan',
+  // CDMX
+  'mh_condesa':     'mh_condesa',
+  'condesa':        'mh_condesa',
+};
+
 function hubNameToId(name: string): string | null {
   if (!name) return null;
   const cleaned = name
@@ -561,7 +586,5 @@ function hubNameToId(name: string): string | null {
     .trim()
     .replace(/\s+/g, '_');
   if (cleaned.startsWith('ch_')) return null; // CH Guadalupe excluded
-  if (cleaned === 'mh_san_nicolas') return 'mh_san_nicolas';
-  if (cleaned.startsWith('mh_')) return cleaned;
-  return null;
+  return HUB_ALIAS_MAP[cleaned] ?? null;
 }
