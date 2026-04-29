@@ -48,13 +48,14 @@ export function HistoricosClient({
   const currentKpi = kpis.find((k) => k.id === selectedKpi);
 
   // Build chart data: one row per week, one column per hub.
-  // Sort by ISO date (chronological), not by the human label string.
+  // Label shows the Thursday END of the Fri-Thu week (matches mental model).
+  // Sort by ISO date (chronological), not by the label.
   const chartData = useMemo(() => {
     const byWeek = new Map<string, Record<string, any>>();
     for (const s of snapshots) {
       if (s.scope_level !== 'hub' || !s.scope_key) continue;
       if (!byWeek.has(s.week_start)) {
-        byWeek.set(s.week_start, { week: shortLabel(s.week_start), _iso: s.week_start });
+        byWeek.set(s.week_start, { week: weekEndLabel(s.week_start), _iso: s.week_start });
       }
       byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
     }
@@ -155,7 +156,12 @@ export function HistoricosClient({
             <LineChart data={chartData} margin={{ top: 12, right: 24, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} domain={['auto', 'auto']} />
+              <YAxis
+                tick={{ fontSize: 11, fill: '#6b7280' }}
+                domain={['auto', 'auto']}
+                tickFormatter={(v: any) => formatValue(Number(v), currentKpi?.unit ?? '')}
+                width={60}
+              />
               <Tooltip
                 formatter={(v: any, name: string) => {
                   if (v == null) return ['—', name];
@@ -220,7 +226,7 @@ export function HistoricosClient({
                     {delta === null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`}
                   </td>
                   <td className="px-5 py-2 text-right text-[var(--muted)] text-[11px]">
-                    {weekStart ? shortLabel(weekStart) : '—'}
+                    {weekStart ? `jue ${weekEndLabel(weekStart)}` : '—'}
                   </td>
                 </tr>
               );
@@ -246,6 +252,13 @@ function formatValue(v: number, unit: string): string {
 
 function shortLabel(weekStart: string): string {
   const d = new Date(weekStart + 'T00:00:00');
+  return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(d);
+}
+
+/** Returns the Thursday (end of Fri-Thu week) given a Friday week_start. */
+function weekEndLabel(weekStart: string): string {
+  const d = new Date(weekStart + 'T00:00:00');
+  d.setDate(d.getDate() + 6);   // Friday + 6 = Thursday next
   return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(d);
 }
 
