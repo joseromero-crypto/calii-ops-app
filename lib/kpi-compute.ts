@@ -256,27 +256,31 @@ function extractMnaValues(
   hubCity: Map<string, City>
 ): EntityValue[] {
   // MNA is per-hub × per-SKU. Use the upload's hub_id (CSV is one per hub).
-  // For the parent mna_pct KPI: numerator = MNA ($), denominator = Recibido.
-  // For mna_*_pct sub-KPIs (graneles/carnes/fyv): same ratio but filtered by SKU's category
-  //   — currently subdivision membership isn't in the source CSV, so these come
-  //   later when we have a SKU master. For v1 we compute the parent only.
-  if (kpi.parent_kpi_id) return []; // skip subdivision splits for now
+  // The CSV already provides per-row `MNA (%)` (a fraction 0-1). To produce a
+  // meaningful HUB-level MNA %, we weight each row's percentage by the units
+  // received that week:
+  //    hub MNA % = sum(MNA% × Recibido) / sum(Recibido)
+  // So per row: numerator = MNA% * Recibido, denominator = Recibido.
+  // (Don't divide MNA $ by Recibido directly — that's $/kg, not a percentage.)
+  // For mna_*_pct sub-KPIs (graneles/carnes/fyv): same idea but filtered by SKU's
+  // subdivision — needs a SKU master to map. Skipping in v1.
+  if (kpi.parent_kpi_id) return [];
 
   const out: EntityValue[] = [];
   for (const r of rows) {
     const sku = String(r.data['SKU Calii'] ?? '');
     const hubId = r.upload.hub_id;
     if (!hubId) continue;
-    const numerator = toNum(r.data['MNA ($)']);
-    const denominator = toNum(r.data['Recibido']);
-    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) continue;
+    const mnaPct = toNum(r.data['MNA (%)']);
+    const recibido = toNum(r.data['Recibido']);
+    if (!Number.isFinite(mnaPct) || !Number.isFinite(recibido) || recibido <= 0) continue;
     out.push({
       entity_type: 'sku',
       entity_key: sku,
       city: hubCity.get(hubId) ?? null,
       hub_id: hubId,
-      numerator,
-      denominator,
+      numerator: mnaPct * recibido,
+      denominator: recibido,
     });
   }
   return out;
