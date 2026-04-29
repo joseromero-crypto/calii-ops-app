@@ -566,9 +566,11 @@ const HUB_ALIAS_MAP: Record<string, string> = {
   'san_nicolas':    'mh_san_nicolas',
   'mh_guadalupe':   'mh_guadalupe',
   'guadalupe':      'mh_guadalupe',
-  // Saltillo
+  // Saltillo — Retool labels by city name since there's only one hub
   'mh_avicola':     'mh_avicola',
   'avicola':        'mh_avicola',
+  'mh_saltillo':    'mh_avicola',
+  'saltillo':       'mh_avicola',
   // Guadalajara
   'mh_zapopan':     'mh_zapopan',
   'zapopan':        'mh_zapopan',
