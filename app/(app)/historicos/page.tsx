@@ -65,3 +65,4 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       selectedCity={searchParams.city}
     />
   );
+}
