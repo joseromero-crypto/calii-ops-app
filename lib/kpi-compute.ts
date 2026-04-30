@@ -128,26 +128,13 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   }
   // Enrich with prev_week_value + rolling stats
   const enriched = await enrichWithHistory(sb, allSnapshots, weekStart);
-  // Upsert snapshots
-  let snapshotsWritten = 0;
-  for (let i = 0; i < enriched.length; i += 500) {
-    const batch = enriched.slice(i, i + 500);
-    const { error } = await sb.from('kpi_snapshots').upsert(batch, {
-      onConflict: 'kpi_id,week_start,scope_level,scope_key',
-    });
-    if (error) throw error;
-    snapshotsWritten += batch.length;
-  }
-  // Upsert peer comparisons
-  let peersWritten = 0;
-  for (let i = 0; i < allPeers.length; i += 500) {
-    const batch = allPeers.slice(i, i + 500);
-    const { error } = await sb.from('peer_comparisons').upsert(batch, {
-      onConflict: 'kpi_id,week_start,entity_type,entity_key,scope_type,scope_key',
-    });
-    if (error) throw error;
-    peersWritten += batch.length;
-  }
+  // Upsert both tables in parallel — each table's own batches run concurrently,
+  // and the two tables are written simultaneously to maximise throughput and
+  // stay well within the 60 s Netlify maxDuration.
+  const [snapshotsWritten, peersWritten] = await Promise.all([
+    parallelUpsert(sb, 'kpi_snapshots', enriched, 'kpi_id,week_start,scope_level,scope_key'),
+    parallelUpsert(sb, 'peer_comparisons', allPeers, 'kpi_id,week_start,entity_type,entity_key,scope_type,scope_key'),
+  ]);
   return { week_start: weekStart, snapshots_written: snapshotsWritten, peers_written: peersWritten, kpis_processed: kpisProcessed, warnings };
 }
 // ----------------------------------------------------------------------------
@@ -584,6 +571,33 @@ function computePeersForKpi(
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+/**
+ * Upsert `rows` into `table` in parallel 1 000-row batches.
+ * All batches are dispatched at once via Promise.all; if any batch errors
+ * the whole call rejects immediately.  Returns total rows written.
+ */
+async function parallelUpsert(
+  sb: SB,
+  table: 'kpi_snapshots' | 'peer_comparisons',
+  rows: any[],
+  onConflict: string
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const BATCH = 1000;
+  const batches: any[][] = [];
+  for (let i = 0; i < rows.length; i += BATCH) {
+    batches.push(rows.slice(i, i + BATCH));
+  }
+  await Promise.all(
+    batches.map(async (batch) => {
+      const { error } = await sb.from(table).upsert(batch, { onConflict });
+      if (error) throw error;
+    })
+  );
+  return rows.length;
+}
+
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
   if (typeof v === 'string') {
