@@ -103,45 +103,14 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'global' && p.value !== null
     );
 
-    // Resolve hub_id from entity_key name by matching hub keywords embedded in
-    // operator/driver titles (e.g. "Auxiliar Turno Matutino Gpe" → mh_guadalupe).
-    // This is the equivalent of a VLOOKUP on the name string.
-    const inferHubFromName = (name: string): string | null => {
-      const n = name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-      if (n.includes('guadalupe') || /\bgpe\b/.test(n)) return 'mh_guadalupe';
-      if (n.includes('contry')) return 'mh_contry';
-      if (n.includes('cumbres')) return 'mh_cumbres';
-      if (n.includes('san nicolas') || n.includes('san_nicolas')) return 'mh_san_nicolas';
-      if (n.includes('avicola') || n.includes('saltillo')) return 'mh_avicola';
-      if (n.includes('zapopan')) return 'mh_zapopan';
-      if (n.includes('condesa')) return 'mh_condesa';
-      return null;
-    };
-
-    // Also build lookup from within_hub records (authoritative when they exist)
-    // and within_city as last-resort city fallback for personal-name operators.
-    const hubByEntity = new Map<string, string>();
-    const cityByEntity = new Map<string, string>();
-    for (const p of peers) {
-      if (p.kpi_id !== kpi.id || p.entity_type !== entityType) continue;
-      if (p.scope_type === 'within_hub' && p.scope_key) {
-        if (!hubByEntity.has(p.entity_key)) hubByEntity.set(p.entity_key, p.scope_key);
-      } else if (p.scope_type === 'within_city' && p.scope_key) {
-        if (!cityByEntity.has(p.entity_key)) cityByEntity.set(p.entity_key, p.scope_key);
-      }
-    }
-
     let source: typeof peers;
 
     if (globalPeers.length >= 2) {
+      // hub_id is now stored directly on every peer_comparisons row (from the geofence column).
+      // Use it to populate scope_key so the Hub column resolves via the hubs array.
       source = globalPeers.map((p) => ({
         ...p,
-        // Priority: within_hub record → name keyword inference → within_city value
-        scope_key:
-          hubByEntity.get(p.entity_key) ??
-          inferHubFromName(p.entity_key) ??
-          cityByEntity.get(p.entity_key) ??
-          p.scope_key,
+        scope_key: (p as any).hub_id ?? p.scope_key,
       }));
     } else {
       // FALLBACK: all within_hub peers from every hub combined, deduplicated.
