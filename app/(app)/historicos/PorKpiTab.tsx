@@ -103,19 +103,30 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'global' && p.value !== null
     );
 
-    // Build entity → hub_id lookup from within_hub data so the Hub column stays populated.
+    // Build entity → hub_id map (from within_hub: gives specific hub slug like 'mh_contry').
+    // Build entity → city map (from within_city: fallback when no within_hub exists for that person).
+    // Most Monterrey/GDL/CDMX operators only have within_city peers, not within_hub.
     const hubByEntity = new Map<string, string>();
+    const cityByEntity = new Map<string, string>();
     for (const p of peers) {
-      if (p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.scope_key) {
+      if (p.kpi_id !== kpi.id || p.entity_type !== entityType) continue;
+      if (p.scope_type === 'within_hub' && p.scope_key) {
         if (!hubByEntity.has(p.entity_key)) hubByEntity.set(p.entity_key, p.scope_key);
+      } else if (p.scope_type === 'within_city' && p.scope_key) {
+        if (!cityByEntity.has(p.entity_key)) cityByEntity.set(p.entity_key, p.scope_key);
       }
     }
 
     let source: typeof peers;
 
     if (globalPeers.length >= 2) {
-      // Augment scope_key with the hub_id so the table can show Hub / City.
-      source = globalPeers.map((p) => ({ ...p, scope_key: hubByEntity.get(p.entity_key) ?? p.scope_key }));
+      // Augment scope_key: prefer hub_id (specific hub), fall back to city value.
+      // The JSX scopeLabel already handles both: hub_id → looks up in hubs array,
+      // city value → displays as-is if no hub match found.
+      source = globalPeers.map((p) => ({
+        ...p,
+        scope_key: hubByEntity.get(p.entity_key) ?? cityByEntity.get(p.entity_key) ?? p.scope_key,
+      }));
     } else {
       // FALLBACK: all within_hub peers from every hub combined, deduplicated.
       // within_city as last resort (single-hub cities where within_hub is absent).
@@ -368,9 +379,15 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
             <tbody>
               {(filteredDrillEntities ?? []).slice(0, 25).map((p) => {
                 const hubMatch = hubs.find((h) => h.id === p.scope_key);
+                // scope_key is either a hub_id ('mh_contry') or a city value ('mty'/'Monterrey').
+                // Try hub lookup; then try matching a hub whose city equals scope_key (display-name city);
+                // finally show raw or a dash.
+                const cityHub = !hubMatch && p.scope_key ? hubs.find((h) => h.city === p.scope_key) : null;
                 const scopeLabel = hubMatch
                   ? `${hubMatch.display_name} · ${hubMatch.city}`
-                  : p.scope_key; // within_city → scope_key is the city name
+                  : cityHub
+                  ? cityHub.city
+                  : p.scope_key ?? '—';
                 const z = p.z_score ?? 0;
                 const flip = kpi.direction === 'higher_is_better' ? -1 : 1;
                 const adj = z * flip;
