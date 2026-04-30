@@ -45,7 +45,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .in('scope_level', ['hub', 'city', 'global']),
     sb
       .from('peer_comparisons')
-      .select('kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total')
+      .select('kpi_id, week_start, entity_type, entity_key, hub_id, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total')
       .eq('week_start', currentWeek),
     sb.from('hub_roles').select('id, name_es'),
   ]);
