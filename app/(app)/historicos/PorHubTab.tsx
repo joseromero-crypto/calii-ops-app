@@ -375,10 +375,11 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
                         <MnaBackFaceList label="Peor $" items={mnaSortedByAmount} field="amount" max={6} />
                       </div>
                     )
-                  ) : value === null ? (
-                    /* ── No hub snapshot this week: don't show misleading city-level fallback ── */
+                  ) : rawValue === null ? (
+                    /* ── No hub snapshot this week (incl. count KPIs coerced to 0).
+                         Don't show city-level fallback — it would leak other hubs' drivers. ── */
                     <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
-                      Sin datos esta semana.
+                      {kpi.unit === 'count' ? '0 incidentes esta semana.' : 'Sin datos esta semana.'}
                     </div>
                   ) : !hasOps && !hasDrvs ? (
                     <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
