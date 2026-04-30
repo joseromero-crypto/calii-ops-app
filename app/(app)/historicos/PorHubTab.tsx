@@ -289,7 +289,7 @@ function RankList({
             </tr>
           </thead>
           <tbody>
-            {sorted.slice(0, 12).map((p, i) => {
+            {sorted.slice(0, 50).map((p, i) => {
               const isWorst = i === sorted.length - 1;
               const isBest = i === 0;
               return (
