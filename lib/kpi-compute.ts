@@ -503,6 +503,7 @@ function computePeersForKpi(
           week_start: weekStart,
           entity_type: entityType,
           entity_key: g.entity_key,
+          hub_id: g.hub_id ?? null,
           scope_type: scope.type,
           scope_key: scope.type === 'global' ? null : scopeKey,
           value: g.value,
