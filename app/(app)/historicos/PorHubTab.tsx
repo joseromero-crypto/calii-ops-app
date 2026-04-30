@@ -231,7 +231,10 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {tiles.map(({ kpi, thisWeek, peerThis, trend }) => {
-          const value = thisWeek?.value ?? null;
+          const rawValue = thisWeek?.value ?? null;
+          // For count KPIs (e.g. entregas erróneas), null means no incidents this
+          // week — display 0 rather than '—' so the tile isn't confusingly blank.
+          const value = (rawValue === null && kpi.unit === 'count') ? 0 : rawValue;
           const prev = thisWeek?.prev_week_value ?? null;
           const delta = formatDelta(value, prev, kpi.unit);
           const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
