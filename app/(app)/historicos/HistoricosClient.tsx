@@ -1,16 +1,15 @@
 'use client';
-
-import type { Kpi, Hub, Snapshot, Peer } from './_shared';
+import type { Kpi, Hub, Snapshot, Peer, MnaProduct } from './_shared';
 import { weekEndLabel } from './_shared';
 import { PorKpiTab } from './PorKpiTab';
 import { PorHubTab } from './PorHubTab';
 import { ComparativaTab } from './ComparativaTab';
-
 interface Props {
   kpis: Kpi[];
   hubs: Hub[];
   snapshots: Snapshot[];
   peers: Peer[];
+  mnaProducts: MnaProduct[];
   roles: { id: string; name_es: string }[];
   currentWeek: string;
   tab: 'kpi' | 'hub' | 'cmp';
@@ -18,17 +17,14 @@ interface Props {
   selectedHub?: string;
   selectedCity?: string;
 }
-
 export function HistoricosClient(props: Props) {
-  const { kpis, hubs, currentWeek, tab } = props;
-
+  const { kpis, hubs, currentWeek, tab, mnaProducts } = props;
   const tabHref = (t: string, extras: Record<string, string | undefined> = {}) => {
     const params = new URLSearchParams();
     if (t !== 'kpi') params.set('tab', t);
     for (const [k, v] of Object.entries(extras)) if (v) params.set(k, v);
     return params.toString() ? `/historicos?${params.toString()}` : '/historicos';
   };
-
   return (
     <div>
       <div className="flex items-baseline justify-between flex-wrap gap-3 mb-4">
@@ -43,20 +39,17 @@ export function HistoricosClient(props: Props) {
           Esta sem: jue {weekEndLabel(currentWeek)}
         </span>
       </div>
-
       <div className="flex gap-1 border-b border-[var(--line)] mb-5">
         <Tab href={tabHref('kpi')}  active={tab === 'kpi'}>📈 Por KPI · análisis profundo</Tab>
         <Tab href={tabHref('hub')}  active={tab === 'hub'}>🏬 Por hub · vista 1:1</Tab>
         <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa entre MHs</Tab>
       </div>
-
       {tab === 'kpi' && <PorKpiTab {...props} />}
-      {tab === 'hub' && <PorHubTab {...props} />}
+      {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} />}
       {tab === 'cmp' && <ComparativaTab {...props} />}
     </div>
   );
 }
-
 function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
     <a
