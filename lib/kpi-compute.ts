@@ -330,7 +330,13 @@ function extractIncidentesValues(
   // Words "entrega" or "entregado/a" (whole-word, case-insensitive).
   const DELIVERY_RE   = /\bentregad?[ao]?\b/i;
 
-  const out: EntityValue[] = [];
+  // Accumulate one entry per driver (keyed by canonical name) so that a driver
+  // with multiple qualifying incidents contributes a single EntityValue with
+  // numerator = their total count.  Without this, the same driver appears N
+  // times in computePeersForKpi and aggregateAllScopes, producing wrong z-scores
+  // and hub totals.
+  const byDriver = new Map<string, EntityValue>();
+
   for (const r of rows) {
     // Exclude entries logged by the ops monitor account.
     const responsable = String(r.data['Responsable'] ?? '').trim().toLowerCase();
@@ -347,16 +353,22 @@ function extractIncidentesValues(
     const info = driverHub.get(opName.toLowerCase());
     if (!info) continue; // driver not in this week's repartidores upload
 
-    out.push({
-      entity_type: 'driver',
-      entity_key: opName,
-      city: info.city,
-      hub_id: info.hub_id,
-      numerator: 1,   // each qualifying incident counts as 1
-      denominator: 1,
-    });
+    const existing = byDriver.get(opName);
+    if (existing) {
+      existing.numerator += 1;
+    } else {
+      byDriver.set(opName, {
+        entity_type: 'driver',
+        entity_key: opName,
+        city: info.city,
+        hub_id: info.hub_id,
+        numerator: 1,
+        denominator: 1,
+      });
+    }
   }
-  return out;
+
+  return Array.from(byDriver.values());
 }
 
 /**
