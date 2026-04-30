@@ -18,6 +18,16 @@ export interface Kpi {
   parent_kpi_id: string | null;
   display_order: number;
   owner_role_id: string | null;
+  source_app_id: string | null;
+}
+/** Pre-aggregated MNA product row, built from upload_rows in page.tsx. */
+export interface MnaProduct {
+  hub_id: string;
+  producto: string;
+  /** Weighted-average MNA % — same fraction scale as kpi_snapshots (0.05 = 5%). */
+  pct: number;
+  /** Sum of MNA $ for the week. */
+  amount: number;
 }
 export interface Hub { id: string; display_name: string; city: string }
 export interface Snapshot {
