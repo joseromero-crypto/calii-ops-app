@@ -42,7 +42,8 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .select('kpi_id, week_start, scope_level, scope_key, value, numerator, denominator, prev_week_value, rolling_mean_4w')
       .gte('week_start', sinceIso)
       .lte('week_start', currentWeek)
-      .in('scope_level', ['hub', 'city', 'global']),
+      .in('scope_level', ['hub', 'city', 'global'])
+      .limit(10000),
     sb
       .from('peer_comparisons')
       .select('kpi_id, week_start, entity_type, entity_key, hub_id, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total')
@@ -64,4 +65,3 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       selectedCity={searchParams.city}
     />
   );
-}
