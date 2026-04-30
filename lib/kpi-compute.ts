@@ -226,19 +226,15 @@ function extractMnaValues(
   kpi: Kpi,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  // Child MNA KPI (e.g. mna_monto) — compute absolute $ amount per SKU.
-  // The parent_kpi_id guard that was here previously returned [] for all children;
-  // we now route child MNA KPIs to their own extractor.
-  if (kpi.parent_kpi_id) {
-    return extractMnaAmountValues(rows, hubCity);
-  }
-  // Parent MNA % KPI — compute weighted-average MNA % per product.
+  // MNA is aggregated to hub/city/global snapshots via SKU entity rows.
+  // Peer-level SKU data (for the tile flip) is read directly from upload_rows
+  // in page.tsx as MnaProduct[] — not stored in peer_comparisons.
   const out: EntityValue[] = [];
   for (const r of rows) {
     const producto = String(r.data['Producto'] ?? '').trim();
     const hubId = r.upload.hub_id;
     if (!producto || !hubId) continue;
-    const mnaPct  = toNum(r.data['MNA (%)']);
+    const mnaPct   = toNum(r.data['MNA (%)']);
     const recibido = toNum(r.data['Recibido']);
     if (!Number.isFinite(mnaPct) || !Number.isFinite(recibido) || recibido <= 0) continue;
     out.push({
@@ -248,36 +244,6 @@ function extractMnaValues(
       hub_id: hubId,
       numerator: mnaPct * recibido,
       denominator: recibido,
-    });
-  }
-  return out;
-}
-
-/**
- * MNA $ per product — used by child MNA KPIs (e.g. mna_monto).
- *
- * Stores the raw peso amount lost per product. entity_key = 'Producto'
- * (same as the parent % KPI so the two lists on the tile flip are aligned
- * by product name).  denominator=1 so ratio() returns the amount directly.
- */
-function extractMnaAmountValues(
-  rows: { upload: UploadRef; data: Record<string, unknown> }[],
-  hubCity: Map<string, City>
-): EntityValue[] {
-  const out: EntityValue[] = [];
-  for (const r of rows) {
-    const producto = String(r.data['Producto'] ?? '').trim();
-    const hubId = r.upload.hub_id;
-    if (!producto || !hubId) continue;
-    const amount = toNum(r.data['MNA ($)']);
-    if (!Number.isFinite(amount) || amount < 0) continue;
-    out.push({
-      entity_type: 'sku',
-      entity_key: producto,
-      city: hubCity.get(hubId) ?? null,
-      hub_id: hubId,
-      numerator: amount,
-      denominator: 1,
     });
   }
   return out;
@@ -498,9 +464,10 @@ function computePeersForKpi(
   hubCity: Map<string, City>
 ): any[] {
   if (values.length === 0) return [];
-  // NOTE: SKU entity types ARE now included — they generate within_hub peer
-  // rows that power the MNA tile flip. The early-return guard that was here
-  // previously was a bug; the SKU scope logic below was always correct.
+  // SKU entities (MNA) do NOT produce peer_comparisons rows.
+  // Product-level rankings for the tile flip are read directly from upload_rows
+  // in page.tsx (MnaProduct[]) — no need to materialise them here.
+  if (values[0]?.entity_type === 'sku') return [];
   const points = values
     .map((v) => ({ ...v, value: ratio(v.numerator, v.denominator, kpi) }))
     .filter((p): p is EntityValue & { value: number } => typeof p.value === 'number');
@@ -511,12 +478,6 @@ function computePeersForKpi(
   if (entityType === 'hub') {
     scopes.push({ type: 'within_city', getKey: (p) => p.city ?? null });
     scopes.push({ type: 'global', getKey: () => 'global' });
-  } else if (entityType === 'sku') {
-    // SKUs are ranked within each hub only.
-    // Global scope is intentionally excluded: the same SKU can appear in
-    // multiple hubs, creating duplicate (entity_key, scope_type=global, scope_key=null)
-    // rows that would collide on upsert.
-    scopes.push({ type: 'within_hub', getKey: (p) => p.hub_id ?? null });
   } else {
     // operator | driver
     scopes.push({ type: 'within_hub', getKey: (p) => p.hub_id ?? null });
