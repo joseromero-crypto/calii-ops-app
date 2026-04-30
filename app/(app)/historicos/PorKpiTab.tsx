@@ -103,9 +103,23 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'global' && p.value !== null
     );
 
-    // Build entity → hub_id map (from within_hub: gives specific hub slug like 'mh_contry').
-    // Build entity → city map (from within_city: fallback when no within_hub exists for that person).
-    // Most Monterrey/GDL/CDMX operators only have within_city peers, not within_hub.
+    // Resolve hub_id from entity_key name by matching hub keywords embedded in
+    // operator/driver titles (e.g. "Auxiliar Turno Matutino Gpe" → mh_guadalupe).
+    // This is the equivalent of a VLOOKUP on the name string.
+    const inferHubFromName = (name: string): string | null => {
+      const n = name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      if (n.includes('guadalupe') || /\bgpe\b/.test(n)) return 'mh_guadalupe';
+      if (n.includes('contry')) return 'mh_contry';
+      if (n.includes('cumbres')) return 'mh_cumbres';
+      if (n.includes('san nicolas') || n.includes('san_nicolas')) return 'mh_san_nicolas';
+      if (n.includes('avicola') || n.includes('saltillo')) return 'mh_avicola';
+      if (n.includes('zapopan')) return 'mh_zapopan';
+      if (n.includes('condesa')) return 'mh_condesa';
+      return null;
+    };
+
+    // Also build lookup from within_hub records (authoritative when they exist)
+    // and within_city as last-resort city fallback for personal-name operators.
     const hubByEntity = new Map<string, string>();
     const cityByEntity = new Map<string, string>();
     for (const p of peers) {
@@ -120,12 +134,14 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
     let source: typeof peers;
 
     if (globalPeers.length >= 2) {
-      // Augment scope_key: prefer hub_id (specific hub), fall back to city value.
-      // The JSX scopeLabel already handles both: hub_id → looks up in hubs array,
-      // city value → displays as-is if no hub match found.
       source = globalPeers.map((p) => ({
         ...p,
-        scope_key: hubByEntity.get(p.entity_key) ?? cityByEntity.get(p.entity_key) ?? p.scope_key,
+        // Priority: within_hub record → name keyword inference → within_city value
+        scope_key:
+          hubByEntity.get(p.entity_key) ??
+          inferHubFromName(p.entity_key) ??
+          cityByEntity.get(p.entity_key) ??
+          p.scope_key,
       }));
     } else {
       // FALLBACK: all within_hub peers from every hub combined, deduplicated.
@@ -406,11 +422,6 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
               })}
             </tbody>
           </table>
-          {(filteredDrillEntities?.length ?? 0) > 25 && (
-            <div className="px-5 py-2 text-center text-[11.5px] text-[var(--muted)] bg-slate-50 border-t border-slate-100">
-              Mostrando 25 de {filteredDrillEntities!.length}.
-            </div>
-          )}
           {(filteredDrillEntities?.length ?? 0) === 0 && (
             <div className="px-5 py-6 text-center text-[12px] text-[var(--muted)]">Sin datos para esta ciudad esta semana.</div>
           )}
