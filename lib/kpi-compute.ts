@@ -11,21 +11,17 @@
  */
 import { createAdminSupabase } from './supabase-server';
 import type { Kpi, City } from './types';
-
 type SB = ReturnType<typeof createAdminSupabase>;
-
 interface UploadRef {
   id: string;
   app_id: string;
   city: City | null;
   hub_id: string | null;
 }
-
 interface RawRow {
   upload_id: string;
   data: Record<string, unknown>;
 }
-
 interface EntityValue {
   entity_type: 'operator' | 'driver' | 'hub' | 'sku' | 'city';
   entity_key: string;
@@ -34,7 +30,6 @@ interface EntityValue {
   numerator: number;
   denominator: number; // 1 for absolute / rate metrics that don't divide
 }
-
 interface Snapshot {
   kpi_id: string;
   week_start: string;
@@ -44,7 +39,6 @@ interface Snapshot {
   numerator: number | null;
   denominator: number | null;
 }
-
 interface ComputeResult {
   week_start: string;
   snapshots_written: number;
@@ -52,24 +46,20 @@ interface ComputeResult {
   kpis_processed: number;
   warnings: string[];
 }
-
 // ----------------------------------------------------------------------------
 // Public entry point
 // ----------------------------------------------------------------------------
 export async function computeSnapshotsForWeek(weekStart: string): Promise<ComputeResult> {
   const sb = createAdminSupabase();
   const warnings: string[] = [];
-
   // Load registry
   const [{ data: kpis }, { data: hubs }] = await Promise.all([
     sb.from('kpis').select('*').eq('active', true).order('display_order'),
     sb.from('hubs').select('id, city').eq('active', true),
   ]);
   if (!kpis || !hubs) throw new Error('Failed to load registry');
-
   const hubCity = new Map<string, City>();
   for (const h of hubs) hubCity.set(h.id, h.city as City);
-
   // Load validated uploads + rows for this week
   const { data: uploads, error: upErr } = await sb
     .from('uploads')
@@ -80,10 +70,8 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   if (!uploads || uploads.length === 0) {
     return { week_start: weekStart, snapshots_written: 0, peers_written: 0, kpis_processed: 0, warnings: ['no_validated_uploads'] };
   }
-
   const uploadById = new Map<string, UploadRef>();
   uploads.forEach((u) => uploadById.set(u.id, u as UploadRef));
-
   // Stream rows in pages
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
   let from = 0;
@@ -107,12 +95,10 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
     from += page.length;
     if (page.length < CHUNK) break;
   }
-
   // Compute per KPI
   const allSnapshots: Snapshot[] = [];
   const allPeers: any[] = [];
   let kpisProcessed = 0;
-
   for (const kpi of kpis as Kpi[]) {
     try {
       const entityValues = computeEntityValues(kpi, rowsByApp, hubCity);
@@ -122,17 +108,26 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
       }
       const snaps = aggregateAllScopes(kpi, entityValues, weekStart);
       allSnapshots.push(...snaps);
-      const peers = computePeersForKpi(kpi, entityValues, weekStart, hubCity);
+
+      // Some KPIs use different entity granularities for snapshots vs peers.
+      // faltantes_armador_pct: hub-level values drive kpi_snapshots (event-log
+      // numerator, total assembled denominator); operator-level values drive
+      // peer_comparisons (per-assembler num_orders_with_faltante_armador /
+      // num_assembled from desempeno_operadores).
+      const peerValues =
+        kpi.id === 'faltantes_armador_pct'
+          ? computeFaltantesArmadorPeerValues(rowsByApp, hubCity)
+          : entityValues;
+
+      const peers = computePeersForKpi(kpi, peerValues, weekStart, hubCity);
       allPeers.push(...peers);
       kpisProcessed += 1;
     } catch (e: any) {
       warnings.push(`kpi:${kpi.id} error:${e.message}`);
     }
   }
-
   // Enrich with prev_week_value + rolling stats
   const enriched = await enrichWithHistory(sb, allSnapshots, weekStart);
-
   // Upsert snapshots
   let snapshotsWritten = 0;
   for (let i = 0; i < enriched.length; i += 500) {
@@ -143,7 +138,6 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
     if (error) throw error;
     snapshotsWritten += batch.length;
   }
-
   // Upsert peer comparisons
   let peersWritten = 0;
   for (let i = 0; i < allPeers.length; i += 500) {
@@ -154,10 +148,8 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
     if (error) throw error;
     peersWritten += batch.length;
   }
-
   return { week_start: weekStart, snapshots_written: snapshotsWritten, peers_written: peersWritten, kpis_processed: kpisProcessed, warnings };
 }
-
 // ----------------------------------------------------------------------------
 // Per-KPI: derive entity-level values from raw rows
 // ----------------------------------------------------------------------------
@@ -184,7 +176,6 @@ function computeEntityValues(
       return [];
   }
 }
-
 function extractOperatorValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
   kpi: Kpi
@@ -194,7 +185,6 @@ function extractOperatorValues(
     const opId = String(r.data['operator_id'] ?? '');
     // Use human-readable name for entity_key; fall back to operator_id if missing.
     const opName = String(r.data['assembler'] ?? '').trim() || opId;
-
     const hubName = String(r.data['geofence'] ?? '').trim();
     const hubId = hubNameToId(hubName);
     const numField = kpi.numerator_field ?? '';
@@ -213,7 +203,6 @@ function extractOperatorValues(
   }
   return out;
 }
-
 function extractDriverValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
   kpi: Kpi
@@ -226,7 +215,6 @@ function extractDriverValues(
       String(r.data['driver_name'] ?? '').trim() ||
       String(r.data['driver_nickname'] ?? '').trim() ||
       drvId;
-
     const hubName = String(r.data['hub'] ?? '').trim();
     const hubId = hubNameToId(hubName);
     if (!hubId) continue; // CH or excluded driver
@@ -246,7 +234,6 @@ function extractDriverValues(
   }
   return out;
 }
-
 function extractMnaValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
   kpi: Kpi,
@@ -273,13 +260,22 @@ function extractMnaValues(
   return out;
 }
 
+/**
+ * Faltantes armador % — HUB-LEVEL snapshot values.
+ *
+ * Used by aggregateAllScopes to produce kpi_snapshots at hub/city/global scope,
+ * which drives the KPI tile front face (value, sparkline, WoW delta).
+ *
+ * Numerator:   count of faltante events from the faltantes_armador event log
+ * Denominator: total num_assembled across all operators for that hub
+ *              (from desempeno_operadores)
+ */
 function computeFaltantesArmadorPct(
   rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  const events = rowsByApp.get('faltantes_armador') ?? [];
+  const events    = rowsByApp.get('faltantes_armador') ?? [];
   const operadores = rowsByApp.get('desempeno_operadores') ?? [];
-
   const numByHub = new Map<string, number>();
   for (const e of events) {
     const hubName = String(e.data['Hub'] ?? '').trim();
@@ -287,7 +283,6 @@ function computeFaltantesArmadorPct(
     if (!hubId) continue;
     numByHub.set(hubId, (numByHub.get(hubId) ?? 0) + 1);
   }
-
   const denByHub = new Map<string, number>();
   for (const o of operadores) {
     const hubName = String(o.data['geofence'] ?? '').trim();
@@ -297,7 +292,6 @@ function computeFaltantesArmadorPct(
     if (!Number.isFinite(assembled)) continue;
     denByHub.set(hubId, (denByHub.get(hubId) ?? 0) + assembled);
   }
-
   const out: EntityValue[] = [];
   for (const [hubId, denominator] of denByHub) {
     const numerator = numByHub.get(hubId) ?? 0;
@@ -313,12 +307,52 @@ function computeFaltantesArmadorPct(
   return out;
 }
 
+/**
+ * Faltantes armador % — OPERATOR-LEVEL peer values.
+ *
+ * Used by computePeersForKpi to produce peer_comparisons at within_hub /
+ * within_city / global scope, which drives the KPI tile flip (per-assembler
+ * ranking, worst → best).
+ *
+ * Numerator:   num_orders_with_faltante_armador per assembler row
+ * Denominator: num_assembled per assembler row
+ *
+ * Operators with num_assembled = 0 are skipped (no exposure this week).
+ */
+function computeFaltantesArmadorPeerValues(
+  rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
+  hubCity: Map<string, City>
+): EntityValue[] {
+  const operadores = rowsByApp.get('desempeno_operadores') ?? [];
+  const out: EntityValue[] = [];
+  for (const o of operadores) {
+    const opName = String(o.data['assembler'] ?? '').trim();
+    const hubName = String(o.data['geofence'] ?? '').trim();
+    const hubId = hubNameToId(hubName);
+    if (!opName || !hubId) continue;
+    const numerator  = toNum(o.data['num_orders_with_faltante_armador']);
+    const denominator = toNum(o.data['num_assembled']);
+    // Skip operators with no assembled orders — rate is undefined.
+    if (!Number.isFinite(denominator) || denominator <= 0) continue;
+    // numerator=0 is valid (zero faltantes = best possible score).
+    if (!Number.isFinite(numerator)) continue;
+    out.push({
+      entity_type: 'operator',
+      entity_key: opName,
+      city: o.upload.city ?? null,
+      hub_id: hubId,
+      numerator,
+      denominator,
+    });
+  }
+  return out;
+}
+
 // ----------------------------------------------------------------------------
 // Aggregation: entity → hub → city → global
 // ----------------------------------------------------------------------------
 function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string): Snapshot[] {
   const snapshots: Snapshot[] = [];
-
   const isAlreadyHubLevel = values.length > 0 && values[0].entity_type === 'hub';
   if (!isAlreadyHubLevel) {
     const seen = new Set<string>();
@@ -340,7 +374,6 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
       });
     }
   }
-
   // Hub-level
   const byHub = groupBy(values, (v) => v.hub_id ?? '_unassigned');
   for (const [hubId, vs] of byHub) {
@@ -357,7 +390,6 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
       denominator: den,
     });
   }
-
   // City-level
   const byCity = groupBy(values, (v) => v.city ?? '_unassigned');
   for (const [city, vs] of byCity) {
@@ -374,7 +406,6 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
       denominator: den,
     });
   }
-
   // Global
   const num = sum(values, (v) => v.numerator);
   const den = sum(values, (v) => v.denominator);
@@ -387,10 +418,8 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
     numerator: num,
     denominator: den,
   });
-
   return snapshots;
 }
-
 function ratio(numerator: number, denominator: number, kpi: Kpi): number | null {
   if (kpi.unit === 'count' || kpi.unit === 'currency') {
     return numerator;
@@ -402,7 +431,6 @@ function ratio(numerator: number, denominator: number, kpi: Kpi): number | null 
   if (denominator <= 0) return null;
   return numerator / denominator;
 }
-
 // ----------------------------------------------------------------------------
 // Enrichment: prev_week_value + rolling 4-week mean/std
 // ----------------------------------------------------------------------------
@@ -437,7 +465,6 @@ async function enrichWithHistory(sb: SB, snapshots: Snapshot[], weekStart: strin
     return { ...s, prev_week_value: prevWeek, rolling_mean_4w: rollingMean, rolling_std_4w: rollingStd };
   });
 }
-
 // ----------------------------------------------------------------------------
 // Peer comparisons (z-scores)
 // ----------------------------------------------------------------------------
@@ -448,32 +475,31 @@ function computePeersForKpi(
   hubCity: Map<string, City>
 ): any[] {
   if (values.length === 0) return [];
-  if (values[0].entity_type === 'sku') return [];
-
+  // NOTE: SKU entity types ARE now included — they generate within_hub peer
+  // rows that power the MNA tile flip. The early-return guard that was here
+  // previously was a bug; the SKU scope logic below was always correct.
   const points = values
     .map((v) => ({ ...v, value: ratio(v.numerator, v.denominator, kpi) }))
     .filter((p): p is EntityValue & { value: number } => typeof p.value === 'number');
-
   if (points.length < 2) return [];
-
   const entityType = points[0].entity_type;
-
   type Scope = { type: 'within_hub' | 'within_city' | 'global'; getKey: (p: typeof points[number]) => string | null };
   const scopes: Scope[] = [];
-
   if (entityType === 'hub') {
     scopes.push({ type: 'within_city', getKey: (p) => p.city ?? null });
     scopes.push({ type: 'global', getKey: () => 'global' });
   } else if (entityType === 'sku') {
+    // SKUs are ranked within each hub only.
+    // Global scope is intentionally excluded: the same SKU can appear in
+    // multiple hubs, creating duplicate (entity_key, scope_type=global, scope_key=null)
+    // rows that would collide on upsert.
     scopes.push({ type: 'within_hub', getKey: (p) => p.hub_id ?? null });
-    scopes.push({ type: 'global', getKey: () => 'global' });
   } else {
     // operator | driver
     scopes.push({ type: 'within_hub', getKey: (p) => p.hub_id ?? null });
     scopes.push({ type: 'within_city', getKey: (p) => p.city ?? null });
     scopes.push({ type: 'global', getKey: () => 'global' });
   }
-
   const out: any[] = [];
   for (const scope of scopes) {
     const buckets = new Map<string, typeof points>();
@@ -519,7 +545,6 @@ function computePeersForKpi(
   }
   return out;
 }
-
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
@@ -532,13 +557,11 @@ function toNum(v: unknown): number {
   if (typeof v === 'boolean') return v ? 1 : 0;
   return NaN;
 }
-
 function sum<T>(arr: T[], f: (t: T) => number): number {
   let s = 0;
   for (const x of arr) s += f(x);
   return s;
 }
-
 function groupBy<T, K>(arr: T[], f: (t: T) => K): Map<K, T[]> {
   const m = new Map<K, T[]>();
   for (const x of arr) {
@@ -548,7 +571,6 @@ function groupBy<T, K>(arr: T[], f: (t: T) => K): Map<K, T[]> {
   }
   return m;
 }
-
 /**
  * Map a geofence/hub string from any CSV to a canonical hub slug.
  *
@@ -579,7 +601,6 @@ const HUB_ALIAS_MAP: Record<string, string> = {
   'mh_condesa':     'mh_condesa',
   'condesa':        'mh_condesa',
 };
-
 function hubNameToId(name: string): string | null {
   if (!name) return null;
   const cleaned = name
