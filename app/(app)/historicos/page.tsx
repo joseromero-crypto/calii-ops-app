@@ -34,16 +34,30 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   since.setDate(since.getDate() - 7 * 51); // fetch 52 weeks so timeline selector has full range
   const sinceIso = since.toISOString().slice(0, 10);
 
-  const [kpisRes, hubsRes, snapshotsRes, peersRes, rolesRes] = await Promise.all([
-    sb.from('kpis').select('*').eq('active', true).order('display_order'),
-    sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
-    sb
+  // PostgREST applies a hard max-rows cap server-side that .limit() cannot override.
+  // Paginate kpi_snapshots in 1000-row chunks to guarantee we get everything.
+  const SNAP_PAGE = 1000;
+  const allSnaps: any[] = [];
+  let snapFrom = 0;
+  while (true) {
+    const { data: page, error: snapErr } = await sb
       .from('kpi_snapshots')
       .select('kpi_id, week_start, scope_level, scope_key, value, numerator, denominator, prev_week_value, rolling_mean_4w')
       .gte('week_start', sinceIso)
       .lte('week_start', currentWeek)
       .in('scope_level', ['hub', 'city', 'global'])
-      .limit(10000),
+      .order('week_start', { ascending: true })
+      .range(snapFrom, snapFrom + SNAP_PAGE - 1);
+    if (snapErr) break; // surface as empty rather than crashing
+    if (!page || page.length === 0) break;
+    allSnaps.push(...page);
+    if (page.length < SNAP_PAGE) break;
+    snapFrom += page.length;
+  }
+
+  const [kpisRes, hubsRes, peersRes, rolesRes] = await Promise.all([
+    sb.from('kpis').select('*').eq('active', true).order('display_order'),
+    sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
     sb
       .from('peer_comparisons')
       .select('kpi_id, week_start, entity_type, entity_key, hub_id, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total')
@@ -55,7 +69,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     <HistoricosClient
       kpis={kpisRes.data ?? []}
       hubs={hubsRes.data ?? []}
-      snapshots={snapshotsRes.data ?? []}
+      snapshots={allSnaps}
       peers={peersRes.data ?? []}
       roles={rolesRes.data ?? []}
       currentWeek={currentWeek}
