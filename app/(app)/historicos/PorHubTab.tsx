@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
-  type Kpi, type Hub, type Snapshot, type Peer,
+  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct,
 } from './_shared';
 
 /* ─── Sparkline tooltip ──────────────────────────────────────────────────── */
@@ -32,12 +32,13 @@ interface Props {
   hubs: Hub[];
   snapshots: Snapshot[];
   peers: Peer[];
+  mnaProducts: MnaProduct[];
   roles: { id: string; name_es: string }[];
   currentWeek: string;
   selectedHub?: string;
 }
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedHub }: Props) {
+export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWeek, selectedHub }: Props) {
   const router = useRouter();
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
@@ -128,14 +129,10 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     return hub.city; // last resort — may not match but won't crash
   }, [peers, hub, hubId, hubs]);
 
-  // Per-tile peer data for the back face — computed after hubCityKey is resolved.
-  // Prefers within_hub; falls back to within_city for each KPI independently.
-  // Also captures:
-  //   other    — non-operator/non-driver entity types (e.g. 'sku') for this KPI
-  //   otherAlt — same but for child KPIs linked via parent_kpi_id (e.g. MNA $)
-  //              so the parent tile flip can show two ranked lists side by side.
+  // Per-tile peer data for the back face — operators and drivers only.
+  // MNA product rankings come from mnaProducts (upload_rows), not peer_comparisons.
   const tilePeerData = useMemo(() => {
-    const result = new Map<string, { ops: Peer[]; drvs: Peer[]; other: Peer[]; otherAlt: Peer[]; otherAltUnit: string }>();
+    const result = new Map<string, { ops: Peer[]; drvs: Peer[] }>();
     for (const k of kpis.filter((k) => !k.parent_kpi_id)) {
       const opsHub = peers.filter(
         (p) => p.entity_type === 'operator' && p.kpi_id === k.id && p.scope_type === 'within_hub' && p.scope_key === hubId
@@ -149,39 +146,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
       const drvsCity = peers.filter(
         (p) => p.entity_type === 'driver' && p.kpi_id === k.id && p.scope_type === 'within_city' && p.scope_key === hubCityKey
       );
-      // Non-operator/non-driver rows for this KPI (e.g. SKUs for MNA %)
-      const other = peers.filter(
-        (p) =>
-          p.entity_type !== 'operator' &&
-          p.entity_type !== 'driver' &&
-          p.kpi_id === k.id &&
-          (
-            (p.scope_type === 'within_hub' && p.scope_key === hubId) ||
-            (p.scope_type === 'within_city' && p.scope_key === hubCityKey) ||
-            p.scope_type === 'global'
-          )
-      );
-      // Non-operator/non-driver rows for child KPIs of this KPI (e.g. SKUs for MNA $)
-      const childKpi = kpis.find((ck) => ck.parent_kpi_id === k.id);
-      const otherAlt = childKpi
-        ? peers.filter(
-            (p) =>
-              p.entity_type !== 'operator' &&
-              p.entity_type !== 'driver' &&
-              p.kpi_id === childKpi.id &&
-              (
-                (p.scope_type === 'within_hub' && p.scope_key === hubId) ||
-                (p.scope_type === 'within_city' && p.scope_key === hubCityKey) ||
-                p.scope_type === 'global'
-              )
-          )
-        : [];
       result.set(k.id, {
         ops: opsHub.length > 0 ? opsHub : opsCity,
         drvs: drvsHub.length > 0 ? drvsHub : drvsCity,
-        other,
-        otherAlt,
-        otherAltUnit: childKpi?.unit ?? 'currency',
       });
     }
     return result;
@@ -293,29 +260,21 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
           const isFlipped = flippedTiles.has(kpi.id);
 
           // Back-face peer data — sorted WORST → BEST so attention goes to bottom performers.
-          // For higher_is_better: ascending (lowest = worst first).
-          // For lower_is_better: descending (highest = worst first).
-          const { ops, drvs, other: otherPeers, otherAlt: otherAltPeers, otherAltUnit } =
-            tilePeerData.get(kpi.id) ?? { ops: [], drvs: [], other: [], otherAlt: [], otherAltUnit: 'currency' };
+          const { ops, drvs } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [] };
           const worstFirst = (a: Peer, b: Peer) => {
             const av = a.value ?? 0, bv = b.value ?? 0;
             return kpi.direction === 'higher_is_better' ? av - bv : bv - av;
           };
-          // For the alt ($) column always sort biggest-first regardless of direction
-          const biggestFirst = (a: Peer, b: Peer) => (b.value ?? 0) - (a.value ?? 0);
+          const sortedOps  = [...ops].sort(worstFirst);
+          const sortedDrvs = [...drvs].sort(worstFirst);
+          const hasOps  = sortedOps.length > 0;
+          const hasDrvs = sortedDrvs.length > 0;
 
-          const sortedOps      = [...ops].sort(worstFirst);
-          const sortedDrvs     = [...drvs].sort(worstFirst);
-          const sortedOther    = [...otherPeers].sort(worstFirst);
-          const sortedOtherAlt = [...otherAltPeers].sort(biggestFirst);
-
-          // Determine which entity types have data — drives single vs dual column layout.
-          const hasOps      = sortedOps.length > 0;
-          const hasDrvs     = sortedDrvs.length > 0;
-          const hasOther    = sortedOther.length > 0;
-          const hasOtherAlt = sortedOtherAlt.length > 0;
-          const otherLabel = sortedOther[0]?.entity_type === 'sku' ? 'SKUs'
-            : sortedOther[0]?.entity_type ? sortedOther[0].entity_type : 'Otros';
+          // MNA tile flip — built from upload_rows, not peer_comparisons.
+          const isMna = kpi.source_app_id === 'mna';
+          const mnaForHub = isMna ? mnaProducts.filter((p) => p.hub_id === hubId) : [];
+          const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct - a.pct) : [];
+          const mnaSortedByAmount = isMna ? [...mnaForHub].sort((a, b) => b.amount - a.amount) : [];
 
           return (
             <div
@@ -411,19 +370,20 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
                     <span className="text-[9px] text-[var(--muted)] shrink-0 opacity-70">esta sem · clic para volver</span>
                   </div>
 
-                  {!hasOps && !hasDrvs && !hasOther && !hasOtherAlt ? (
+                  {isMna ? (
+                    /* ── MNA: two columns read directly from upload_rows ── */
+                    mnaForHub.length === 0 ? (
+                      <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">Sin datos MNA esta semana.</div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-x-3">
+                        <MnaBackFaceList label="Peor %" items={mnaSortedByPct}    field="pct"    max={6} />
+                        <MnaBackFaceList label="Peor $" items={mnaSortedByAmount} field="amount" max={6} />
+                      </div>
+                    )
+                  ) : !hasOps && !hasDrvs ? (
                     <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
                       Sin datos para este KPI.
                     </div>
-                  ) : hasOther && hasOtherAlt && !hasOps && !hasDrvs ? (
-                    /* ── Two columns: e.g. MNA % and MNA $ side by side ── */
-                    <div className="grid grid-cols-2 gap-x-3">
-                      <BackFaceList label="Peor %" items={sortedOther}    unit={kpi.unit}    max={6} />
-                      <BackFaceList label="Peor $" items={sortedOtherAlt} unit={otherAltUnit} max={6} />
-                    </div>
-                  ) : hasOther && !hasOps && !hasDrvs ? (
-                    /* ── Single column: other entity type (e.g. SKUs, no $ sibling) ── */
-                    <BackFaceList label={otherLabel} items={sortedOther} unit={kpi.unit} max={8} />
                   ) : hasOps && !hasDrvs ? (
                     /* ── Single column: only assembler data ── */
                     <BackFaceList label="Armadores" items={sortedOps} unit={kpi.unit} max={8} />
@@ -487,6 +447,44 @@ function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[
                   <span className="text-[10px] truncate">{p.entity_key}</span>
                 </div>
                 <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, unit)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── MNA back-face list (reads directly from upload_rows aggregate) ─────── */
+function MnaBackFaceList({ label, items, field, max }: {
+  label: string;
+  items: MnaProduct[];
+  field: 'pct' | 'amount';
+  max: number;
+}) {
+  const shown = items.slice(0, max);
+  const unit = field === 'pct' ? 'pct' : 'currency';
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">{label}</div>
+      {shown.length === 0 ? (
+        <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
+      ) : (
+        <div className="space-y-0.5">
+          {shown.map((p, i) => {
+            const isWorst = i === 0;
+            const isBest  = i === shown.length - 1 && shown.length > 1;
+            const val = field === 'pct' ? p.pct : p.amount;
+            return (
+              <div key={`${p.hub_id}|${p.producto}|${field}`} className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className={`text-[9px] font-bold w-4 shrink-0 ${isWorst ? 'text-red-500' : isBest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {i + 1}
+                  </span>
+                  <span className="text-[10px] truncate">{p.producto}</span>
+                </div>
+                <span className="text-[10px] font-semibold shrink-0">{formatValue(val, unit)}</span>
               </div>
             );
           })}
