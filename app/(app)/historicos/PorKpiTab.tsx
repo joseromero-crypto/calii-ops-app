@@ -97,41 +97,56 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       ['pct_tardias_reparto', 'pct_undelivered', 'eggs_issue_rate'].includes(kpi.id) ? 'driver' : null;
     if (!entityType) return null;
 
-    // Prefer within_hub (gives hub-specific z-scores + hub name via scope_key).
-    // Fall back to within_city when within_hub has fewer than 3 entities total
-    // (happens when a hub only has 1–2 staff with valid values that week).
-    const withinHub = peers.filter(
-      (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.value !== null
-    );
-    const source = withinHub.length >= 3 ? withinHub : peers.filter(
-      (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_city' && p.value !== null
+    // PRIMARY: global scope — one row per entity, z-scores and rank computed
+    // against the entire fleet. Shows the worst performers across ALL hubs.
+    const globalPeers = peers.filter(
+      (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'global' && p.value !== null
     );
 
-    // Deduplicate by entity_key (same person may appear in multiple hub buckets)
-    const seen = new Set<string>();
-    const deduped = source.filter((p) => {
-      if (seen.has(p.entity_key)) return false;
-      seen.add(p.entity_key);
-      return true;
-    });
+    // Build entity → hub_id lookup from within_hub data so the Hub column stays populated.
+    const hubByEntity = new Map<string, string>();
+    for (const p of peers) {
+      if (p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.scope_key) {
+        if (!hubByEntity.has(p.entity_key)) hubByEntity.set(p.entity_key, p.scope_key);
+      }
+    }
 
-    return deduped.sort((a, b) => {
+    let source: typeof peers;
+
+    if (globalPeers.length >= 2) {
+      // Augment scope_key with the hub_id so the table can show Hub / City.
+      source = globalPeers.map((p) => ({ ...p, scope_key: hubByEntity.get(p.entity_key) ?? p.scope_key }));
+    } else {
+      // FALLBACK: all within_hub peers from every hub combined, deduplicated.
+      // within_city as last resort (single-hub cities where within_hub is absent).
+      const withinHub = peers.filter(
+        (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.value !== null
+      );
+      const pool = withinHub.length >= 2
+        ? withinHub
+        : peers.filter((p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_city' && p.value !== null);
+      const seen = new Set<string>();
+      source = pool.filter((p) => {
+        if (seen.has(p.entity_key)) return false;
+        seen.add(p.entity_key);
+        return true;
+      });
+    }
+
+    return source.sort((a, b) => {
       if (kpi.direction === 'lower_is_better') return (b.value ?? 0) - (a.value ?? 0);
       return (a.value ?? 0) - (b.value ?? 0);
     });
   }, [peers, kpi]);
 
-  // Cities available in the current drill data (for the city filter chips)
+  // Cities available in the current drill data (for the city filter chips).
+  // scope_key may be a hub_id (within_hub or augmented global) or a city string
+  // (within_city). Try hub lookup first, fall back to raw scope_key.
   const drillCities = useMemo(() => {
     if (!drillEntities) return [];
     const cities = new Set<string>();
     for (const p of drillEntities) {
-      // within_hub: scope_key is a hub id → look up hub.city
-      // within_city: scope_key IS the city name
-      const city =
-        p.scope_type === 'within_hub'
-          ? hubs.find((h) => h.id === p.scope_key)?.city
-          : p.scope_key;
+      const city = hubs.find((h) => h.id === p.scope_key)?.city ?? p.scope_key ?? null;
       if (city) cities.add(city);
     }
     return [...cities].sort();
@@ -140,10 +155,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
   const filteredDrillEntities = useMemo(() => {
     if (!drillEntities || !drillCity) return drillEntities;
     return drillEntities.filter((p) => {
-      const city =
-        p.scope_type === 'within_hub'
-          ? hubs.find((h) => h.id === p.scope_key)?.city
-          : p.scope_key;
+      const city = hubs.find((h) => h.id === p.scope_key)?.city ?? p.scope_key ?? null;
       return city === drillCity;
     });
   }, [drillEntities, drillCity, hubs]);
@@ -418,15 +430,3 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
                       </td>
                     );
                   })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-2 text-[10.5px] text-[var(--muted)] border-t border-slate-100">
-          Verde = z-score "bueno" (vs el promedio de los hubs en esa semana, ajustado por dirección del KPI). Rojo = malo.
-        </div>
-      </div>
-    </div>
-  );
-}
