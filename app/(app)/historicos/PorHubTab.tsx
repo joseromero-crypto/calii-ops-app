@@ -228,6 +228,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
         <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">KPIs · 12 semanas</div>
         <div className="text-[10.5px] text-[var(--muted)] opacity-60">· clic en tile para ver ranking</div>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {tiles.map(({ kpi, thisWeek, peerThis, trend }) => {
           const value = thisWeek?.value ?? null;
@@ -235,21 +236,18 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
           const delta = formatDelta(value, prev, kpi.unit);
           const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
           const peerVal = peerThis?.value ?? null;
-
           let z: 'good' | 'mid' | 'bad' | null = null;
           if (value !== null && peerVal !== null && peerVal !== 0) {
             const pctDiff = ((value - peerVal) / Math.abs(peerVal)) * 100;
             const wantsLow = kpi.direction === 'lower_is_better';
             const goodDiff = wantsLow ? pctDiff < -10 : pctDiff > 10;
-            const badDiff = wantsLow ? pctDiff > 10 : pctDiff < -10;
+            const badDiff  = wantsLow ? pctDiff > 10  : pctDiff < -10;
             z = goodDiff ? 'good' : badDiff ? 'bad' : 'mid';
           }
-
           const tileClass =
             z === 'good' ? 'border-emerald-200 bg-emerald-50' :
             z === 'bad'  ? 'border-red-200 bg-red-50' :
                            'border-[var(--line)] bg-white';
-
           const lineStroke = z === 'bad' ? '#ef4444' : z === 'good' ? '#10b981' : '#0ea5e9';
           const isFlipped = flippedTiles.has(kpi.id);
 
@@ -266,8 +264,8 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
 
           // MNA tile flip — built from upload_rows, not peer_comparisons.
           const isMna = kpi.source_app_id === 'mna';
-          const mnaForHub = isMna ? mnaProducts.filter((p) => p.hub_id === hubId) : [];
-          const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct - a.pct) : [];
+          const mnaForHub         = isMna ? mnaProducts.filter((p) => p.hub_id === hubId) : [];
+          const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct - a.pct)    : [];
           const mnaSortedByAmount = isMna ? [...mnaForHub].sort((a, b) => b.amount - a.amount) : [];
 
           return (
@@ -374,6 +372,11 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
                         <MnaBackFaceList label="Peor $" items={mnaSortedByAmount} field="amount" max={6} />
                       </div>
                     )
+                  ) : value === null ? (
+                    /* ── No hub snapshot this week: don't show misleading city-level fallback ── */
+                    <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
+                      Sin datos esta semana.
+                    </div>
                   ) : !hasOps && !hasDrvs ? (
                     <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
                       Sin datos para este KPI.
@@ -523,7 +526,7 @@ function RankList({
           <tbody>
             {sorted.slice(0, 50).map((p, i) => {
               const isWorst = i === sorted.length - 1;
-              const isBest = i === 0;
+              const isBest  = i === 0;
               return (
                 <tr key={p.entity_key} className={`border-t border-slate-100 ${isWorst ? 'bg-red-50' : isBest ? 'bg-emerald-50' : ''}`}>
                   <td className="px-4 py-1.5 text-[var(--muted)] font-bold">{p.rank ?? i + 1}</td>
