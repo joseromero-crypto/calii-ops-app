@@ -128,8 +128,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
 
   // Per-tile peer data for the back face — computed after hubCityKey is resolved.
   // Prefers within_hub; falls back to within_city for each KPI independently.
+  // Also captures any non-operator/non-driver entity types (e.g. 'sku') for KPIs like MNA.
   const tilePeerData = useMemo(() => {
-    const result = new Map<string, { ops: Peer[]; drvs: Peer[] }>();
+    const result = new Map<string, { ops: Peer[]; drvs: Peer[]; other: Peer[] }>();
     for (const k of kpis) {
       const opsHub = peers.filter(
         (p) => p.entity_type === 'operator' && p.kpi_id === k.id && p.scope_type === 'within_hub' && p.scope_key === hubId
@@ -143,9 +144,22 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
       const drvsCity = peers.filter(
         (p) => p.entity_type === 'driver' && p.kpi_id === k.id && p.scope_type === 'within_city' && p.scope_key === hubCityKey
       );
+      // Any other entity type (e.g. 'sku', 'product') scoped to this hub or city
+      const other = peers.filter(
+        (p) =>
+          p.entity_type !== 'operator' &&
+          p.entity_type !== 'driver' &&
+          p.kpi_id === k.id &&
+          (
+            (p.scope_type === 'within_hub' && p.scope_key === hubId) ||
+            (p.scope_type === 'within_city' && p.scope_key === hubCityKey) ||
+            p.scope_type === 'global'
+          )
+      );
       result.set(k.id, {
         ops: opsHub.length > 0 ? opsHub : opsCity,
         drvs: drvsHub.length > 0 ? drvsHub : drvsCity,
+        other,
       });
     }
     return result;
@@ -256,16 +270,24 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
           const lineStroke = z === 'bad' ? '#ef4444' : z === 'good' ? '#10b981' : '#0ea5e9';
           const isFlipped = flippedTiles.has(kpi.id);
 
-          // Back-face peer data — sorted best → worst per this KPI's direction
-          const { ops, drvs } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [] };
-          const sortedOps = [...ops].sort((a, b) => {
+          // Back-face peer data — sorted WORST → BEST so attention goes to bottom performers.
+          // For higher_is_better: ascending (lowest = worst first).
+          // For lower_is_better: descending (highest = worst first).
+          const { ops, drvs, other: otherPeers } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [], other: [] };
+          const worstFirst = (a: Peer, b: Peer) => {
             const av = a.value ?? 0, bv = b.value ?? 0;
-            return kpi.direction === 'higher_is_better' ? bv - av : av - bv;
-          });
-          const sortedDrvs = [...drvs].sort((a, b) => {
-            const av = a.value ?? 0, bv = b.value ?? 0;
-            return kpi.direction === 'higher_is_better' ? bv - av : av - bv;
-          });
+            return kpi.direction === 'higher_is_better' ? av - bv : bv - av;
+          };
+          const sortedOps   = [...ops].sort(worstFirst);
+          const sortedDrvs  = [...drvs].sort(worstFirst);
+          const sortedOther = [...otherPeers].sort(worstFirst);
+
+          // Determine which entity types have data — drives single vs dual column layout.
+          const hasOps   = sortedOps.length > 0;
+          const hasDrvs  = sortedDrvs.length > 0;
+          const hasOther = sortedOther.length > 0;
+          const otherLabel = sortedOther[0]?.entity_type === 'sku' ? 'SKUs'
+            : sortedOther[0]?.entity_type ? sortedOther[0].entity_type : 'Otros';
 
           return (
             <div
@@ -326,6 +348,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
                             content={<SparkTooltip unit={kpi.unit} />}
                             cursor={{ stroke: '#94a3b8', strokeWidth: 1 }}
                             isAnimationActive={false}
+                            position={{ y: -42 }}
                           />
                           <Line
                             type="monotone"
@@ -360,63 +383,24 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
                     <span className="text-[9px] text-[var(--muted)] shrink-0 opacity-70">esta sem · clic para volver</span>
                   </div>
 
-                  {sortedOps.length === 0 && sortedDrvs.length === 0 ? (
+                  {!hasOps && !hasDrvs && !hasOther ? (
                     <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
                       Sin datos de personas para este KPI.
                     </div>
+                  ) : hasOther && !hasOps && !hasDrvs ? (
+                    /* ── Single column: other entity type (e.g. SKUs for MNA) ── */
+                    <BackFaceList label={otherLabel} items={sortedOther} unit={kpi.unit} max={8} />
+                  ) : hasOps && !hasDrvs ? (
+                    /* ── Single column: only assembler data ── */
+                    <BackFaceList label="Armadores" items={sortedOps} unit={kpi.unit} max={8} />
+                  ) : !hasOps && hasDrvs ? (
+                    /* ── Single column: only driver data ── */
+                    <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} max={8} />
                   ) : (
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-0">
-                      {/* Armadores column */}
-                      <div>
-                        <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">Armadores</div>
-                        {sortedOps.length === 0 ? (
-                          <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {sortedOps.slice(0, 5).map((p, i) => {
-                              const isFirst = i === 0;
-                              const isLast = i === sortedOps.length - 1 && sortedOps.length > 1;
-                              return (
-                                <div key={p.entity_key} className="flex items-center justify-between gap-1">
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <span className={`text-[9px] font-bold w-4 shrink-0 ${isFirst ? 'text-emerald-600' : isLast ? 'text-red-500' : 'text-slate-400'}`}>
-                                      {i + 1}
-                                    </span>
-                                    <span className="text-[10px] truncate">{p.entity_key}</span>
-                                  </div>
-                                  <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, kpi.unit)}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Repartidores column */}
-                      <div>
-                        <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">Repartidores</div>
-                        {sortedDrvs.length === 0 ? (
-                          <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {sortedDrvs.slice(0, 5).map((p, i) => {
-                              const isFirst = i === 0;
-                              const isLast = i === sortedDrvs.length - 1 && sortedDrvs.length > 1;
-                              return (
-                                <div key={p.entity_key} className="flex items-center justify-between gap-1">
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <span className={`text-[9px] font-bold w-4 shrink-0 ${isFirst ? 'text-emerald-600' : isLast ? 'text-red-500' : 'text-slate-400'}`}>
-                                      {i + 1}
-                                    </span>
-                                    <span className="text-[10px] truncate">{p.entity_key}</span>
-                                  </div>
-                                  <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, kpi.unit)}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                    /* ── Two columns: both entity types have data ── */
+                    <div className="grid grid-cols-2 gap-x-3">
+                      <BackFaceList label="Armadores"    items={sortedOps}  unit={kpi.unit} max={5} />
+                      <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} max={5} />
                     </div>
                   )}
                 </div>
@@ -443,6 +427,37 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
           highlightHighest
         />
       </div>
+    </div>
+  );
+}
+
+/* ─── Back-face ranked list (worst → best, #1 = red, last shown = green) ─── */
+function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[]; unit: string; max: number }) {
+  const shown = items.slice(0, max);
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">{label}</div>
+      {shown.length === 0 ? (
+        <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
+      ) : (
+        <div className="space-y-0.5">
+          {shown.map((p, i) => {
+            const isWorst = i === 0;
+            const isBest  = i === shown.length - 1 && shown.length > 1;
+            return (
+              <div key={p.entity_key} className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className={`text-[9px] font-bold w-4 shrink-0 ${isWorst ? 'text-red-500' : isBest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {i + 1}
+                  </span>
+                  <span className="text-[10px] truncate">{p.entity_key}</span>
+                </div>
+                <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, unit)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
