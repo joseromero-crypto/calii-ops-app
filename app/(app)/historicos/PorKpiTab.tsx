@@ -430,3 +430,15 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
                       </td>
                     );
                   })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-5 py-2 text-[10.5px] text-[var(--muted)] border-t border-slate-100">
+          Verde = z-score "bueno" (vs el promedio de los hubs en esa semana, ajustado por dirección del KPI). Rojo = malo.
+        </div>
+      </div>
+    </div>
+  );
+}
