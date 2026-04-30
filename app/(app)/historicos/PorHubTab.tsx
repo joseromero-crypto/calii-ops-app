@@ -60,7 +60,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
 
   // KPI tiles for this hub
   const tiles = useMemo(() => {
-    return kpis.map((k) => {
+    // Child KPIs (parent_kpi_id set) are hidden from the grid — their data
+    // surfaces on the parent tile's flip instead.
+    return kpis.filter((k) => !k.parent_kpi_id).map((k) => {
       const thisWeek = snapshots.find(
         (s) => s.kpi_id === k.id && s.scope_level === 'hub' && s.scope_key === hubId && s.week_start === currentWeek
       );
@@ -128,10 +130,13 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
 
   // Per-tile peer data for the back face — computed after hubCityKey is resolved.
   // Prefers within_hub; falls back to within_city for each KPI independently.
-  // Also captures any non-operator/non-driver entity types (e.g. 'sku') for KPIs like MNA.
+  // Also captures:
+  //   other    — non-operator/non-driver entity types (e.g. 'sku') for this KPI
+  //   otherAlt — same but for child KPIs linked via parent_kpi_id (e.g. MNA $)
+  //              so the parent tile flip can show two ranked lists side by side.
   const tilePeerData = useMemo(() => {
-    const result = new Map<string, { ops: Peer[]; drvs: Peer[]; other: Peer[] }>();
-    for (const k of kpis) {
+    const result = new Map<string, { ops: Peer[]; drvs: Peer[]; other: Peer[]; otherAlt: Peer[]; otherAltUnit: string }>();
+    for (const k of kpis.filter((k) => !k.parent_kpi_id)) {
       const opsHub = peers.filter(
         (p) => p.entity_type === 'operator' && p.kpi_id === k.id && p.scope_type === 'within_hub' && p.scope_key === hubId
       );
@@ -144,7 +149,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
       const drvsCity = peers.filter(
         (p) => p.entity_type === 'driver' && p.kpi_id === k.id && p.scope_type === 'within_city' && p.scope_key === hubCityKey
       );
-      // Any other entity type (e.g. 'sku', 'product') scoped to this hub or city
+      // Non-operator/non-driver rows for this KPI (e.g. SKUs for MNA %)
       const other = peers.filter(
         (p) =>
           p.entity_type !== 'operator' &&
@@ -156,10 +161,27 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
             p.scope_type === 'global'
           )
       );
+      // Non-operator/non-driver rows for child KPIs of this KPI (e.g. SKUs for MNA $)
+      const childKpi = kpis.find((ck) => ck.parent_kpi_id === k.id);
+      const otherAlt = childKpi
+        ? peers.filter(
+            (p) =>
+              p.entity_type !== 'operator' &&
+              p.entity_type !== 'driver' &&
+              p.kpi_id === childKpi.id &&
+              (
+                (p.scope_type === 'within_hub' && p.scope_key === hubId) ||
+                (p.scope_type === 'within_city' && p.scope_key === hubCityKey) ||
+                p.scope_type === 'global'
+              )
+          )
+        : [];
       result.set(k.id, {
         ops: opsHub.length > 0 ? opsHub : opsCity,
         drvs: drvsHub.length > 0 ? drvsHub : drvsCity,
         other,
+        otherAlt,
+        otherAltUnit: childKpi?.unit ?? 'currency',
       });
     }
     return result;
@@ -273,19 +295,25 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
           // Back-face peer data — sorted WORST → BEST so attention goes to bottom performers.
           // For higher_is_better: ascending (lowest = worst first).
           // For lower_is_better: descending (highest = worst first).
-          const { ops, drvs, other: otherPeers } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [], other: [] };
+          const { ops, drvs, other: otherPeers, otherAlt: otherAltPeers, otherAltUnit } =
+            tilePeerData.get(kpi.id) ?? { ops: [], drvs: [], other: [], otherAlt: [], otherAltUnit: 'currency' };
           const worstFirst = (a: Peer, b: Peer) => {
             const av = a.value ?? 0, bv = b.value ?? 0;
             return kpi.direction === 'higher_is_better' ? av - bv : bv - av;
           };
-          const sortedOps   = [...ops].sort(worstFirst);
-          const sortedDrvs  = [...drvs].sort(worstFirst);
-          const sortedOther = [...otherPeers].sort(worstFirst);
+          // For the alt ($) column always sort biggest-first regardless of direction
+          const biggestFirst = (a: Peer, b: Peer) => (b.value ?? 0) - (a.value ?? 0);
+
+          const sortedOps      = [...ops].sort(worstFirst);
+          const sortedDrvs     = [...drvs].sort(worstFirst);
+          const sortedOther    = [...otherPeers].sort(worstFirst);
+          const sortedOtherAlt = [...otherAltPeers].sort(biggestFirst);
 
           // Determine which entity types have data — drives single vs dual column layout.
-          const hasOps   = sortedOps.length > 0;
-          const hasDrvs  = sortedDrvs.length > 0;
-          const hasOther = sortedOther.length > 0;
+          const hasOps      = sortedOps.length > 0;
+          const hasDrvs     = sortedDrvs.length > 0;
+          const hasOther    = sortedOther.length > 0;
+          const hasOtherAlt = sortedOtherAlt.length > 0;
           const otherLabel = sortedOther[0]?.entity_type === 'sku' ? 'SKUs'
             : sortedOther[0]?.entity_type ? sortedOther[0].entity_type : 'Otros';
 
@@ -383,12 +411,18 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
                     <span className="text-[9px] text-[var(--muted)] shrink-0 opacity-70">esta sem · clic para volver</span>
                   </div>
 
-                  {!hasOps && !hasDrvs && !hasOther ? (
+                  {!hasOps && !hasDrvs && !hasOther && !hasOtherAlt ? (
                     <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
-                      Sin datos de personas para este KPI.
+                      Sin datos para este KPI.
+                    </div>
+                  ) : hasOther && hasOtherAlt && !hasOps && !hasDrvs ? (
+                    /* ── Two columns: e.g. MNA % and MNA $ side by side ── */
+                    <div className="grid grid-cols-2 gap-x-3">
+                      <BackFaceList label="Peor %" items={sortedOther}    unit={kpi.unit}    max={6} />
+                      <BackFaceList label="Peor $" items={sortedOtherAlt} unit={otherAltUnit} max={6} />
                     </div>
                   ) : hasOther && !hasOps && !hasDrvs ? (
-                    /* ── Single column: other entity type (e.g. SKUs for MNA) ── */
+                    /* ── Single column: other entity type (e.g. SKUs, no $ sibling) ── */
                     <BackFaceList label={otherLabel} items={sortedOther} unit={kpi.unit} max={8} />
                   ) : hasOps && !hasDrvs ? (
                     /* ── Single column: only assembler data ── */
@@ -397,7 +431,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
                     /* ── Single column: only driver data ── */
                     <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} max={8} />
                   ) : (
-                    /* ── Two columns: both entity types have data ── */
+                    /* ── Two columns: both operator and driver data ── */
                     <div className="grid grid-cols-2 gap-x-3">
                       <BackFaceList label="Armadores"    items={sortedOps}  unit={kpi.unit} max={5} />
                       <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} max={5} />
