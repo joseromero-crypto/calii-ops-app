@@ -55,13 +55,27 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     snapFrom += page.length;
   }
 
-  const [kpisRes, hubsRes, peersRes, rolesRes] = await Promise.all([
-    sb.from('kpis').select('*').eq('active', true).order('display_order'),
-    sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
-    sb
+  // Paginate peer_comparisons the same way — operator rows alone can exceed 1000.
+  const PEER_PAGE = 1000;
+  const allPeers: any[] = [];
+  let peerFrom = 0;
+  while (true) {
+    const { data: ppage, error: peerErr } = await sb
       .from('peer_comparisons')
       .select('kpi_id, week_start, entity_type, entity_key, hub_id, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total')
-      .eq('week_start', currentWeek),
+      .eq('week_start', currentWeek)
+      .order('entity_type', { ascending: true })
+      .range(peerFrom, peerFrom + PEER_PAGE - 1);
+    if (peerErr) break;
+    if (!ppage || ppage.length === 0) break;
+    allPeers.push(...ppage);
+    if (ppage.length < PEER_PAGE) break;
+    peerFrom += ppage.length;
+  }
+
+  const [kpisRes, hubsRes, rolesRes] = await Promise.all([
+    sb.from('kpis').select('*').eq('active', true).order('display_order'),
+    sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
     sb.from('hub_roles').select('id, name_es'),
   ]);
 
@@ -70,7 +84,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       kpis={kpisRes.data ?? []}
       hubs={hubsRes.data ?? []}
       snapshots={allSnaps}
-      peers={peersRes.data ?? []}
+      peers={allPeers}
       roles={rolesRes.data ?? []}
       currentWeek={currentWeek}
       tab={(searchParams.tab as 'kpi' | 'hub' | 'cmp' | undefined) ?? 'kpi'}
