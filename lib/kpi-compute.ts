@@ -239,22 +239,58 @@ function extractMnaValues(
   kpi: Kpi,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  if (kpi.parent_kpi_id) return [];
+  // Child MNA KPI (e.g. mna_monto) — compute absolute $ amount per SKU.
+  // The parent_kpi_id guard that was here previously returned [] for all children;
+  // we now route child MNA KPIs to their own extractor.
+  if (kpi.parent_kpi_id) {
+    return extractMnaAmountValues(rows, hubCity);
+  }
+  // Parent MNA % KPI — compute weighted-average MNA % per product.
   const out: EntityValue[] = [];
   for (const r of rows) {
-    const sku = String(r.data['SKU Calii'] ?? '');
+    const producto = String(r.data['Producto'] ?? '').trim();
     const hubId = r.upload.hub_id;
-    if (!hubId) continue;
-    const mnaPct = toNum(r.data['MNA (%)']);
+    if (!producto || !hubId) continue;
+    const mnaPct  = toNum(r.data['MNA (%)']);
     const recibido = toNum(r.data['Recibido']);
     if (!Number.isFinite(mnaPct) || !Number.isFinite(recibido) || recibido <= 0) continue;
     out.push({
       entity_type: 'sku',
-      entity_key: sku,
+      entity_key: producto,
       city: hubCity.get(hubId) ?? null,
       hub_id: hubId,
       numerator: mnaPct * recibido,
       denominator: recibido,
+    });
+  }
+  return out;
+}
+
+/**
+ * MNA $ per product — used by child MNA KPIs (e.g. mna_monto).
+ *
+ * Stores the raw peso amount lost per product. entity_key = 'Producto'
+ * (same as the parent % KPI so the two lists on the tile flip are aligned
+ * by product name).  denominator=1 so ratio() returns the amount directly.
+ */
+function extractMnaAmountValues(
+  rows: { upload: UploadRef; data: Record<string, unknown> }[],
+  hubCity: Map<string, City>
+): EntityValue[] {
+  const out: EntityValue[] = [];
+  for (const r of rows) {
+    const producto = String(r.data['Producto'] ?? '').trim();
+    const hubId = r.upload.hub_id;
+    if (!producto || !hubId) continue;
+    const amount = toNum(r.data['MNA ($)']);
+    if (!Number.isFinite(amount) || amount < 0) continue;
+    out.push({
+      entity_type: 'sku',
+      entity_key: producto,
+      city: hubCity.get(hubId) ?? null,
+      hub_id: hubId,
+      numerator: amount,
+      denominator: 1,
     });
   }
   return out;
