@@ -72,6 +72,25 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     .eq('week_start', currentWeek)
     .eq('status', 'validated')
     .eq('app_id', 'mna');
+  // Normalize a raw hub string (from uploads.hub_id or a row data column) to the
+  // canonical slug used in hubs.id.  Mirrors the HUB_ALIAS_MAP in kpi-compute.ts.
+  function resolveHubId(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const s = raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+    if (s.startsWith('ch_')) return null;
+    const map: Record<string, string> = {
+      mh_contry: 'mh_contry', contry: 'mh_contry',
+      mh_cumbres: 'mh_cumbres', cumbres: 'mh_cumbres',
+      mh_san_nicolas: 'mh_san_nicolas', san_nicolas: 'mh_san_nicolas',
+      mh_guadalupe: 'mh_guadalupe', guadalupe: 'mh_guadalupe',
+      mh_avicola: 'mh_avicola', avicola: 'mh_avicola', mh_saltillo: 'mh_avicola', saltillo: 'mh_avicola',
+      mh_zapopan: 'mh_zapopan', zapopan: 'mh_zapopan',
+      mh_condesa: 'mh_condesa', condesa: 'mh_condesa',
+      mh_san_pedro: 'mh_san_pedro', san_pedro: 'mh_san_pedro',
+    };
+    return map[s] ?? s; // already-canonical IDs (e.g. 'mh_contry') pass through unchanged
+  }
+
   const mnaProducts: { hub_id: string; producto: string; pct: number; amount: number }[] = [];
   if (mnaUploads && mnaUploads.length > 0) {
     const mnaById = new Map(mnaUploads.map((u) => [u.id, u]));
@@ -87,20 +106,27 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       if (!mnaPage || mnaPage.length === 0) break;
       for (const r of mnaPage) {
         const u = mnaById.get(r.upload_id);
-        if (!u?.hub_id) continue;
+        if (!u) continue;
+        // Prefer upload.hub_id; fall back to Hub/geofence columns inside the row
+        // (city-level uploads may have hub_id = null with a hub column per row).
+        const rawHub = u.hub_id
+          || String((r.data as any)['Hub'] ?? (r.data as any)['geofence'] ?? (r.data as any)['Geofence'] ?? '').trim()
+          || null;
+        const hubId = resolveHubId(rawHub);
+        if (!hubId) continue;
         const producto = String((r.data as any)['Producto'] ?? '').trim();
         if (!producto) continue;
         const mnaPct   = Number((r.data as any)['MNA (%)'])  || 0;
         const recibido = Number((r.data as any)['Recibido']) || 1;
         const amount   = Number((r.data as any)['MNA ($)'])  || 0;
-        const key = `${u.hub_id}|${producto}`;
+        const key = `${hubId}|${producto}`;
         const ex = mnaAgg.get(key);
         if (ex) {
           ex.pctNum += mnaPct * recibido;
           ex.pctDen += recibido;
           ex.amount += amount;
         } else {
-          mnaAgg.set(key, { hub_id: u.hub_id, producto, pctNum: mnaPct * recibido, pctDen: recibido, amount });
+          mnaAgg.set(key, { hub_id: hubId, producto, pctNum: mnaPct * recibido, pctDen: recibido, amount });
         }
       }
       mnaFrom += mnaPage.length;
