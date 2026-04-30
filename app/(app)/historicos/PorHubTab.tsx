@@ -1,11 +1,31 @@
 'use client';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LineChart, Line, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
   type Kpi, type Hub, type Snapshot, type Peer,
 } from './_shared';
+
+/* ─── Sparkline tooltip ──────────────────────────────────────────────────── */
+function SparkTooltip({
+  active,
+  payload,
+  unit,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { value: number | null; week: string } }>;
+  unit?: string;
+}) {
+  if (!active || !payload?.length || !unit) return null;
+  const { value, week } = payload[0].payload;
+  return (
+    <div className="bg-slate-800 text-white text-[10px] px-2 py-1 rounded-md shadow-lg pointer-events-none leading-snug z-50">
+      <div className="font-semibold">{formatValue(value, unit)}</div>
+      <div className="opacity-60 text-[9px]">{week}</div>
+    </div>
+  );
+}
 
 interface Props {
   kpis: Kpi[];
@@ -19,12 +39,23 @@ interface Props {
 
 export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedHub }: Props) {
   const router = useRouter();
+  const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   const hubId = selectedHub || hubs[0]?.id;
   const hub = hubs.find((h) => h.id === hubId);
 
   function pickHub(id: string) {
     router.push(`/historicos?tab=hub&hub=${id}`);
+  }
+
+  function toggleTile(kpiId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setFlippedTiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(kpiId)) next.delete(kpiId);
+      else next.add(kpiId);
+      return next;
+    });
   }
 
   // KPI tiles for this hub
@@ -59,7 +90,6 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
     if (!hub) return null;
     const normalize = (s: string) =>
       s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
     const allCityKeys = [
       ...new Set(
         peers
@@ -67,10 +97,8 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
           .map((p) => p.scope_key as string)
       ),
     ];
-
     // 1. Exact match
     if (allCityKeys.includes(hub.city)) return hub.city;
-
     // 2. Cross-reference via within_hub entity_keys
     const withinHubEntities = new Set(
       peers.filter((p) => p.scope_type === 'within_hub' && p.scope_key === hubId).map((p) => p.entity_key)
@@ -87,21 +115,43 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
         return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
       }
     }
-
     // 3. Normalize (strip accents, lowercase, non-alphanumeric)
     const normCity = normalize(hub.city);
     const normMatch = allCityKeys.find((k) => normalize(k) === normCity);
     if (normMatch) return normMatch;
-
     // 4. For single-hub-city scenario: if this hub is the only hub in its city AND
     //    only one within_city scope_key has data, pick that one.
     const siblingsInCity = hubs.filter((h) => h.city === hub.city);
     if (siblingsInCity.length === 1 && allCityKeys.length === 1) return allCityKeys[0];
-
     return hub.city; // last resort — may not match but won't crash
   }, [peers, hub, hubId, hubs]);
 
-  // Operator/driver rankings — prefer within_hub; fall back to within_city.
+  // Per-tile peer data for the back face — computed after hubCityKey is resolved.
+  // Prefers within_hub; falls back to within_city for each KPI independently.
+  const tilePeerData = useMemo(() => {
+    const result = new Map<string, { ops: Peer[]; drvs: Peer[] }>();
+    for (const k of kpis) {
+      const opsHub = peers.filter(
+        (p) => p.entity_type === 'operator' && p.kpi_id === k.id && p.scope_type === 'within_hub' && p.scope_key === hubId
+      );
+      const opsCity = peers.filter(
+        (p) => p.entity_type === 'operator' && p.kpi_id === k.id && p.scope_type === 'within_city' && p.scope_key === hubCityKey
+      );
+      const drvsHub = peers.filter(
+        (p) => p.entity_type === 'driver' && p.kpi_id === k.id && p.scope_type === 'within_hub' && p.scope_key === hubId
+      );
+      const drvsCity = peers.filter(
+        (p) => p.entity_type === 'driver' && p.kpi_id === k.id && p.scope_type === 'within_city' && p.scope_key === hubCityKey
+      );
+      result.set(k.id, {
+        ops: opsHub.length > 0 ? opsHub : opsCity,
+        drvs: drvsHub.length > 0 ? drvsHub : drvsCity,
+      });
+    }
+    return result;
+  }, [kpis, peers, hubId, hubCityKey]);
+
+  // Operator/driver rankings for the bottom rank tables — prefer within_hub; fall back to within_city.
   const operators = useMemo(() => {
     const withinHub = peers.filter(
       (p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId && p.kpi_id === 'tasa_armado'
@@ -177,7 +227,10 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
       </div>
 
       {/* KPI tiles grid */}
-      <div className="text-[13px] text-[var(--muted)] mb-1 font-bold uppercase tracking-wide">KPIs · 12 semanas</div>
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">KPIs · 12 semanas</div>
+        <div className="text-[10.5px] text-[var(--muted)] opacity-60">· clic en tile para ver ranking</div>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {tiles.map(({ kpi, thisWeek, peerThis, trend }) => {
           const value = thisWeek?.value ?? null;
@@ -197,44 +250,183 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, currentWeek, selectedH
 
           const tileClass =
             z === 'good' ? 'border-emerald-200 bg-emerald-50' :
-            z === 'bad' ? 'border-red-200 bg-red-50' :
-            'border-[var(--line)] bg-white';
+            z === 'bad'  ? 'border-red-200 bg-red-50' :
+                           'border-[var(--line)] bg-white';
+
+          const lineStroke = z === 'bad' ? '#ef4444' : z === 'good' ? '#10b981' : '#0ea5e9';
+          const isFlipped = flippedTiles.has(kpi.id);
+
+          // Back-face peer data — sorted best → worst per this KPI's direction
+          const { ops, drvs } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [] };
+          const sortedOps = [...ops].sort((a, b) => {
+            const av = a.value ?? 0, bv = b.value ?? 0;
+            return kpi.direction === 'higher_is_better' ? bv - av : av - bv;
+          });
+          const sortedDrvs = [...drvs].sort((a, b) => {
+            const av = a.value ?? 0, bv = b.value ?? 0;
+            return kpi.direction === 'higher_is_better' ? bv - av : av - bv;
+          });
 
           return (
-            <div key={kpi.id} className={`border rounded-xl p-3 shadow-soft ${tileClass}`}>
-              <div className="flex items-start justify-between mb-1">
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-[var(--muted)] font-bold">{kpi.name_es}</div>
-                  <div className="text-[10px] text-[var(--muted)]">{kpi.category}</div>
+            <div
+              key={kpi.id}
+              className={`border rounded-xl shadow-soft ${tileClass} relative overflow-hidden cursor-pointer select-none`}
+              style={{ perspective: '1000px' }}
+              onClick={(e) => toggleTile(kpi.id, e)}
+              title={isFlipped ? 'Clic para volver' : 'Clic para ver ranking de personas'}
+            >
+              {/* ── Flipper (rotates both faces together) ── */}
+              <div
+                style={{
+                  transformStyle: 'preserve-3d',
+                  transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                  transition: 'transform 0.42s cubic-bezier(0.4, 0, 0.2, 1)',
+                  position: 'relative',
+                }}
+              >
+                {/* ── FRONT FACE ── */}
+                <div
+                  className="p-3"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                >
+                  <div className="flex items-start justify-between mb-1">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-[var(--muted)] font-bold">{kpi.name_es}</div>
+                      <div className="text-[10px] text-[var(--muted)]">{kpi.category}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[10px] text-[var(--muted)]">{kpi.unit}</span>
+                      {/* Flip hint */}
+                      <svg
+                        className="w-3 h-3 text-slate-400"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        aria-hidden="true"
+                      >
+                        <path d="M2 8C2 4.686 4.686 2 8 2c2.21 0 4.154 1.13 5.29 2.84M14 8c0 3.314-2.686 6-6 6-2.21 0-4.154-1.13-5.29-2.84" strokeLinecap="round"/>
+                        <path d="M13 1.5v3.5h-3.5M3 14.5v-3.5h3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-1">
+                    <div className="text-[22px] font-bold">{formatValue(value, kpi.unit)}</div>
+                    <div className={`text-[11px] font-bold ${deltaCls}`}>{delta.text}</div>
+                  </div>
+                  {trend.length > 1 && (
+                    /* Stop click propagation so hovering/clicking the chart doesn't flip the tile */
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ResponsiveContainer width="100%" height={32}>
+                        <LineChart data={trend.map((t) => ({ ...t }))}>
+                          {peerVal !== null && (
+                            <ReferenceLine y={peerVal} stroke="#94a3b8" strokeDasharray="2 2" />
+                          )}
+                          <Tooltip
+                            content={<SparkTooltip unit={kpi.unit} />}
+                            cursor={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                            isAnimationActive={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke={lineStroke}
+                            strokeWidth={1.6}
+                            dot={false}
+                            connectNulls
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div className="text-[10.5px] text-[var(--muted)] mt-1.5 flex justify-between">
+                    <span>Peer: {formatValue(peerVal, kpi.unit)}</span>
+                    <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
+                  </div>
                 </div>
-                <span className="text-[10px] text-[var(--muted)]">{kpi.unit}</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-1">
-                <div className="text-[22px] font-bold">{formatValue(value, kpi.unit)}</div>
-                <div className={`text-[11px] font-bold ${deltaCls}`}>{delta.text}</div>
-              </div>
-              {trend.length > 1 && (
-                <div className="mt-1.5">
-                  <ResponsiveContainer width="100%" height={32}>
-                    <LineChart data={trend.map((t) => ({ ...t }))}>
-                      {peerVal !== null && (
-                        <ReferenceLine y={peerVal} stroke="#94a3b8" strokeDasharray="2 2" />
-                      )}
-                      <Line type="monotone" dataKey="value" stroke={z === 'bad' ? '#ef4444' : z === 'good' ? '#10b981' : '#0ea5e9'} strokeWidth={1.6} dot={false} connectNulls />
-                    </LineChart>
-                  </ResponsiveContainer>
+
+                {/* ── BACK FACE ── */}
+                <div
+                  className="absolute inset-0 p-3 overflow-y-auto"
+                  style={{
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)',
+                  }}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted)] truncate pr-2">{kpi.name_es}</div>
+                    <span className="text-[9px] text-[var(--muted)] shrink-0 opacity-70">esta sem · clic para volver</span>
+                  </div>
+
+                  {sortedOps.length === 0 && sortedDrvs.length === 0 ? (
+                    <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">
+                      Sin datos de personas para este KPI.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0">
+                      {/* Armadores column */}
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">Armadores</div>
+                        {sortedOps.length === 0 ? (
+                          <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            {sortedOps.slice(0, 5).map((p, i) => {
+                              const isFirst = i === 0;
+                              const isLast = i === sortedOps.length - 1 && sortedOps.length > 1;
+                              return (
+                                <div key={p.entity_key} className="flex items-center justify-between gap-1">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <span className={`text-[9px] font-bold w-4 shrink-0 ${isFirst ? 'text-emerald-600' : isLast ? 'text-red-500' : 'text-slate-400'}`}>
+                                      {i + 1}
+                                    </span>
+                                    <span className="text-[10px] truncate">{p.entity_key}</span>
+                                  </div>
+                                  <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, kpi.unit)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Repartidores column */}
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">Repartidores</div>
+                        {sortedDrvs.length === 0 ? (
+                          <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            {sortedDrvs.slice(0, 5).map((p, i) => {
+                              const isFirst = i === 0;
+                              const isLast = i === sortedDrvs.length - 1 && sortedDrvs.length > 1;
+                              return (
+                                <div key={p.entity_key} className="flex items-center justify-between gap-1">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <span className={`text-[9px] font-bold w-4 shrink-0 ${isFirst ? 'text-emerald-600' : isLast ? 'text-red-500' : 'text-slate-400'}`}>
+                                      {i + 1}
+                                    </span>
+                                    <span className="text-[10px] truncate">{p.entity_key}</span>
+                                  </div>
+                                  <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, kpi.unit)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="text-[10.5px] text-[var(--muted)] mt-1.5 flex justify-between">
-                <span>Peer: {formatValue(peerVal, kpi.unit)}</span>
-                <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Picker/Driver rankings side by side */}
+      {/* Armador / Driver rank tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <RankList
           title={`Armadores · ${operators[0]?.scope_type === 'within_city' ? hub.city : hub.display_name} · Tasa de armado`}
@@ -269,7 +461,6 @@ function RankList({
     if (highlightLowest) return (b.value ?? 0) - (a.value ?? 0);
     return (a.value ?? 0) - (b.value ?? 0);
   });
-
   return (
     <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--line)]">
