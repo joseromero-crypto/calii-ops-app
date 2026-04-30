@@ -1,6 +1,5 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
@@ -39,15 +38,11 @@ interface Props {
 }
 
 export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWeek, selectedHub }: Props) {
-  const router = useRouter();
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
-
-  const hubId = selectedHub || hubs[0]?.id;
+  // Hub selection is client-side state — switching hubs does NOT hit the server.
+  // All data is already loaded; we just filter it here.
+  const [hubId, setHubId] = useState<string>(selectedHub || hubs[0]?.id || '');
   const hub = hubs.find((h) => h.id === hubId);
-
-  function pickHub(id: string) {
-    router.push(`/historicos?tab=hub&hub=${id}`);
-  }
 
   function toggleTile(kpiId: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -59,11 +54,10 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
     });
   }
 
-  // KPI tiles for this hub
+  // KPI tiles for this hub — all active KPIs, no parent_kpi_id filter needed
+  // now that mna_monto child KPI has been deleted.
   const tiles = useMemo(() => {
-    // Child KPIs (parent_kpi_id set) are hidden from the grid — their data
-    // surfaces on the parent tile's flip instead.
-    return kpis.filter((k) => !k.parent_kpi_id).map((k) => {
+    return kpis.map((k) => {
       const thisWeek = snapshots.find(
         (s) => s.kpi_id === k.id && s.scope_level === 'hub' && s.scope_key === hubId && s.week_start === currentWeek
       );
@@ -133,7 +127,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
   // MNA product rankings come from mnaProducts (upload_rows), not peer_comparisons.
   const tilePeerData = useMemo(() => {
     const result = new Map<string, { ops: Peer[]; drvs: Peer[] }>();
-    for (const k of kpis.filter((k) => !k.parent_kpi_id)) {
+    for (const k of kpis) {
       const opsHub = peers.filter(
         (p) => p.entity_type === 'operator' && p.kpi_id === k.id && p.scope_type === 'within_hub' && p.scope_key === hubId
       );
@@ -205,7 +199,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
         {hubs.map((h) => (
           <button
             key={h.id}
-            onClick={() => pickHub(h.id)}
+            onClick={() => setHubId(h.id)}
             className={`px-3 py-1.5 rounded-full text-[12px] font-medium border ${
               h.id === hubId ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
             }`}
