@@ -266,29 +266,51 @@ function extractMnaValues(
   kpi: Kpi,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  // MNA is aggregated to hub/city/global snapshots via SKU entity rows.
-  // Peer-level SKU data (for the tile flip) is read directly from upload_rows
-  // in page.tsx as MnaProduct[] — not stored in peer_comparisons.
+  // Tier filter for subdivision KPIs.
+  // Tiers column suffix convention: "; F" = FYV, "; C" = Carnes, no suffix = Graneles.
+  const tierFilter: ((tier: string) => boolean) | null =
+    kpi.id === 'mna_fyv_pct'      ? (t) => t.includes('; F') :
+    kpi.id === 'mna_carnes_pct'   ? (t) => t.includes('; C') :
+    kpi.id === 'mna_graneles_pct' ? (t) => !t.includes('; F') && !t.includes('; C') :
+    null; // mna_pct: all tiers, no filter
+
   const out: EntityValue[] = [];
   for (const r of rows) {
     const producto = String(r.data['Producto'] ?? '').trim();
     const hubId    = r.upload.hub_id;
     if (!producto || !hubId) continue;
 
-    // Use MNA (kg/pz) — the exact measured missing units — as numerator.
-    // This avoids the floating-point rounding introduced by MNA(%) × Recibido
-    // and matches the calculation used in Retool.
-    const mnaUnits = toNum(r.data['MNA (kg/pz)']);
-    const recibido = toNum(r.data['Recibido']);
-    if (!Number.isFinite(mnaUnits) || !Number.isFinite(recibido) || recibido <= 0) continue;
+    // Apply tier filter for subdivision KPIs
+    if (tierFilter !== null) {
+      const tier = String(r.data['Tiers'] ?? '').trim();
+      if (!tierFilter(tier)) continue;
+    }
+
+    // Monetary formula: MNA($) / (MNA($) + Recibido × Source price)
+    //
+    // Aggregation identity: sum(MNA$_i) / sum(MNA$_i + Rev_i)
+    //                     = sum(MNA$_i) / (sum(MNA$_i) + sum(Rev_i))
+    //
+    // Write-off rows (Recibido=0, MNA$>0): revenue=0, so their waste is
+    // fully counted in both numerator and denominator — correct behaviour.
+    // Inactive rows (MNA$=0, Recibido=0): throughput=0, skipped below.
+    const mna$      = Number.isFinite(toNum(r.data['MNA ($)']))      ? toNum(r.data['MNA ($)'])      : 0;
+    const rec       = Number.isFinite(toNum(r.data['Recibido']))      ? toNum(r.data['Recibido'])      : 0;
+    const sp        = Number.isFinite(toNum(r.data['Source price']))  ? toNum(r.data['Source price'])  : 0;
+
+    const revenue    = rec * sp;
+    const throughput = mna$ + revenue; // denominator
+
+    // Skip rows with zero monetary throughput (no waste, no sales)
+    if (throughput <= 0) continue;
 
     out.push({
       entity_type: 'sku',
-      entity_key: producto,
-      city: hubCity.get(hubId) ?? null,
-      hub_id: hubId,
-      numerator: mnaUnits,
-      denominator: recibido,
+      entity_key:  producto,
+      city:        hubCity.get(hubId) ?? null,
+      hub_id:      hubId,
+      numerator:   mna$,        // monetary waste: MNA($)
+      denominator: throughput,  // monetary throughput: MNA($) + Recibido × Source price
     });
   }
   return out;
