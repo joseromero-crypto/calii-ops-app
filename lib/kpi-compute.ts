@@ -613,7 +613,7 @@ function computePeersForKpi(
   const points = values
     .map((v) => ({ ...v, value: ratio(v.numerator, v.denominator, kpi) }))
     .filter((p): p is EntityValue & { value: number } => typeof p.value === 'number');
-  if (points.length < 2) return [];
+  if (points.length === 0) return [];
 
   const entityType = points[0].entity_type;
   type Scope = { type: 'within_hub' | 'within_city' | 'global'; getKey: (p: typeof points[number]) => string | null };
@@ -640,15 +640,22 @@ function computePeersForKpi(
     }
 
     for (const [scopeKey, group] of buckets) {
-      if (group.length < 2) continue;
+      if (group.length === 0) continue;
       const vals   = group.map((g) => g.value);
-      const mean   = sum(vals, (x) => x) / vals.length;
-      const std    = Math.sqrt(sum(vals, (x) => Math.pow(x - mean, 2)) / (vals.length - 1));
-      const sorted = [...vals].sort((a, b) => a - b);
-      const p50    = sorted[Math.floor(sorted.length / 2)];
-      const p90    = sorted[Math.floor(sorted.length * 0.9)];
-      const dir    = kpi.direction;
-      const ranked = [...group].sort((a, b) =>
+      // z-scores require at least 2 entities; single-entity buckets still get
+      // a row (rank=1, rank_total=1, z_score=null) so the tile flip shows the
+      // driver even when they're the only incident in that hub/city.
+      const canRank  = group.length >= 2;
+      const mean     = canRank ? sum(vals, (x) => x) / vals.length : null;
+      const variance = canRank
+        ? sum(vals, (x) => Math.pow(x - mean!, 2)) / (vals.length - 1)
+        : null;
+      const std      = variance !== null ? Math.sqrt(variance) : null;
+      const sorted   = [...vals].sort((a, b) => a - b);
+      const p50      = sorted[Math.floor(sorted.length / 2)];
+      const p90      = sorted[Math.floor(sorted.length * 0.9)];
+      const dir      = kpi.direction;
+      const ranked   = [...group].sort((a, b) =>
         dir === 'lower_is_better' ? a.value - b.value : b.value - a.value
       );
       const rankByKey = new Map<string, number>();
@@ -667,7 +674,7 @@ function computePeersForKpi(
           peer_mean:   mean,
           peer_p50:    p50,
           peer_p90:    p90,
-          z_score:     std > 0 ? (g.value - mean) / std : null,
+          z_score:     std !== null && std > 0 ? (g.value - mean!) / std : null,
           rank:        rankByKey.get(g.entity_key) ?? null,
           rank_total:  group.length,
         });
