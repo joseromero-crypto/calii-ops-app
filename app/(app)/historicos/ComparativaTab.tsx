@@ -73,20 +73,31 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
       }
       byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
     }
+    if (kpi.unit === 'count') {
+      for (const weekData of byWeek.values()) {
+        for (const h of hubs) {
+          if (!(h.id in weekData)) weekData[h.id] = 0;
+        }
+      }
+    }
     return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : -1)).map(({ _iso, ...rest }) => rest);
-  }, [snapshots, kpi.id, hubs]);
+  }, [snapshots, kpi.id, kpi.unit, hubs]);
 
   const thisWeekValues = useMemo(() => {
-    const list: Array<{ hubId: string; value: number; hub: Hub }> = [];
-    for (const h of hubs) {
-      const s = snapshots.find(
-        (x) => x.kpi_id === kpi.id && x.scope_level === 'hub' && x.scope_key === h.id && x.week_start === currentWeek
-      );
-      if (s && s.value !== null) list.push({ hubId: h.id, value: Number(s.value), hub: h });
+  const list: Array<{ hubId: string; value: number; hub: Hub }> = [];
+  for (const h of hubs) {
+    const s = snapshots.find(
+      (x) => x.kpi_id === kpi.id && x.scope_level === 'hub' && x.scope_key === h.id && x.week_start === currentWeek
+    );
+    if (s && s.value !== null) {
+      list.push({ hubId: h.id, value: Number(s.value), hub: h });
+    } else if (!s && kpi.unit === 'count') {
+      list.push({ hubId: h.id, value: 0, hub: h });
     }
-    list.sort((a, b) => kpi.direction === 'lower_is_better' ? b.value - a.value : a.value - b.value);
-    return list;
-  }, [snapshots, hubs, kpi.id, kpi.direction, currentWeek]);
+  }
+  list.sort((a, b) => kpi.direction === 'lower_is_better' ? b.value - a.value : a.value - b.value);
+  return list;
+}, [snapshots, hubs, kpi.id, kpi.direction, kpi.unit, currentWeek]);
 
   const maxVal = thisWeekValues.reduce((m, v) => Math.max(m, Math.abs(v.value)), 0) || 1;
 
