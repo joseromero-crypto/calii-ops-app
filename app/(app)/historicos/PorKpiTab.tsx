@@ -69,8 +69,16 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       }
       byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
     }
-    return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0));
-  }, [snapshots, kpi.id]);
+    // For count KPIs a missing row means 0 (no incidents), not unknown — fill so the chart plots 0 instead of a gap.
+  if (kpi.unit === 'count') {
+    for (const weekData of byWeek.values()) {
+      for (const h of hubs) {
+        if (!(h.id in weekData)) weekData[h.id] = 0;
+      }
+    }
+  }
+  return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0));
+}, [snapshots, kpi.id, kpi.unit, hubs]);
 
   const chartData = useMemo(() => {
     let filtered = allChartData;
