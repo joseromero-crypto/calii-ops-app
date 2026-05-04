@@ -16,10 +16,7 @@ export default async function UploadPage({ searchParams }: PageProps) {
   const supabase = createServerClient();
 
   // Default selected week: explicit ?week=YYYY-MM-DD param > most recently uploaded > most recently completed
-  const { data: cw } = await supabase.from('current_week').select('week_start').single();
-  const defaultDate = cw?.week_start
-    ? new Date(cw.week_start + 'T00:00:00')
-    : lastCompletedWeekStart(new Date());
+  const defaultDate = lastCompletedWeekStart(new Date());
   const defaultIso = defaultDate.toISOString().slice(0, 10);
 
   let weekStartIso = defaultIso;
