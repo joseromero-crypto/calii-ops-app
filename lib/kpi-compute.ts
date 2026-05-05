@@ -10,7 +10,10 @@
  * or on a Friday-evening cron.
  */
 import { createAdminSupabase } from './supabase-server';
+import { classifyMnaProduct } from './sku-classifier';
+import type { MnaCategory } from './sku-classifier';
 import type { Kpi, City } from './types';
+
 type SB = ReturnType<typeof createAdminSupabase>;
 
 interface UploadRef {
@@ -19,10 +22,12 @@ interface UploadRef {
   city: City | null;
   hub_id: string | null;
 }
+
 interface RawRow {
   upload_id: string;
   data: Record<string, unknown>;
 }
+
 interface EntityValue {
   entity_type: 'operator' | 'driver' | 'hub' | 'sku' | 'city';
   entity_key: string;
@@ -31,6 +36,7 @@ interface EntityValue {
   numerator: number;
   denominator: number; // 1 for absolute / rate metrics that don't divide
 }
+
 interface Snapshot {
   kpi_id: string;
   week_start: string;
@@ -40,6 +46,7 @@ interface Snapshot {
   numerator: number | null;
   denominator: number | null;
 }
+
 interface ComputeResult {
   week_start: string;
   snapshots_written: number;
@@ -188,24 +195,18 @@ function extractOperatorValues(
     const opName = String(r.data['assembler'] ?? '').trim() || opId;
     const hubName = String(r.data['geofence'] ?? '').trim();
     const hubId   = hubNameToId(hubName);
-
     const numField = kpi.numerator_field ?? '';
     const denField = kpi.denominator_field;
-
     const rawNumerator   = numField ? toNum(r.data[numField]) : NaN;
     const rawDenominator = denField ? toNum(r.data[denField]) : 1;
-
     if (!Number.isFinite(rawNumerator)) continue;
-
     const denominator = Number.isFinite(rawDenominator) && rawDenominator > 0 ? rawDenominator : 1;
-
     // CSV stores pre-computed percentages (0–100) for pct KPIs that have no
-    // separate denominator field.  Normalise to 0–1 so the display layer's
+    // separate denominator field. Normalise to 0–1 so the display layer's
     // ×100 produces the correct value.
     const numerator = (kpi.unit === 'pct' && !kpi.denominator_field)
       ? rawNumerator / 100
       : rawNumerator;
-
     out.push({
       entity_type: 'operator',
       entity_key: opName,
@@ -233,22 +234,16 @@ function extractDriverValues(
     const hubName = String(r.data['hub'] ?? '').trim();
     const hubId   = hubNameToId(hubName);
     if (!hubId) continue; // CH or excluded driver
-
     const numField = kpi.numerator_field ?? '';
     const denField = kpi.denominator_field;
-
     const rawNumerator   = numField ? toNum(r.data[numField]) : NaN;
     const rawDenominator = denField ? toNum(r.data[denField]) : 1;
-
     if (!Number.isFinite(rawNumerator)) continue;
-
     const denominator = Number.isFinite(rawDenominator) && rawDenominator > 0 ? rawDenominator : 1;
-
     // Same pct normalisation as extractOperatorValues.
     const numerator = (kpi.unit === 'pct' && !kpi.denominator_field)
       ? rawNumerator / 100
       : rawNumerator;
-
     out.push({
       entity_type: 'driver',
       entity_key: drvName,
@@ -266,24 +261,29 @@ function extractMnaValues(
   kpi: Kpi,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  // Tier filter for subdivision KPIs.
-  // Tiers column suffix convention: "; F" = FYV, "; C" = Carnes, no suffix = Graneles.
-  const tierFilter: ((tier: string) => boolean) | null =
-    kpi.id === 'mna_fyv_pct'      ? (t) => t.includes('; F') :
-    kpi.id === 'mna_carnes_pct'   ? (t) => t.includes('; C') :
-    kpi.id === 'mna_graneles_pct' ? (t) => !t.includes('; F') && !t.includes('; C') :
-    null; // mna_pct: all tiers, no filter
+  // Category filter for subdivision KPIs.
+  //
+  // NOTE: "carnes" in Calii's taxonomy means REFRIGERATED/COLD-CHAIN (not just
+  // meat). "abarrotes" is shelf-stable / dry goods and corresponds to the
+  // mna_graneles_pct KPI. Classification is supplier-first via classifyMnaProduct.
+  const catFilter: MnaCategory | null =
+    kpi.id === 'mna_fyv_pct'      ? 'fyv'       :
+    kpi.id === 'mna_carnes_pct'   ? 'carnes'    :
+    kpi.id === 'mna_graneles_pct' ? 'abarrotes' :
+    null; // mna_pct: all rows, no filter
 
   const out: EntityValue[] = [];
+
   for (const r of rows) {
-    const producto = String(r.data['Producto'] ?? '').trim();
-    const hubId    = r.upload.hub_id;
+    const producto  = String(r.data['Producto']  ?? '').trim();
+    const proveedor = String(r.data['Proveedor'] ?? '').trim();
+    const hubId     = r.upload.hub_id;
     if (!producto || !hubId) continue;
 
-    // Apply tier filter for subdivision KPIs
-    if (tierFilter !== null) {
-      const tier = String(r.data['Tiers'] ?? '').trim();
-      if (!tierFilter(tier)) continue;
+    // Apply category filter for subdivision KPIs.
+    if (catFilter !== null) {
+      const category = classifyMnaProduct(producto, proveedor);
+      if (category !== catFilter) continue;
     }
 
     // Monetary formula: MNA($) / (MNA($) + Recibido × Source price)
@@ -297,7 +297,6 @@ function extractMnaValues(
     const mna$      = Number.isFinite(toNum(r.data['MNA ($)']))      ? toNum(r.data['MNA ($)'])      : 0;
     const rec       = Number.isFinite(toNum(r.data['Recibido']))      ? toNum(r.data['Recibido'])      : 0;
     const sp        = Number.isFinite(toNum(r.data['Source price']))  ? toNum(r.data['Source price'])  : 0;
-
     const revenue    = rec * sp;
     const throughput = mna$ + revenue; // denominator
 
@@ -320,7 +319,7 @@ function extractMnaValues(
  * Incidentes — DRIVER-LEVEL incident count.
  *
  * Counts delivery-related incidents per driver, excluding entries registered
- * by the ops monitor account (robertott@calii.com).  A row is considered
+ * by the ops monitor account (robertott@calii.com). A row is considered
  * delivery-related when its Notas column contains an order-reference code
  * (e.g. "79-E6-2") or the words "entrega" / "entregado".
  *
@@ -354,7 +353,7 @@ function extractIncidentesValues(
 
   // Accumulate one entry per driver (keyed by canonical name) so that a driver
   // with multiple qualifying incidents contributes a single EntityValue with
-  // numerator = their total count.  Without this, the same driver appears N
+  // numerator = their total count. Without this, the same driver appears N
   // times in computePeersForKpi and aggregateAllScopes, producing wrong z-scores
   // and hub totals.
   const byDriver = new Map<string, EntityValue>();
@@ -389,7 +388,6 @@ function extractIncidentesValues(
       });
     }
   }
-
   return Array.from(byDriver.values());
 }
 
@@ -466,15 +464,12 @@ function computeFaltantesArmadorPeerValues(
     const hubName = String(o.data['geofence']  ?? '').trim();
     const hubId   = hubNameToId(hubName);
     if (!opName || !hubId) continue;
-
     const numerator   = toNum(o.data['num_orders_with_faltante_armador']);
     const denominator = toNum(o.data['num_assembled']);
-
     // Skip operators with no assembled orders — rate is undefined.
     if (!Number.isFinite(denominator) || denominator <= 0) continue;
     // numerator=0 is valid (zero faltantes = best possible score).
     if (!Number.isFinite(numerator)) continue;
-
     out.push({
       entity_type: 'operator',
       entity_key: opName,
@@ -605,8 +600,8 @@ async function enrichWithHistory(sb: SB, snapshots: Snapshot[], weekStart: strin
   return snapshots.map((s) => {
     const k    = `${s.kpi_id}|${s.scope_level}|${s.scope_key ?? ''}`;
     const past = (histMap.get(k) ?? []).sort((a, b) => b.week_start.localeCompare(a.week_start));
-    const prevWeek  = past[0]?.value ?? null;
-    const last4     = past.slice(0, 4).map((p) => p.value).filter((v): v is number => typeof v === 'number');
+    const prevWeek    = past[0]?.value ?? null;
+    const last4       = past.slice(0, 4).map((p) => p.value).filter((v): v is number => typeof v === 'number');
     const rollingMean = last4.length > 0 ? sum(last4, (x) => x) / last4.length : null;
     const rollingStd  =
       last4.length > 1
@@ -635,9 +630,11 @@ function computePeersForKpi(
   const points = values
     .map((v) => ({ ...v, value: ratio(v.numerator, v.denominator, kpi) }))
     .filter((p): p is EntityValue & { value: number } => typeof p.value === 'number');
+
   if (points.length === 0) return [];
 
   const entityType = points[0].entity_type;
+
   type Scope = { type: 'within_hub' | 'within_city' | 'global'; getKey: (p: typeof points[number]) => string | null };
   const scopes: Scope[] = [];
 
@@ -652,6 +649,7 @@ function computePeersForKpi(
   }
 
   const out: any[] = [];
+
   for (const scope of scopes) {
     const buckets = new Map<string, typeof points>();
     for (const p of points) {
@@ -663,7 +661,7 @@ function computePeersForKpi(
 
     for (const [scopeKey, group] of buckets) {
       if (group.length === 0) continue;
-      const vals   = group.map((g) => g.value);
+      const vals = group.map((g) => g.value);
       // z-scores require at least 2 entities; single-entity buckets still get
       // a row (rank=1, rank_total=1, z_score=null) so the tile flip shows the
       // driver even when they're the only incident in that hub/city.
@@ -703,16 +701,18 @@ function computePeersForKpi(
       }
     }
   }
+
   return out;
 }
 
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
 /**
  * Upsert `rows` into `table` in parallel 1 000-row batches.
  * All batches are dispatched at once via Promise.all; if any batch errors
- * the whole call rejects immediately.  Returns total rows written.
+ * the whole call rejects immediately. Returns total rows written.
  */
 async function parallelUpsert(
   sb: SB,
