@@ -5,6 +5,7 @@ import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
   type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct,
 } from './_shared';
+import type { MnaCategory } from '@/lib/sku-classifier';
 
 /* ─── Sparkline tooltip ──────────────────────────────────────────────────── */
 function SparkTooltip({
@@ -37,8 +38,24 @@ interface Props {
   selectedHub?: string;
 }
 
+/**
+ * Maps each MNA subdivision KPI id to the category it should show in the
+ * tile flip. mna_pct shows all categories (null = no filter).
+ *
+ * Note: mna_graneles_pct → 'abarrotes' because "Graneles" is Calii's name
+ * for the shelf-stable / dry goods category, which the classifier labels
+ * 'abarrotes' to match the source catalog column values.
+ */
+const MNA_CATEGORY_FILTER: Record<string, MnaCategory | null> = {
+  mna_pct:          null,        // all — no filter
+  mna_graneles_pct: 'abarrotes', // shelf-stable / dry goods
+  mna_fyv_pct:      'fyv',       // frutas y verduras
+  mna_carnes_pct:   'carnes',    // refrigerated / cold-chain
+};
+
 export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
+
   // Hub selection is client-side state — switching hubs does NOT hit the server.
   // All data is already loaded; we just filter it here.
   const [hubId, setHubId] = useState<string>(selectedHub || hubs[0]?.id || '');
@@ -141,7 +158,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
         (p) => p.entity_type === 'driver' && p.kpi_id === k.id && p.scope_type === 'within_city' && p.scope_key === hubCityKey
       );
       result.set(k.id, {
-        ops: opsHub.length > 0 ? opsHub : opsCity,
+        ops:  opsHub.length  > 0 ? opsHub  : opsCity,
         drvs: drvsHub.length > 0 ? drvsHub : drvsCity,
       });
     }
@@ -228,17 +245,17 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
         <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">KPIs · 12 semanas</div>
         <div className="text-[10.5px] text-[var(--muted)] opacity-60">· clic en tile para ver ranking</div>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {tiles.map(({ kpi, thisWeek, peerThis, trend }) => {
           const rawValue = thisWeek?.value ?? null;
           // For count KPIs (e.g. entregas erróneas), null means no incidents this
           // week — display 0 rather than '—' so the tile isn't confusingly blank.
           const value = (rawValue === null && kpi.unit === 'count') ? 0 : rawValue;
-          const prev = thisWeek?.prev_week_value ?? null;
+          const prev  = thisWeek?.prev_week_value ?? null;
           const delta = formatDelta(value, prev, kpi.unit);
           const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
           const peerVal = peerThis?.value ?? null;
+
           let z: 'good' | 'mid' | 'bad' | null = null;
           if (value !== null && peerVal !== null && peerVal !== 0) {
             const pctDiff = ((value - peerVal) / Math.abs(peerVal)) * 100;
@@ -247,12 +264,13 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
             const badDiff  = wantsLow ? pctDiff > 10  : pctDiff < -10;
             z = goodDiff ? 'good' : badDiff ? 'bad' : 'mid';
           }
+
           const tileClass =
             z === 'good' ? 'border-emerald-200 bg-emerald-50' :
             z === 'bad'  ? 'border-red-200 bg-red-50' :
                            'border-[var(--line)] bg-white';
           const lineStroke = z === 'bad' ? '#ef4444' : z === 'good' ? '#10b981' : '#0ea5e9';
-          const isFlipped = flippedTiles.has(kpi.id);
+          const isFlipped  = flippedTiles.has(kpi.id);
 
           // Back-face peer data — sorted WORST → BEST so attention goes to bottom performers.
           const { ops, drvs } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [] };
@@ -266,9 +284,22 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
           const hasDrvs = sortedDrvs.length > 0;
 
           // MNA tile flip — built from upload_rows, not peer_comparisons.
+          // For subdivision KPIs (mna_graneles_pct, mna_fyv_pct, mna_carnes_pct),
+          // the flip shows only the products belonging to that category.
           const isMna = kpi.source_app_id === 'mna';
-          const mnaForHub         = isMna ? mnaProducts.filter((p) => p.hub_id === hubId) : [];
-          const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct - a.pct)    : [];
+          const mnaCatFilter: MnaCategory | null = isMna
+            ? (MNA_CATEGORY_FILTER[kpi.id] ?? null)
+            : null;
+
+          const mnaForHub = isMna
+            ? mnaProducts.filter(
+                (p) =>
+                  p.hub_id === hubId &&
+                  (mnaCatFilter === null || p.category === mnaCatFilter)
+              )
+            : [];
+
+          const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct    - a.pct)    : [];
           const mnaSortedByAmount = isMna ? [...mnaForHub].sort((a, b) => b.amount - a.amount) : [];
 
           return (
@@ -366,7 +397,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
                   </div>
 
                   {isMna ? (
-                    /* ── MNA: two columns read directly from upload_rows ── */
+                    /* ── MNA: two columns read directly from upload_rows ──
+                       Subdivision KPIs (graneles/fyv/carnes) show only their
+                       own category's products. mna_pct shows all. ── */
                     mnaForHub.length === 0 ? (
                       <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">Sin datos MNA esta semana.</div>
                     ) : (
@@ -465,7 +498,7 @@ function MnaBackFaceList({ label, items, field, max }: {
   max: number;
 }) {
   const shown = items.slice(0, max);
-  const unit = field === 'pct' ? 'pct' : 'currency';
+  const unit  = field === 'pct' ? 'pct' : 'currency';
   return (
     <div>
       <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">{label}</div>
@@ -506,7 +539,7 @@ function RankList({
   highlightHighest?: boolean;
 }) {
   const sorted = [...items].sort((a, b) => {
-    if (highlightLowest) return (b.value ?? 0) - (a.value ?? 0);
+    if (highlightLowest)  return (b.value ?? 0) - (a.value ?? 0);
     return (a.value ?? 0) - (b.value ?? 0);
   });
   return (
