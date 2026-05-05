@@ -1,4 +1,5 @@
 'use client';
+
 export const HUB_COLORS: Record<string, string> = {
   mh_contry:      '#0ea5e9',
   mh_cumbres:     '#22c55e',
@@ -8,6 +9,7 @@ export const HUB_COLORS: Record<string, string> = {
   mh_zapopan:     '#06b6d4',
   mh_condesa:     '#ec4899',
 };
+
 export interface Kpi {
   id: string;
   name_es: string;
@@ -20,16 +22,28 @@ export interface Kpi {
   owner_role_id: string | null;
   source_app_id: string | null;
 }
-/** Pre-aggregated MNA product row, built from upload_rows in page.tsx. */
+
+/**
+ * Pre-aggregated MNA product row, built from upload_rows in page.tsx.
+ *
+ * category: assembly category from classifyMnaProduct().
+ *   'fyv'       → Frutas y Verduras
+ *   'carnes'    → Refrigerated / cold-chain (dairy, meats, frozen, deli)
+ *   'abarrotes' → Shelf-stable / dry goods (corresponds to mna_graneles_pct)
+ */
 export interface MnaProduct {
   hub_id: string;
   producto: string;
-  /** Weighted-average MNA % — same fraction scale as kpi_snapshots (0.05 = 5%). */
+  /** Weighted MNA % using monetary formula: MNA($) / (MNA($) + Recibido × Source price). */
   pct: number;
   /** Sum of MNA $ for the week. */
   amount: number;
+  /** Assembly category — used by subdivision tile flips to filter per-category products. */
+  category: 'carnes' | 'fyv' | 'abarrotes';
 }
+
 export interface Hub { id: string; display_name: string; city: string }
+
 export interface Snapshot {
   kpi_id: string;
   week_start: string;
@@ -41,6 +55,7 @@ export interface Snapshot {
   prev_week_value: number | null;
   rolling_mean_4w: number | null;
 }
+
 export interface Peer {
   kpi_id: string;
   week_start: string;
@@ -55,6 +70,7 @@ export interface Peer {
   rank: number | null;
   rank_total: number | null;
 }
+
 export function formatValue(v: number | null | undefined, unit: string): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
   if (unit === 'pct') return `${(v * 100).toFixed(1)}%`;
@@ -63,6 +79,7 @@ export function formatValue(v: number | null | undefined, unit: string): string 
   if (unit === 'count') return v.toFixed(0);
   return String(v);
 }
+
 export function formatDelta(curr: number | null, prev: number | null, unit: string): { text: string; isUp: boolean | null } {
   if (curr === null || prev === null || !Number.isFinite(curr) || !Number.isFinite(prev) || prev === 0) {
     return { text: '—', isUp: null };
@@ -74,24 +91,28 @@ export function formatDelta(curr: number | null, prev: number | null, unit: stri
   }
   return { text: `${pctDelta > 0 ? '+' : ''}${pctDelta.toFixed(1)}%`, isUp: pctDelta > 0 };
 }
+
 /** Returns the Thursday end-of-week label given a Friday week_start. */
 export function weekEndLabel(weekStartIso: string): string {
   const d = new Date(weekStartIso + 'T00:00:00');
   d.setDate(d.getDate() + 6);
   return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(d);
 }
+
 /** Same but with the year for tooltips. */
 export function weekEndLabelLong(weekStartIso: string): string {
   const d = new Date(weekStartIso + 'T00:00:00');
   d.setDate(d.getDate() + 6);
   return `vie ${new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(new Date(weekStartIso + 'T00:00:00'))} — jue ${new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(d)}`;
 }
+
 export function deltaClassForDirection(isUp: boolean | null, direction: string): string {
   if (isUp === null) return 'text-[var(--muted)]';
   const wantsUp = direction === 'higher_is_better';
   const good = wantsUp ? isUp : !isUp;
   return good ? 'text-emerald-600' : 'text-red-600';
 }
+
 export function groupBy<T, K>(arr: T[], f: (t: T) => K): Map<K, T[]> {
   const m = new Map<K, T[]>();
   for (const x of arr) {
@@ -101,6 +122,7 @@ export function groupBy<T, K>(arr: T[], f: (t: T) => K): Map<K, T[]> {
   }
   return m;
 }
+
 /** Z-score → background color class for heatmap cells (with KPI direction in mind). */
 export function zToHeatmapClass(z: number | null, direction: string): string {
   if (z === null || !Number.isFinite(z)) return 'bg-slate-50';
