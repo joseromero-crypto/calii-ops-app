@@ -416,11 +416,24 @@ function computeFaltantesArmadorPct(
   const events     = rowsByApp.get('faltantes_armador') ?? [];
   const operadores = rowsByApp.get('desempeno_operadores') ?? [];
 
+  // Deduplicate by (Operator ID, timestamp-to-second) to approximate unique
+  // orders with faltantes. The event log has one row per missing item, so a
+  // single order with 3 missing items produces 3 rows — often logged within the
+  // same second by the same assembler. This brings hub-level % in line with
+  // Retool, which has access to actual order IDs for exact deduplication.
   const numByHub = new Map<string, number>();
+  const seenByHub = new Map<string, Set<string>>();
   for (const e of events) {
     const hubName = String(e.data['Hub'] ?? '').trim();
     const hubId   = hubNameToId(hubName);
     if (!hubId) continue;
+    const opId    = String(e.data['Operator ID'] ?? '').trim();
+    const tsSecond = String(e.data['Fecha'] ?? '').trim().slice(0, 19); // YYYY-MM-DDTHH:MM:SS
+    const dedupeKey = `${opId}|${tsSecond}`;
+    if (!seenByHub.has(hubId)) seenByHub.set(hubId, new Set());
+    const seen = seenByHub.get(hubId)!;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
     numByHub.set(hubId, (numByHub.get(hubId) ?? 0) + 1);
   }
 
