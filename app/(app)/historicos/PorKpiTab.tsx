@@ -187,6 +187,24 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
     return { weeks, cells };
   }, [snapshots, kpi.id, hubs]);
 
+  // Hubs sorted by current week value — drives both the chart legend order and the
+  // heatmap rows so the highest/lowest performing hub is always first visually.
+  const sortedHubsByValue = useMemo(() => {
+    return [...hubs].sort((a, b) => {
+      const av = snapshots.find(
+        (s) => s.kpi_id === kpi.id && s.scope_level === 'hub' && s.scope_key === a.id && s.week_start === currentWeek
+      )?.value ?? null;
+      const bv = snapshots.find(
+        (s) => s.kpi_id === kpi.id && s.scope_level === 'hub' && s.scope_key === b.id && s.week_start === currentWeek
+      )?.value ?? null;
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      // higher_is_better → highest first; lower_is_better → lowest (worst) first
+      return kpi.direction === 'lower_is_better' ? bv - av : av - bv;
+    });
+  }, [hubs, snapshots, kpi.id, kpi.direction, currentWeek]);
+
   return (
     <div className="space-y-4">
       {/* Top movers */}
@@ -306,7 +324,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
               {peerMeanThisWeek !== null && (
                 <ReferenceLine y={peerMeanThisWeek} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: 'peer mean', position: 'right', fill: '#64748b', fontSize: 10 }} />
               )}
-              {hubs.map((h) => (
+              {sortedHubsByValue.map((h) => (
                 <Line
                   key={h.id}
                   type="monotone"
@@ -423,7 +441,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
               </tr>
             </thead>
             <tbody>
-              {hubs.map((h) => (
+              {sortedHubsByValue.map((h) => (
                 <tr key={h.id} className="border-t border-slate-100">
                   <td className="px-5 py-2 font-semibold">{h.display_name}<span className="text-[10px] text-[var(--muted)] ml-2">{h.city}</span></td>
                   {heatmapData.weeks.slice(0, 8).map((wk) => {
