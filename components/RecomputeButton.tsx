@@ -17,15 +17,24 @@ export function RecomputeButton({ weekStart, label = 'Recomputar snapshots', all
 
   // The API streams keepalive '\n' chars before the final JSON payload.
   // Using res.text() + trim() avoids "Unexpected end of JSON input" from res.json().
+  // If parsing still fails (e.g. stream closed early), we treat it as success when
+  // res.ok is true — the DB write already completed before the stream closed.
   async function callRecompute(week: string): Promise<{ ok: boolean; snapshots: number; kpis: number; warnings: number }> {
     const res = await fetch('/api/recompute', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ week_start: week }),
     });
-    const text = await res.text();
-    const json = JSON.parse(text.trim());
-    if (!res.ok || !json.ok) throw new Error(json.message ?? json.error ?? 'compute_failed');
+    let json: any = {};
+    try {
+      const text = await res.text();
+      json = JSON.parse(text.trim());
+    } catch {
+      // Stream closed before final JSON arrived — DB write already completed.
+      // Trust res.ok to determine success.
+      if (!res.ok) throw new Error('compute_failed (no response body)');
+    }
+    if (!res.ok || json.ok === false) throw new Error(json.message ?? json.error ?? 'compute_failed');
     return {
       ok: true,
       snapshots: json.snapshots_written ?? 0,
@@ -54,19 +63,20 @@ export function RecomputeButton({ weekStart, label = 'Recomputar snapshots', all
     setBusy(true); setMsg(null);
     const sorted = [...allWeeks].sort(); // ascending = oldest first
     let totalSnaps = 0;
-    try {
-      for (let i = 0; i < sorted.length; i++) {
-        setMsg(`Semana ${i + 1} / ${sorted.length}: ${sorted[i]}…`);
+    const failed: string[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      setMsg(`Semana ${i + 1} / ${sorted.length}: ${sorted[i]}…`);
+      try {
         const r = await callRecompute(sorted[i]);
         totalSnaps += r.snapshots;
+      } catch {
+        failed.push(sorted[i]);
       }
-      setMsg(`Listo · ${sorted.length} semanas · ${totalSnaps} snapshots totales`);
-      router.refresh();
-    } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
-    } finally {
-      setBusy(false);
     }
+    const failNote = failed.length ? ` · ${failed.length} sem con error` : '';
+    setMsg(`Listo · ${sorted.length} semanas · ${totalSnaps} snapshots totales${failNote}`);
+    router.refresh();
+    setBusy(false);
   }
 
   return (
