@@ -10,6 +10,37 @@ import {
   type Kpi, type Hub, type Snapshot, type Peer,
 } from './_shared';
 
+// Custom tooltip that re-sorts hubs by the hovered week's value (highest → lowest).
+// This way the legend order matches the tooltip order for every week, not just currentWeek.
+function ChartTooltip({
+  active, payload, label, unit, hubs,
+}: {
+  active?: boolean;
+  payload?: Array<{ dataKey: string; value: number | null; stroke: string }>;
+  label?: string;
+  unit: string;
+  hubs: Hub[];
+}) {
+  if (!active || !payload?.length) return null;
+  const sorted = [...payload]
+    .filter((p) => p.value != null)
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-lg text-[12px] min-w-[180px]">
+      <div className="font-semibold text-[var(--ink)] mb-1.5">{label}</div>
+      {sorted.map((p) => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-3 py-0.5">
+          <div className="flex items-center gap-1.5">
+            <span style={{ color: p.stroke }} className="text-[10px]">●</span>
+            <span className="text-slate-700">{hubs.find((h) => h.id === p.dataKey)?.display_name ?? p.dataKey}</span>
+          </div>
+          <span className="font-semibold tabular-nums">{formatValue(p.value == null ? null : Number(p.value), unit)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface Props {
   kpis: Kpi[];
   hubs: Hub[];
@@ -200,8 +231,8 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
       if (av === null && bv === null) return 0;
       if (av === null) return 1;
       if (bv === null) return -1;
-      // higher_is_better → highest first; lower_is_better → lowest (worst) first
-      return kpi.direction === 'lower_is_better' ? bv - av : av - bv;
+      // Always highest value first — matches top-to-bottom visual order on the chart
+      return bv - av;
     });
   }, [hubs, snapshots, kpi.id, kpi.direction, currentWeek]);
 
@@ -311,11 +342,9 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
                 width={70}
               />
               <Tooltip
-                formatter={(v: any, name: string) => [
-                  v == null ? '—' : formatValue(Number(v), kpi.unit),
-                  hubs.find((h) => h.id === name)?.display_name ?? name,
-                ]}
-                contentStyle={{ fontSize: 12 }}
+                content={(props: any) => (
+                  <ChartTooltip {...props} unit={kpi.unit} hubs={hubs} />
+                )}
               />
               <Legend
                 formatter={(value: string) => hubs.find((h) => h.id === value)?.display_name ?? value}
