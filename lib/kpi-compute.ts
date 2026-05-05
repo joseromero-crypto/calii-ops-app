@@ -277,7 +277,15 @@ function extractMnaValues(
   for (const r of rows) {
     const producto  = String(r.data['Producto']  ?? '').trim();
     const proveedor = String(r.data['Proveedor'] ?? '').trim();
-    const hubId     = r.upload.hub_id;
+
+    // Hub resolution: prefer upload.hub_id; fall back to row-level Hub/geofence column.
+    // Mirrors page.tsx logic — MNA uploads uploaded at city level have hub_id = null
+    // on the uploads row, so the hub must be read from the row data instead.
+    const rawHubRef =
+      r.upload.hub_id ||
+      String(r.data['Hub'] ?? r.data['geofence'] ?? r.data['Geofence'] ?? '').trim() ||
+      null;
+    const hubId = rawHubRef ? (hubNameToId(rawHubRef) ?? null) : null;
     if (!producto || !hubId) continue;
 
     // Apply category filter for subdivision KPIs.
