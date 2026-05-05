@@ -125,25 +125,26 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .replace(/\s+/g, '_');
     if (s.startsWith('ch_')) return null;
     const map: Record<string, string> = {
-      mh_contry: 'mh_contry',         contry: 'mh_contry',
-      mh_cumbres: 'mh_cumbres',       cumbres: 'mh_cumbres',
+      mh_contry: 'mh_contry',          contry: 'mh_contry',
+      mh_cumbres: 'mh_cumbres',        cumbres: 'mh_cumbres',
       mh_san_nicolas: 'mh_san_nicolas', san_nicolas: 'mh_san_nicolas',
-      mh_guadalupe: 'mh_guadalupe',   guadalupe: 'mh_guadalupe',
-      mh_avicola: 'mh_avicola',       avicola: 'mh_avicola',
-      mh_saltillo: 'mh_avicola',      saltillo: 'mh_avicola',
-      mh_zapopan: 'mh_zapopan',       zapopan: 'mh_zapopan',
-      mh_condesa: 'mh_condesa',       condesa: 'mh_condesa',
-      mh_san_pedro: 'mh_san_pedro',   san_pedro: 'mh_san_pedro',
+      mh_guadalupe: 'mh_guadalupe',    guadalupe: 'mh_guadalupe',
+      mh_avicola: 'mh_avicola',        avicola: 'mh_avicola',
+      mh_saltillo: 'mh_avicola',       saltillo: 'mh_avicola',
+      mh_zapopan: 'mh_zapopan',        zapopan: 'mh_zapopan',
+      mh_condesa: 'mh_condesa',        condesa: 'mh_condesa',
+      mh_san_pedro: 'mh_san_pedro',    san_pedro: 'mh_san_pedro',
     };
     return map[s] ?? s;
   }
+  type MnaAggEntry = { hub_id: string; producto: string; pctNum: number; pctDen: number; amount: number };
   const mnaProducts: { hub_id: string; producto: string; pct: number; amount: number }[] = [];
   if (allMnaRows.length > 0) {
-    const mnaById = new Map(mnaUploadList.map((u) => [u.id, u]));
-    const mnaAgg  = new Map
-      string,
-      { hub_id: string; producto: string; pctNum: number; pctDen: number; amount: number }
-    >();
+    const mnaById = new Map<string, { id: string; hub_id: string | null }>();
+    for (const u of mnaUploadList) {
+      mnaById.set(u.id, u);
+    }
+    const mnaAgg = new Map<string, MnaAggEntry>();
     for (const r of allMnaRows) {
       const u = mnaById.get(r.upload_id);
       if (!u) continue;
@@ -161,7 +162,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       const producto = String((r.data as any)['Producto'] ?? '').trim();
       if (!producto) continue;
       const mnaUnits = Number((r.data as any)['MNA (kg/pz)']) || 0;
-      const recibido = Number((r.data as any)['Recibido'])    || 0;  // FIX: was || 1
+      const recibido = Number((r.data as any)['Recibido'])    || 0;
       const amount   = Number((r.data as any)['MNA ($)'])     || 0;
       const key = `${hubId}|${producto}`;
       const ex  = mnaAgg.get(key);
@@ -177,7 +178,6 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       mnaProducts.push({
         hub_id:   m.hub_id,
         producto: m.producto,
-        // FIX: MNA / (MNA + Recibido) — was MNA / Recibido
         pct:      (m.pctNum + m.pctDen) > 0 ? m.pctNum / (m.pctNum + m.pctDen) : 0,
         amount:   m.amount,
       });
