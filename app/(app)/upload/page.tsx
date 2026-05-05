@@ -85,7 +85,7 @@ export default async function UploadPage({ searchParams }: PageProps) {
       />
 
       <div className="flex items-center justify-end mb-4">
-        <RecomputeButton weekStart={weekStartIso} />
+        <RecomputeButton weekStart={weekStartIso} allWeeks={weeksWithUploads.map(w => w.week_start)} />
       </div>
 
       <div className="grid grid-cols-[1.4fr_1fr] gap-4 mb-5">
