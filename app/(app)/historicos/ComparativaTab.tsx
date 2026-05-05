@@ -1,7 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
+import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   HUB_COLORS, formatValue, weekEndLabel,
   type Kpi, type Hub, type Snapshot,
@@ -114,6 +114,7 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={80}>
           <LineChart data={chartData}>
+            <XAxis dataKey="week" hide />
             <Tooltip
               formatter={(v: any, name: string) => [
                 v == null ? '—' : formatValue(Number(v), kpi.unit),
