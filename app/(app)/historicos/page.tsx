@@ -1,13 +1,20 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { lastCompletedWeekStart } from '@/lib/types';
+import { classifyMnaProduct } from '@/lib/sku-classifier';
+import type { MnaCategory } from '@/lib/sku-classifier';
 import { HistoricosClient } from './HistoricosClient';
+
 export const dynamic = 'force-dynamic';
+
 interface PageProps {
   searchParams: { tab?: string; kpi?: string; hub?: string; city?: string };
 }
+
 const PAGE = 1000;
+
 export default async function HistoricosPage({ searchParams }: PageProps) {
   const sb = createServerClient();
+
   // ── Step 1: resolve current week ────────────────────────────────────────────
   const { data: cw } = await sb.from('current_week').select('week_start').single();
   let currentWeek = cw?.week_start as string | undefined;
@@ -22,9 +29,11 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       (latestSnap?.week_start as string | undefined) ??
       lastCompletedWeekStart(new Date()).toISOString().slice(0, 10);
   }
+
   const since = new Date(currentWeek + 'T00:00:00');
   since.setDate(since.getDate() - 7 * 51);
   const sinceIso = since.toISOString().slice(0, 10);
+
   // ── Step 2: parallel counts + registry + MNA upload list ────────────────────
   const [
     snapCountRes,
@@ -54,9 +63,11 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
     sb.from('hub_roles').select('id, name_es'),
   ]);
+
   const snapTotal     = snapCountRes.count ?? 0;
   const peerTotal     = peerCountRes.count ?? 0;
   const mnaUploadList = mnaUploadsRes.data ?? [];
+
   // ── Step 3: MNA row count ────────────────────────────────────────────────────
   let mnaTotal = 0;
   if (mnaUploadList.length > 0) {
@@ -67,10 +78,12 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .eq('is_excluded', false);
     mnaTotal = count ?? 0;
   }
+
   // ── Step 4: fetch ALL pages in parallel ─────────────────────────────────────
   const snapIdxs = Array.from({ length: Math.ceil(snapTotal / PAGE) }, (_, i) => i);
   const peerIdxs = Array.from({ length: Math.ceil(peerTotal / PAGE) }, (_, i) => i);
   const mnaIdxs  = Array.from({ length: Math.ceil(mnaTotal  / PAGE) }, (_, i) => i);
+
   const [snapPages, peerPages, mnaRawPages] = await Promise.all([
     Promise.all(
       snapIdxs.map((i) =>
@@ -111,15 +124,21 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
         )
       : Promise.resolve([]),
   ]);
+
   const allSnaps   = snapPages.flatMap((r) => r.data ?? []);
   const allPeers   = peerPages.flatMap((r) => r.data ?? []);
   const allMnaRows = mnaRawPages.flatMap((r) => r.data ?? []);
+
   // ── Step 5: aggregate MNA products for tile flip ─────────────────────────────
+  //
+  // Formula: MNA($) / (MNA($) + Recibido × Source price) — monetary, same as
+  // kpi_snapshots. Price cancels at individual SKU level so the ranking is
+  // equivalent to volume-based, but we use monetary for consistency.
   function resolveHubId(raw: string | null | undefined): string | null {
     if (!raw) return null;
     const s = raw
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[̀-ͯ]/g, '')
       .toLowerCase()
       .trim()
       .replace(/\s+/g, '_');
@@ -137,17 +156,30 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     };
     return map[s] ?? s;
   }
-  type MnaAggEntry = { hub_id: string; producto: string; pctNum: number; pctDen: number; amount: number };
-  const mnaProducts: { hub_id: string; producto: string; pct: number; amount: number }[] = [];
+
+  type MnaAggEntry = {
+    hub_id: string;
+    producto: string;
+    pctNum: number;   // SUM(MNA $)
+    pctDen: number;   // SUM(Recibido × Source price)
+    amount: number;   // SUM(MNA $) — same as pctNum, kept for clarity
+    category: MnaCategory;
+  };
+
+  const mnaProducts: { hub_id: string; producto: string; pct: number; amount: number; category: MnaCategory }[] = [];
+
   if (allMnaRows.length > 0) {
     const mnaById = new Map<string, { id: string; hub_id: string | null }>();
     for (const u of mnaUploadList) {
       mnaById.set(u.id, u);
     }
+
     const mnaAgg = new Map<string, MnaAggEntry>();
+
     for (const r of allMnaRows) {
       const u = mnaById.get(r.upload_id);
       if (!u) continue;
+
       const rawHub =
         u.hub_id ||
         String(
@@ -159,30 +191,49 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
         null;
       const hubId = resolveHubId(rawHub);
       if (!hubId) continue;
-      const producto = String((r.data as any)['Producto'] ?? '').trim();
+
+      const producto   = String((r.data as any)['Producto']     ?? '').trim();
+      const proveedor  = String((r.data as any)['Proveedor']    ?? '').trim();
       if (!producto) continue;
-      const mnaUnits = Number((r.data as any)['MNA (kg/pz)']) || 0;
-      const recibido = Number((r.data as any)['Recibido'])    || 0;
-      const amount   = Number((r.data as any)['MNA ($)'])     || 0;
+
+      const mnaAmount  = Number((r.data as any)['MNA ($)'])      || 0;
+      const recibido   = Number((r.data as any)['Recibido'])     || 0;
+      const srcPrice   = Number((r.data as any)['Source price']) || 0;
+      const revenue    = recibido * srcPrice;
+
       const key = `${hubId}|${producto}`;
       const ex  = mnaAgg.get(key);
       if (ex) {
-        ex.pctNum += mnaUnits;
-        ex.pctDen += recibido;
-        ex.amount += amount;
+        ex.pctNum += mnaAmount;
+        ex.pctDen += revenue;
+        ex.amount += mnaAmount;
       } else {
-        mnaAgg.set(key, { hub_id: hubId, producto, pctNum: mnaUnits, pctDen: recibido, amount });
+        // Category is set on first encounter — consistent across rows for the
+        // same producto since supplier doesn't vary within a product.
+        const category = classifyMnaProduct(producto, proveedor);
+        mnaAgg.set(key, {
+          hub_id: hubId,
+          producto,
+          pctNum: mnaAmount,
+          pctDen: revenue,
+          amount: mnaAmount,
+          category,
+        });
       }
     }
+
     for (const m of mnaAgg.values()) {
+      const throughput = m.pctNum + m.pctDen;
       mnaProducts.push({
         hub_id:   m.hub_id,
         producto: m.producto,
-        pct:      (m.pctNum + m.pctDen) > 0 ? m.pctNum / (m.pctNum + m.pctDen) : 0,
+        pct:      throughput > 0 ? m.pctNum / throughput : 0,
         amount:   m.amount,
+        category: m.category,
       });
     }
   }
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <HistoricosClient
