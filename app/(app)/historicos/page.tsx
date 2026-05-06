@@ -44,6 +44,8 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     kpisRes,
     hubsRes,
     rolesRes,
+    assemblerTrendCountRes,
+    driverTrendCountRes,
   ] = await Promise.all([
     sb
       .from('kpi_snapshots')
@@ -70,12 +72,32 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     sb.from('kpis').select('*').eq('active', true).order('display_order'),
     sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
     sb.from('hub_roles').select('id, name_es'),
+    // Multi-week operator peer data for the assembler WoW charts in Por Hub tab.
+    // Scoped to within_hub only — one row per assembler × KPI × week.
+    sb
+      .from('peer_comparisons')
+      .select('*', { count: 'exact', head: true })
+      .eq('entity_type', 'operator')
+      .eq('scope_type', 'within_hub')
+      .gte('week_start', sinceIso)
+      .lte('week_start', currentWeek),
+    // Multi-week driver peer data for the driver WoW charts in Por Hub tab.
+    // Scoped to within_hub — drivers are resolved to hub via desempeno_repartidores cross-ref.
+    sb
+      .from('peer_comparisons')
+      .select('*', { count: 'exact', head: true })
+      .eq('entity_type', 'driver')
+      .eq('scope_type', 'within_hub')
+      .gte('week_start', sinceIso)
+      .lte('week_start', currentWeek),
   ]);
 
-  const snapTotal          = snapCountRes.count ?? 0;
-  const peerTotal          = peerCountRes.count ?? 0;
-  const mnaUploadList      = mnaUploadsRes.data ?? [];
-  const faltantesUploadList = faltantesUploadsRes.data ?? [];
+  const snapTotal             = snapCountRes.count ?? 0;
+  const peerTotal             = peerCountRes.count ?? 0;
+  const mnaUploadList         = mnaUploadsRes.data ?? [];
+  const faltantesUploadList   = faltantesUploadsRes.data ?? [];
+  const assemblerTrendTotal   = assemblerTrendCountRes.count ?? 0;
+  const driverTrendTotal      = driverTrendCountRes.count ?? 0;
 
   // ── Step 3: MNA + faltantes row counts ──────────────────────────────────────
   let mnaTotal       = 0;
@@ -100,12 +122,14 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   ]);
 
   // ── Step 4: fetch ALL pages in parallel ─────────────────────────────────────
-  const snapIdxs      = Array.from({ length: Math.ceil(snapTotal      / PAGE) }, (_, i) => i);
-  const peerIdxs      = Array.from({ length: Math.ceil(peerTotal      / PAGE) }, (_, i) => i);
-  const mnaIdxs       = Array.from({ length: Math.ceil(mnaTotal       / PAGE) }, (_, i) => i);
-  const faltantesIdxs = Array.from({ length: Math.ceil(faltantesTotal / PAGE) }, (_, i) => i);
+  const snapIdxs             = Array.from({ length: Math.ceil(snapTotal             / PAGE) }, (_, i) => i);
+  const peerIdxs             = Array.from({ length: Math.ceil(peerTotal             / PAGE) }, (_, i) => i);
+  const mnaIdxs              = Array.from({ length: Math.ceil(mnaTotal              / PAGE) }, (_, i) => i);
+  const faltantesIdxs        = Array.from({ length: Math.ceil(faltantesTotal        / PAGE) }, (_, i) => i);
+  const assemblerTrendIdxs   = Array.from({ length: Math.ceil(assemblerTrendTotal   / PAGE) }, (_, i) => i);
+  const driverTrendIdxs      = Array.from({ length: Math.ceil(driverTrendTotal      / PAGE) }, (_, i) => i);
 
-  const [snapPages, peerPages, mnaRawPages, faltantesRawPages] = await Promise.all([
+  const [snapPages, peerPages, mnaRawPages, faltantesRawPages, assemblerTrendPages, driverTrendPages] = await Promise.all([
     Promise.all(
       snapIdxs.map((i) =>
         sb
@@ -125,7 +149,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
         sb
           .from('peer_comparisons')
           .select(
-            'kpi_id, week_start, entity_type, entity_key, hub_id, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
+            'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
           )
           .eq('week_start', currentWeek)
           .order('entity_type', { ascending: true })
@@ -156,10 +180,48 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
           )
         )
       : Promise.resolve([]),
+    // Assembler WoW: multi-week operator peers (within_hub scope only).
+    assemblerTrendIdxs.length > 0
+      ? Promise.all(
+          assemblerTrendIdxs.map((i) =>
+            sb
+              .from('peer_comparisons')
+              .select(
+                'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
+              )
+              .eq('entity_type', 'operator')
+              .eq('scope_type', 'within_hub')
+              .gte('week_start', sinceIso)
+              .lte('week_start', currentWeek)
+              .order('week_start', { ascending: true })
+              .range(i * PAGE, (i + 1) * PAGE - 1)
+          )
+        )
+      : Promise.resolve([]),
+    // Driver WoW: multi-week driver peers (within_hub scope only).
+    driverTrendIdxs.length > 0
+      ? Promise.all(
+          driverTrendIdxs.map((i) =>
+            sb
+              .from('peer_comparisons')
+              .select(
+                'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
+              )
+              .eq('entity_type', 'driver')
+              .eq('scope_type', 'within_hub')
+              .gte('week_start', sinceIso)
+              .lte('week_start', currentWeek)
+              .order('week_start', { ascending: true })
+              .range(i * PAGE, (i + 1) * PAGE - 1)
+          )
+        )
+      : Promise.resolve([]),
   ]);
 
   const allSnaps         = snapPages.flatMap((r) => r.data ?? []);
   const allPeers         = peerPages.flatMap((r) => r.data ?? []);
+  const allAssemblerTrend = assemblerTrendPages.flatMap((r) => r.data ?? []);
+  const allDriverTrend    = driverTrendPages.flatMap((r) => r.data ?? []);
   const allMnaRows       = mnaRawPages.flatMap((r) => r.data ?? []);
   const allFaltantesRows = faltantesRawPages.flatMap((r) => r.data ?? []);
 
@@ -393,6 +455,8 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       hubs={hubsRes.data ?? []}
       snapshots={allSnaps}
       peers={allPeers}
+      assemblerTrend={allAssemblerTrend}
+      driverTrend={allDriverTrend}
       mnaProducts={mnaProducts}
       faltantesSkuProducts={faltantesSkuProducts}
       roles={rolesRes.data ?? []}

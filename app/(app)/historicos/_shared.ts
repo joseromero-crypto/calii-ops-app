@@ -77,7 +77,7 @@ export interface Peer {
   week_start: string;
   entity_type: string;
   entity_key: string;
-  hub_id: string | null;   // canonical hub slug from geofence — added session 3
+  hub_id?: string | null;  // not a DB column in peer_comparisons — omitted from SELECT
   scope_type: string;
   scope_key: string | null;
   value: number | null;
