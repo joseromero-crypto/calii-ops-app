@@ -96,7 +96,7 @@ const KPI_META: Record<string, KpiMeta> = {
   entregas_erroneas:                  { title: 'Entregas erróneas',       unit: 'count', direction: 'lower_is_better'  },
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend, driverTrend, mnaProducts, faltantesSkuProducts, currentWeek, selectedHub }: Props) {
+export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   // Hub selection is client-side state — switching hubs does NOT hit the server.
