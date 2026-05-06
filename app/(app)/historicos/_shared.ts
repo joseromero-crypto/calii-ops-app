@@ -42,6 +42,22 @@ export interface MnaProduct {
   category: 'carnes' | 'fyv' | 'abarrotes';
 }
 
+/**
+ * Pre-aggregated faltantes armador SKU row, built from the breakdown upload
+ * in page.tsx. Category is resolved by cross-referencing the product name
+ * against MNA rows (which carry supplier data for accurate classification).
+ *
+ * Used by subcategory tile flips (faltantes_fyv_pct, faltantes_carnes_pct,
+ * faltantes_graneles_pct) to show the top offending SKUs per hub.
+ */
+export interface FaltantesSku {
+  hub_id:   string;
+  producto: string;
+  /** Number of faltante events (rows in the breakdown upload) for this SKU. */
+  count:    number;
+  category: 'carnes' | 'fyv' | 'abarrotes';
+}
+
 export interface Hub { id: string; display_name: string; city: string }
 
 export interface Snapshot {

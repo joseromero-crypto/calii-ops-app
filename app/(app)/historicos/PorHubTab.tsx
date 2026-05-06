@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
-  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct,
+  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku,
 } from './_shared';
 import type { MnaCategory } from '@/lib/sku-classifier';
 
@@ -33,6 +33,7 @@ interface Props {
   snapshots: Snapshot[];
   peers: Peer[];
   mnaProducts: MnaProduct[];
+  faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
   currentWeek: string;
   selectedHub?: string;
@@ -53,7 +54,18 @@ const MNA_CATEGORY_FILTER: Record<string, MnaCategory | null> = {
   mna_carnes_pct:   'carnes',    // refrigerated / cold-chain
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWeek, selectedHub }: Props) {
+/**
+ * Maps each faltantes subcategory KPI id to its MnaCategory filter.
+ * faltantes_armador_pct is intentionally excluded — its flip shows the
+ * assembler ranking from peer_comparisons, not SKU data.
+ */
+const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
+  faltantes_fyv_pct:      'fyv',
+  faltantes_carnes_pct:   'carnes',
+  faltantes_graneles_pct: 'abarrotes',
+};
+
+export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantesSkuProducts, currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   // Hub selection is client-side state — switching hubs does NOT hit the server.
@@ -302,6 +314,17 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
           const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct    - a.pct)    : [];
           const mnaSortedByAmount = isMna ? [...mnaForHub].sort((a, b) => b.amount - a.amount) : [];
 
+          // Faltantes subcategory tile flip — top SKUs by count from breakdown upload.
+          // faltantes_armador_pct (general) uses the normal assembler peer flip instead.
+          const faltantesCatFilter = FALTANTES_SKU_CATEGORY_FILTER[kpi.id] ?? null;
+          const isFaltantesSku     = faltantesCatFilter !== null;
+
+          const faltantesForHub = isFaltantesSku
+            ? faltantesSkuProducts
+                .filter((p) => p.hub_id === hubId && p.category === faltantesCatFilter)
+                .sort((a, b) => b.count - a.count)
+            : [];
+
           return (
             <div
               key={kpi.id}
@@ -396,7 +419,14 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, currentWe
                     <span className="text-[9px] text-[var(--muted)] shrink-0 opacity-70">esta sem · clic para volver</span>
                   </div>
 
-                  {isMna ? (
+                  {isFaltantesSku ? (
+                    /* ── Faltantes subcategory: top SKUs by count from breakdown ── */
+                    faltantesForHub.length === 0 ? (
+                      <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">Sin datos esta semana.</div>
+                    ) : (
+                      <FaltantesSkuBackFaceList items={faltantesForHub} max={8} />
+                    )
+                  ) : isMna ? (
                     /* ── MNA: two columns read directly from upload_rows ──
                        Subdivision KPIs (graneles/fyv/carnes) show only their
                        own category's products. mna_pct shows all. ── */
@@ -481,6 +511,37 @@ function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[
                   <span className="text-[10px] truncate">{p.entity_key}</span>
                 </div>
                 <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, unit)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Faltantes SKU back-face list (sorted by count, highest first) ──────── */
+function FaltantesSkuBackFaceList({ items, max }: { items: FaltantesSku[]; max: number }) {
+  const shown = items.slice(0, max);
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">Top SKUs · eventos</div>
+      {shown.length === 0 ? (
+        <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
+      ) : (
+        <div className="space-y-0.5">
+          {shown.map((p, i) => {
+            const isWorst = i === 0;
+            const isBest  = i === shown.length - 1 && shown.length > 1;
+            return (
+              <div key={`${p.hub_id}|${p.producto}`} className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className={`text-[9px] font-bold w-4 shrink-0 ${isWorst ? 'text-red-500' : isBest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {i + 1}
+                  </span>
+                  <span className="text-[10px] truncate">{p.producto}</span>
+                </div>
+                <span className="text-[10px] font-semibold shrink-0">{p.count}</span>
               </div>
             );
           })}

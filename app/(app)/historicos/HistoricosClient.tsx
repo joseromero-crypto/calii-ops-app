@@ -1,5 +1,5 @@
 'use client';
-import type { Kpi, Hub, Snapshot, Peer, MnaProduct } from './_shared';
+import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku } from './_shared';
 import { weekEndLabel } from './_shared';
 import { PorKpiTab } from './PorKpiTab';
 import { PorHubTab } from './PorHubTab';
@@ -10,6 +10,7 @@ interface Props {
   snapshots: Snapshot[];
   peers: Peer[];
   mnaProducts: MnaProduct[];
+  faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
   currentWeek: string;
   tab: 'kpi' | 'hub' | 'cmp';
@@ -45,7 +46,7 @@ export function HistoricosClient(props: Props) {
         <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa entre MHs</Tab>
       </div>
       {tab === 'kpi' && <PorKpiTab {...props} />}
-      {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} />}
+      {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} />}
       {tab === 'cmp' && <ComparativaTab {...props} />}
     </div>
   );

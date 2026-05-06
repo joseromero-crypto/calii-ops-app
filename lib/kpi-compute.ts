@@ -125,14 +125,18 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
       const snaps = aggregateAllScopes(kpi, entityValues, weekStart);
       allSnapshots.push(...snaps);
 
-      // Some KPIs use different entity granularities for snapshots vs peers.
-      // faltantes_armador_pct: hub-level values drive kpi_snapshots (event-log
-      // numerator, total assembled denominator); operator-level values drive
-      // peer_comparisons (per-assembler num_orders_with_faltante_armador /
-      // num_assembled from desempeno_operadores).
+      // faltantes_armador_pct: hub snapshots come from the Retool hub % export;
+      //   peer_comparisons still use per-assembler data from desempeno_operadores
+      //   so the tile flip continues to show the assembler ranking.
+      //
+      // faltantes_fyv/carnes/graneles_pct: hub snapshots from their respective
+      //   Retool exports; no peer_comparisons — tile flip shows top SKUs from
+      //   the breakdown upload, aggregated in page.tsx (same pattern as MNA).
       const peerValues =
         kpi.id === 'faltantes_armador_pct'
           ? computeFaltantesArmadorPeerValues(rowsByApp, hubCity)
+          : FALTANTES_SKU_KPI_IDS.has(kpi.id)
+          ? []
           : entityValues;
 
       const peers = computePeersForKpi(kpi, peerValues, weekStart, hubCity);
@@ -165,8 +169,11 @@ function computeEntityValues(
   rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  if (kpi.id === 'faltantes_armador_pct') {
-    return computeFaltantesArmadorPct(rowsByApp, hubCity);
+  // Hub-level faltantes % KPIs — value is read directly from the Retool hub %
+  // export rather than computed. The source_app_id on the KPI registry row tells
+  // us which upload to read for each variant (general / fyv / carnes / graneles).
+  if (FALTANTES_HUB_PCT_KPI_IDS.has(kpi.id)) {
+    return extractFaltantesHubPctDirect(kpi.source_app_id ?? '', rowsByApp, hubCity);
   }
   if (!kpi.source_app_id) return [];
   const rows = rowsByApp.get(kpi.source_app_id) ?? [];
@@ -399,64 +406,52 @@ function extractIncidentesValues(
   return Array.from(byDriver.values());
 }
 
+// KPI IDs that read hub % directly from a Retool export file.
+const FALTANTES_HUB_PCT_KPI_IDS = new Set([
+  'faltantes_armador_pct',
+  'faltantes_fyv_pct',
+  'faltantes_carnes_pct',
+  'faltantes_graneles_pct',
+]);
+
+// Subcategory KPI IDs whose tile flip shows SKU rankings from upload_rows
+// (aggregated in page.tsx) rather than peer_comparisons.
+const FALTANTES_SKU_KPI_IDS = new Set([
+  'faltantes_fyv_pct',
+  'faltantes_carnes_pct',
+  'faltantes_graneles_pct',
+]);
+
 /**
- * Faltantes armador % — HUB-LEVEL snapshot values.
+ * Faltantes armador % — HUB-LEVEL snapshot values (direct read).
  *
- * Used by aggregateAllScopes to produce kpi_snapshots at hub/city/global scope,
- * which drives the KPI tile front face (value, sparkline, WoW delta).
+ * Reads the `Faltante armador (%)` value already computed by Retool from the
+ * corresponding hub % upload file. One EntityValue per hub row.
+ * numerator = pct value (0–1), denominator = 1 → ratio() returns pct directly.
  *
- * Numerator:   count of faltante events from the faltantes_armador event log
- * Denominator: total num_assembled across all operators for that hub
- *              (from desempeno_operadores)
+ * Used for: faltantes_armador_pct, faltantes_fyv_pct,
+ *           faltantes_carnes_pct, faltantes_graneles_pct.
  */
-function computeFaltantesArmadorPct(
+function extractFaltantesHubPctDirect(
+  appId: string,
   rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  const events     = rowsByApp.get('faltantes_armador') ?? [];
-  const operadores = rowsByApp.get('desempeno_operadores') ?? [];
-
-  // Deduplicate by (Operator ID, timestamp-to-second) to approximate unique
-  // orders with faltantes. The event log has one row per missing item, so a
-  // single order with 3 missing items produces 3 rows — often logged within the
-  // same second by the same assembler. This brings hub-level % in line with
-  // Retool, which has access to actual order IDs for exact deduplication.
-  const numByHub = new Map<string, number>();
-  const seenByHub = new Map<string, Set<string>>();
-  for (const e of events) {
-    const hubName = String(e.data['Hub'] ?? '').trim();
+  const rows = rowsByApp.get(appId) ?? [];
+  const out: EntityValue[] = [];
+  for (const r of rows) {
+    const hubName = String(r.data['Hub'] ?? '').trim();
     const hubId   = hubNameToId(hubName);
     if (!hubId) continue;
-    const opId    = String(e.data['Operator ID'] ?? '').trim();
-    const tsSecond = String(e.data['Fecha'] ?? '').trim().slice(0, 19); // YYYY-MM-DDTHH:MM:SS
-    const dedupeKey = `${opId}|${tsSecond}`;
-    if (!seenByHub.has(hubId)) seenByHub.set(hubId, new Set());
-    const seen = seenByHub.get(hubId)!;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-    numByHub.set(hubId, (numByHub.get(hubId) ?? 0) + 1);
-  }
-
-  const denByHub = new Map<string, number>();
-  for (const o of operadores) {
-    const hubName  = String(o.data['geofence'] ?? '').trim();
-    const hubId    = hubNameToId(hubName);
-    if (!hubId) continue;
-    const assembled = toNum(o.data['num_assembled']);
-    if (!Number.isFinite(assembled)) continue;
-    denByHub.set(hubId, (denByHub.get(hubId) ?? 0) + assembled);
-  }
-
-  const out: EntityValue[] = [];
-  for (const [hubId, denominator] of denByHub) {
-    const numerator = numByHub.get(hubId) ?? 0;
+    const pct = toNum(r.data['Faltante armador (%)']);
+    if (!Number.isFinite(pct) || pct < 0) continue;
     out.push({
       entity_type: 'hub',
-      entity_key: hubId,
-      city: hubCity.get(hubId) ?? null,
-      hub_id: hubId,
-      numerator,
-      denominator: denominator > 0 ? denominator : 1,
+      entity_key:  hubId,
+      city:        hubCity.get(hubId) ?? null,
+      hub_id:      hubId,
+      numerator:   pct, // already a ratio, e.g. 0.1046 = 10.46 %
+      denominator: 1,
     });
   }
   return out;

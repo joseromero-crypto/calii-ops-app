@@ -2,6 +2,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { lastCompletedWeekStart } from '@/lib/types';
 import { classifyMnaProduct } from '@/lib/sku-classifier';
 import type { MnaCategory } from '@/lib/sku-classifier';
+import type { FaltantesSku } from './_shared';
 import { HistoricosClient } from './HistoricosClient';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +40,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     snapCountRes,
     peerCountRes,
     mnaUploadsRes,
+    faltantesUploadsRes,
     kpisRes,
     hubsRes,
     rolesRes,
@@ -59,32 +61,51 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .eq('week_start', currentWeek)
       .eq('status', 'validated')
       .eq('app_id', 'mna'),
+    sb
+      .from('uploads')
+      .select('id, hub_id')
+      .eq('week_start', currentWeek)
+      .eq('status', 'validated')
+      .eq('app_id', 'faltantes_armador'),
     sb.from('kpis').select('*').eq('active', true).order('display_order'),
     sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
     sb.from('hub_roles').select('id, name_es'),
   ]);
 
-  const snapTotal     = snapCountRes.count ?? 0;
-  const peerTotal     = peerCountRes.count ?? 0;
-  const mnaUploadList = mnaUploadsRes.data ?? [];
+  const snapTotal          = snapCountRes.count ?? 0;
+  const peerTotal          = peerCountRes.count ?? 0;
+  const mnaUploadList      = mnaUploadsRes.data ?? [];
+  const faltantesUploadList = faltantesUploadsRes.data ?? [];
 
-  // ── Step 3: MNA row count ────────────────────────────────────────────────────
-  let mnaTotal = 0;
-  if (mnaUploadList.length > 0) {
-    const { count } = await sb
-      .from('upload_rows')
-      .select('*', { count: 'exact', head: true })
-      .in('upload_id', mnaUploadList.map((u) => u.id))
-      .eq('is_excluded', false);
-    mnaTotal = count ?? 0;
-  }
+  // ── Step 3: MNA + faltantes row counts ──────────────────────────────────────
+  let mnaTotal       = 0;
+  let faltantesTotal = 0;
+  await Promise.all([
+    mnaUploadList.length > 0
+      ? sb
+          .from('upload_rows')
+          .select('*', { count: 'exact', head: true })
+          .in('upload_id', mnaUploadList.map((u) => u.id))
+          .eq('is_excluded', false)
+          .then(({ count }) => { mnaTotal = count ?? 0; })
+      : Promise.resolve(),
+    faltantesUploadList.length > 0
+      ? sb
+          .from('upload_rows')
+          .select('*', { count: 'exact', head: true })
+          .in('upload_id', faltantesUploadList.map((u) => u.id))
+          .eq('is_excluded', false)
+          .then(({ count }) => { faltantesTotal = count ?? 0; })
+      : Promise.resolve(),
+  ]);
 
   // ── Step 4: fetch ALL pages in parallel ─────────────────────────────────────
-  const snapIdxs = Array.from({ length: Math.ceil(snapTotal / PAGE) }, (_, i) => i);
-  const peerIdxs = Array.from({ length: Math.ceil(peerTotal / PAGE) }, (_, i) => i);
-  const mnaIdxs  = Array.from({ length: Math.ceil(mnaTotal  / PAGE) }, (_, i) => i);
+  const snapIdxs      = Array.from({ length: Math.ceil(snapTotal      / PAGE) }, (_, i) => i);
+  const peerIdxs      = Array.from({ length: Math.ceil(peerTotal      / PAGE) }, (_, i) => i);
+  const mnaIdxs       = Array.from({ length: Math.ceil(mnaTotal       / PAGE) }, (_, i) => i);
+  const faltantesIdxs = Array.from({ length: Math.ceil(faltantesTotal / PAGE) }, (_, i) => i);
 
-  const [snapPages, peerPages, mnaRawPages] = await Promise.all([
+  const [snapPages, peerPages, mnaRawPages, faltantesRawPages] = await Promise.all([
     Promise.all(
       snapIdxs.map((i) =>
         sb
@@ -123,11 +144,24 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
           )
         )
       : Promise.resolve([]),
+    faltantesIdxs.length > 0
+      ? Promise.all(
+          faltantesIdxs.map((i) =>
+            sb
+              .from('upload_rows')
+              .select('upload_id, data')
+              .in('upload_id', faltantesUploadList.map((u) => u.id))
+              .eq('is_excluded', false)
+              .range(i * PAGE, (i + 1) * PAGE - 1)
+          )
+        )
+      : Promise.resolve([]),
   ]);
 
-  const allSnaps   = snapPages.flatMap((r) => r.data ?? []);
-  const allPeers   = peerPages.flatMap((r) => r.data ?? []);
-  const allMnaRows = mnaRawPages.flatMap((r) => r.data ?? []);
+  const allSnaps         = snapPages.flatMap((r) => r.data ?? []);
+  const allPeers         = peerPages.flatMap((r) => r.data ?? []);
+  const allMnaRows       = mnaRawPages.flatMap((r) => r.data ?? []);
+  const allFaltantesRows = faltantesRawPages.flatMap((r) => r.data ?? []);
 
   // ── Step 5: aggregate MNA products for tile flip ─────────────────────────────
   //
@@ -234,6 +268,59 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     }
   }
 
+  // ── Step 6: aggregate faltantes SKUs for subcategory tile flips ─────────────
+  //
+  // Category is resolved by cross-referencing the product name against MNA rows
+  // (which carry supplier data for accurate classification). Products not found
+  // in MNA fall back to keyword-only classification via classifyMnaProduct.
+  //
+  // The hub_id for each row is read from the breakdown upload's hub_id field;
+  // if that is null (city-level upload), resolved via the Hub column instead.
+  const skuCategoryFromMna = new Map<string, MnaCategory>();
+  for (const r of allMnaRows) {
+    const producto  = String((r.data as any)['Producto']  ?? '').trim();
+    const proveedor = String((r.data as any)['Proveedor'] ?? '').trim();
+    if (producto && !skuCategoryFromMna.has(producto)) {
+      skuCategoryFromMna.set(producto, classifyMnaProduct(producto, proveedor));
+    }
+  }
+
+  const faltantesSkuAgg = new Map<string, FaltantesSku>();
+
+  if (allFaltantesRows.length > 0) {
+    const faltantesById = new Map<string, { id: string; hub_id: string | null }>();
+    for (const u of faltantesUploadList) faltantesById.set(u.id, u);
+
+    for (const r of allFaltantesRows) {
+      const u = faltantesById.get(r.upload_id);
+      if (!u) continue;
+
+      const rawHub =
+        u.hub_id ||
+        String((r.data as any)['Hub'] ?? '').trim() ||
+        null;
+      const hubId = resolveHubId(rawHub);
+      if (!hubId) continue;
+
+      const producto = String((r.data as any)['Producto'] ?? '').trim();
+      if (!producto) continue;
+
+      // Resolve category: prefer MNA cross-reference, fall back to keyword-only
+      const category: MnaCategory =
+        skuCategoryFromMna.get(producto) ?? classifyMnaProduct(producto, '');
+
+      const key = `${hubId}|${producto}`;
+      const ex  = faltantesSkuAgg.get(key);
+      if (ex) {
+        ex.count += 1;
+      } else {
+        faltantesSkuAgg.set(key, { hub_id: hubId, producto, count: 1, category });
+      }
+    }
+  }
+
+  const faltantesSkuProducts: FaltantesSku[] = Array.from(faltantesSkuAgg.values());
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <HistoricosClient
@@ -242,6 +329,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       snapshots={allSnaps}
       peers={allPeers}
       mnaProducts={mnaProducts}
+      faltantesSkuProducts={faltantesSkuProducts}
       roles={rolesRes.data ?? []}
       currentWeek={currentWeek}
       tab={(searchParams.tab as 'kpi' | 'hub' | 'cmp' | undefined) ?? 'kpi'}
