@@ -1,6 +1,9 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
+import {
+  LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip,
+  XAxis, YAxis, CartesianGrid,
+} from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
   type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku,
@@ -32,6 +35,10 @@ interface Props {
   hubs: Hub[];
   snapshots: Snapshot[];
   peers: Peer[];
+  /** Multi-week operator peer rows (within_hub) for assembler WoW charts. */
+  assemblerTrend: Peer[];
+  /** Multi-week driver peer rows (within_hub) for driver WoW charts. */
+  driverTrend: Peer[];
   mnaProducts: MnaProduct[];
   faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
@@ -65,7 +72,31 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
   faltantes_graneles_pct: 'abarrotes',
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantesSkuProducts, currentWeek, selectedHub }: Props) {
+/** Distinct color palette for individual assembler lines (up to 14). */
+const ASSEMBLER_PALETTE = [
+  '#0ea5e9', '#22c55e', '#a855f7', '#ef4444', '#f59e0b',
+  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#e11d48', '#7c3aed', '#059669',
+];
+
+/** KPI metadata for WoW charts — assemblers (7 KPIs) and drivers (3 KPIs). */
+type KpiMeta = { title: string; unit: string; direction: string };
+const KPI_META: Record<string, KpiMeta> = {
+  // Assembler KPIs
+  faltantes_armador_pct:              { title: 'Faltantes armador',       unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_manuales_pct:            { title: 'Incidentes general',      unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_calidad_pct:             { title: 'Incidentes calidad',      unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_faltantes_pct:           { title: 'Incidentes faltantes',    unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_faltantes_completos_pct: { title: 'Faltantes completos',     unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_faltantes_parciales_pct: { title: 'Faltantes parciales',     unit: 'pct',   direction: 'lower_is_better'  },
+  tasa_armado:                        { title: 'Velocidad de armado',     unit: 'rate',  direction: 'higher_is_better' },
+  // Driver KPIs
+  pct_tardias_reparto:                { title: '% entregas tardías',      unit: 'pct',   direction: 'lower_is_better'  },
+  pct_undelivered:                    { title: '% entregas fallidas',     unit: 'pct',   direction: 'lower_is_better'  },
+  entregas_erroneas:                  { title: 'Entregas erróneas',       unit: 'count', direction: 'lower_is_better'  },
+};
+
+export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend, driverTrend, mnaProducts, faltantesSkuProducts, currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   // Hub selection is client-side state — switching hubs does NOT hit the server.
@@ -176,27 +207,6 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
     }
     return result;
   }, [kpis, peers, hubId, hubCityKey]);
-
-  // Operator/driver rankings for the bottom rank tables — prefer within_hub; fall back to within_city.
-  const operators = useMemo(() => {
-    const withinHub = peers.filter(
-      (p) => p.entity_type === 'operator' && p.scope_type === 'within_hub' && p.scope_key === hubId && p.kpi_id === 'tasa_armado'
-    );
-    if (withinHub.length > 0) return withinHub;
-    return peers.filter(
-      (p) => p.entity_type === 'operator' && p.scope_type === 'within_city' && p.scope_key === hubCityKey && p.kpi_id === 'tasa_armado'
-    );
-  }, [peers, hubId, hubCityKey]);
-
-  const drivers = useMemo(() => {
-    const withinHub = peers.filter(
-      (p) => p.entity_type === 'driver' && p.scope_type === 'within_hub' && p.scope_key === hubId && p.kpi_id === 'pct_tardias_reparto'
-    );
-    if (withinHub.length > 0) return withinHub;
-    return peers.filter(
-      (p) => p.entity_type === 'driver' && p.scope_type === 'within_city' && p.scope_key === hubCityKey && p.kpi_id === 'pct_tardias_reparto'
-    );
-  }, [peers, hubId, hubCityKey]);
 
   // Header count: unique entities across ALL KPIs (within_hub, falling back to within_city)
   const operatorCount = useMemo(() => {
@@ -359,7 +369,6 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
               )
             : [];
 
-          const mnaSortedByPct    = isMna ? [...mnaForHub].sort((a, b) => b.pct    - a.pct)    : [];
           const mnaSortedByAmount = isMna ? [...mnaForHub].sort((a, b) => b.amount - a.amount) : [];
 
           // Faltantes subcategory tile flip — top SKUs by count from breakdown upload.
@@ -486,10 +495,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
                     mnaForHub.length === 0 ? (
                       <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">Sin datos MNA esta semana.</div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-x-3">
-                        <MnaBackFaceList label="Peor %" items={mnaSortedByPct}    field="pct"    max={6} />
-                        <MnaBackFaceList label="Peor $" items={mnaSortedByAmount} field="amount" max={6} />
-                      </div>
+                      <MnaBackFaceList items={mnaSortedByAmount} max={10} />
                     )
                   ) : rawValue === null ? (
                     /* ── No hub snapshot this week (incl. count KPIs coerced to 0).
@@ -521,23 +527,11 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
         })}
       </div>
 
-      {/* Armador / Driver rank tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <RankList
-          title={`Armadores · ${operators[0]?.scope_type === 'within_city' ? hub.city : hub.display_name} · Tasa de armado`}
-          items={operators}
-          unit="rate"
-          subtitle={operators[0]?.scope_type === 'within_city' ? `Ciudad ${hub.city} · ordenados por tasa, mejor → peor` : 'Ordenados por tasa, mejor → peor'}
-          highlightLowest
-        />
-        <RankList
-          title={`Repartidores · ${drivers[0]?.scope_type === 'within_city' ? hub.city : hub.display_name} · % tardías`}
-          items={drivers}
-          unit="pct"
-          subtitle={drivers[0]?.scope_type === 'within_city' ? `Ciudad ${hub.city} · ordenados por % tardías, mejor → peor` : 'Ordenados por % tardías, mejor → peor'}
-          highlightHighest
-        />
-      </div>
+      {/* ── Assembler WoW trends ─────────────────────────────────────────────── */}
+      <AssemblerWowSection assemblerTrend={assemblerTrend} hubId={hubId} hubName={hub.display_name} />
+
+      {/* ── Driver WoW trends ────────────────────────────────────────────────── */}
+      <DriverWowSection driverTrend={driverTrend} hubId={hubId} hubName={hub.display_name} />
     </div>
   );
 }
@@ -604,18 +598,15 @@ function FaltantesSkuBackFaceList({ items, max }: { items: FaltantesSku[]; max: 
   );
 }
 
-/* ─── MNA back-face list (reads directly from upload_rows aggregate) ─────── */
-function MnaBackFaceList({ label, items, field, max }: {
-  label: string;
+/* ─── MNA back-face list — sorted by highest $ amount, shows $ | % per row ── */
+function MnaBackFaceList({ items, max }: {
   items: MnaProduct[];
-  field: 'pct' | 'amount';
   max: number;
 }) {
   const shown = items.slice(0, max);
-  const unit  = field === 'pct' ? 'pct' : 'currency';
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">{label}</div>
+      <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">Mayor MNA ($)</div>
       {shown.length === 0 ? (
         <div className="text-[10px] text-[var(--muted)] opacity-60">—</div>
       ) : (
@@ -623,16 +614,17 @@ function MnaBackFaceList({ label, items, field, max }: {
           {shown.map((p, i) => {
             const isWorst = i === 0;
             const isBest  = i === shown.length - 1 && shown.length > 1;
-            const val = field === 'pct' ? p.pct : p.amount;
             return (
-              <div key={`${p.hub_id}|${p.producto}|${field}`} className="flex items-center justify-between gap-1">
+              <div key={`${p.hub_id}|${p.producto}`} className="flex items-center justify-between gap-1">
                 <div className="flex items-center gap-1 min-w-0">
                   <span className={`text-[9px] font-bold w-4 shrink-0 ${isWorst ? 'text-red-500' : isBest ? 'text-emerald-600' : 'text-slate-400'}`}>
                     {i + 1}
                   </span>
                   <span className="text-[10px] truncate">{p.producto}</span>
                 </div>
-                <span className="text-[10px] font-semibold shrink-0">{formatValue(val, unit)}</span>
+                <span className="text-[10px] font-semibold shrink-0 text-right">
+                  {formatValue(p.amount, 'currency')}&nbsp;<span className="text-[var(--muted)] font-normal">{formatValue(p.pct, 'pct')}</span>
+                </span>
               </div>
             );
           })}
@@ -642,53 +634,288 @@ function MnaBackFaceList({ label, items, field, max }: {
   );
 }
 
-function RankList({
-  title, items, unit, subtitle, highlightLowest, highlightHighest,
+/* ─── WoW chart components ───────────────────────────────────────────────── */
+
+/**
+ * Tooltip for WoW line charts.
+ *
+ * Order is FIXED to the most-recent-week ranking (biggest → smallest) passed
+ * in via `entityOrder`. This keeps the legend stable as the user hovers across
+ * weeks, making it easy to trace each line without it jumping around.
+ */
+function WowTooltip({
+  active,
+  payload,
+  label,
+  entityOrder,
+  colorMap,
+  unit,
 }: {
-  title: string;
-  items: Peer[];
+  active?: boolean;
+  payload?: Array<{ name: string; value: number | null }>;
+  label?: string;
+  entityOrder: string[];
+  colorMap: Map<string, string>;
   unit: string;
-  subtitle: string;
-  highlightLowest?: boolean;
-  highlightHighest?: boolean;
 }) {
-  const sorted = [...items].sort((a, b) => {
-    if (highlightLowest)  return (b.value ?? 0) - (a.value ?? 0);
-    return (a.value ?? 0) - (b.value ?? 0);
-  });
+  if (!active || !payload?.length) return null;
+  const fmt = (v: number | null | undefined) => {
+    if (v === null || v === undefined) return '—';
+    if (unit === 'pct')   return `${v.toFixed(1)}%`;
+    if (unit === 'rate')  return v.toFixed(1);
+    return v.toFixed(0);
+  };
+  const valueMap = new Map(payload.map((p) => [p.name, p.value]));
   return (
-    <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
-      <div className="px-4 py-3 border-b border-[var(--line)]">
-        <h3 className="text-[13px] font-semibold">{title}</h3>
-        <p className="text-[10.5px] text-[var(--muted)]">{subtitle}</p>
+    <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded-lg shadow-lg pointer-events-none min-w-[150px]">
+      <div className="font-semibold mb-1.5 text-[11px] opacity-80">{label}</div>
+      {entityOrder.map((entity) => (
+        <div key={entity} className="flex items-center justify-between gap-4 leading-5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(entity) }} />
+            <span className="opacity-90 truncate max-w-[110px]">{entity}</span>
+          </div>
+          <span className="font-bold tabular-nums">{fmt(valueMap.get(entity))}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Generic WoW line chart — works for both assemblers and drivers.
+ *
+ * Rules:
+ *   • Shows the last 5 weeks; older weeks are dropped automatically.
+ *   • Only graphs entities active in the most recent week (present in the data).
+ *     Cut entities disappear; new entities start mid-chart with blank prior weeks.
+ *   • Entity line order is fixed by most-recent-week value, biggest → smallest.
+ *     Hover tooltip follows the same order regardless of which week is hovered.
+ *   • `wide` = col-span-2 (full row width), used for the "hero" KPI in each section.
+ */
+function WowChart({
+  rows,
+  title,
+  unit,
+  direction,
+  wide = false,
+}: {
+  rows: Peer[];
+  title: string;
+  unit: string;
+  direction: string;
+  wide?: boolean;
+}) {
+  // All weeks present in the data, sorted ascending.
+  const allWeeks = [...new Set(rows.map((r) => r.week_start))].sort();
+  if (allWeeks.length === 0) return null;
+
+  // Rolling 5-week window.
+  const displayWeeks   = allWeeks.slice(-5);
+  const mostRecentWeek = allWeeks[allWeeks.length - 1];
+
+  // Active entities: those with at least one row in the most recent week.
+  const activeEntities = new Set(
+    rows.filter((r) => r.week_start === mostRecentWeek).map((r) => r.entity_key)
+  );
+  if (activeEntities.size === 0) return null;
+
+  // Fixed order: descending by most-recent-week value (biggest first).
+  // Entities with null most-recent value go to the bottom.
+  const entityOrder = [...activeEntities].sort((a, b) => {
+    const av = rows.find((r) => r.week_start === mostRecentWeek && r.entity_key === a)?.value ?? null;
+    const bv = rows.find((r) => r.week_start === mostRecentWeek && r.entity_key === b)?.value ?? null;
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return bv - av; // descending
+  });
+
+  const colorMap = new Map(
+    entityOrder.map((e, i) => [e, ASSEMBLER_PALETTE[i % ASSEMBLER_PALETTE.length]])
+  );
+
+  // Convert stored value to display value.
+  // pct KPIs are stored as 0–1 fractions in peer_comparisons → ×100 for display.
+  const toDisplay = (v: number | null): number | null => {
+    if (v === null) return null;
+    return unit === 'pct' ? +(v * 100).toFixed(2) : v;
+  };
+
+  // Build chart data for the 5 display weeks, active entities only.
+  const data = displayWeeks.map((w) => {
+    const point: Record<string, string | number | null> = { week: weekEndLabel(w) };
+    for (const e of entityOrder) {
+      const row  = rows.find((r) => r.week_start === w && r.entity_key === e);
+      point[e] = toDisplay(row?.value ?? null);
+    }
+    return point;
+  });
+
+  const yFmt = (v: number) =>
+    unit === 'pct' ? `${v.toFixed(1)}%` : unit === 'rate' ? v.toFixed(1) : v.toFixed(0);
+
+  return (
+    <div className={`bg-white border border-[var(--line)] rounded-xl shadow-soft p-4${wide ? ' col-span-2' : ''}`}>
+      <div className="text-[12px] font-semibold text-[var(--ink)] mb-3 flex items-center justify-between">
+        <span>{title}</span>
+        <span className="text-[10px] font-normal text-[var(--muted)]">
+          {direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}
+        </span>
       </div>
-      {sorted.length === 0 ? (
-        <div className="p-6 text-center text-[12px] text-[var(--muted)]">Sin datos esta semana.</div>
+      <ResponsiveContainer width="100%" height={wide ? 200 : 170}>
+        <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis
+            dataKey="week"
+            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tickFormatter={yFmt}
+            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            width={44}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            content={<WowTooltip entityOrder={entityOrder} colorMap={colorMap} unit={unit} />}
+            cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+            isAnimationActive={false}
+          />
+          {entityOrder.map((e) => (
+            <Line
+              key={e}
+              type="monotone"
+              dataKey={e}
+              stroke={colorMap.get(e)!}
+              strokeWidth={1.6}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      {/* Inline legend — same fixed order as the tooltip */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2.5">
+        {entityOrder.map((e) => (
+          <div key={e} className="flex items-center gap-1 min-w-0">
+            <div
+              style={{
+                width: 16, height: 2, borderRadius: 1, flexShrink: 0,
+                backgroundColor: colorMap.get(e),
+              }}
+            />
+            <span className="text-[9px] text-[var(--muted)] truncate max-w-[88px]">{e}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Assembler WoW section ──────────────────────────────────────────────── */
+
+/**
+ * 7 assembler KPI charts in 2-column grid.
+ *
+ * Layout (left → right, top → bottom):
+ *   Faltantes armador    | Incidentes general
+ *   Incidentes calidad   | Incidentes faltantes
+ *   Faltantes completos  | Faltantes parciales
+ *   Velocidad de armado  ← full width (col-span-2)
+ */
+function AssemblerWowSection({
+  assemblerTrend,
+  hubId,
+  hubName,
+}: {
+  assemblerTrend: Peer[];
+  hubId: string;
+  hubName: string;
+}) {
+  const hubRows = assemblerTrend.filter((p) => p.scope_key === hubId);
+  const rows    = (id: string) => hubRows.filter((r) => r.kpi_id === id);
+
+  const hasAnyData = [
+    'faltantes_armador_pct', 'incidentes_manuales_pct',
+    'incidentes_calidad_pct', 'incidentes_faltantes_pct',
+    'incidentes_faltantes_completos_pct', 'incidentes_faltantes_parciales_pct',
+    'tasa_armado',
+  ].some((id) => rows(id).length > 0);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">
+          Armadores · tendencia WoW · {hubName}
+        </div>
+        <div className="text-[10.5px] text-[var(--muted)] opacity-60">· últimas 5 semanas</div>
+      </div>
+      {!hasAnyData ? (
+        <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft p-8 text-center text-[12px] text-[var(--muted)]">
+          Sin datos de armadores. Sube el archivo de desempeño operadores para habilitar esta sección.
+        </div>
       ) : (
-        <table className="w-full text-[12px]">
-          <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-[var(--muted)] font-bold">
-            <tr>
-              <th className="px-4 py-1.5 text-left">#</th>
-              <th className="px-4 py-1.5 text-left">Nombre</th>
-              <th className="px-4 py-1.5 text-right">Valor</th>
-              <th className="px-4 py-1.5 text-right">z</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.slice(0, 50).map((p, i) => {
-              const isWorst = i === sorted.length - 1;
-              const isBest  = i === 0;
-              return (
-                <tr key={p.entity_key} className={`border-t border-slate-100 ${isWorst ? 'bg-red-50' : isBest ? 'bg-emerald-50' : ''}`}>
-                  <td className="px-4 py-1.5 text-[var(--muted)] font-bold">{p.rank ?? i + 1}</td>
-                  <td className="px-4 py-1.5">{p.entity_key}</td>
-                  <td className="px-4 py-1.5 text-right font-semibold">{formatValue(p.value, unit)}</td>
-                  <td className="px-4 py-1.5 text-right text-[var(--muted)] font-mono text-[11px]">{p.z_score === null ? '—' : p.z_score.toFixed(1)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-2 gap-3">
+          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct} />
+          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct} />
+          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct} />
+          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct} />
+          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} />
+          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} />
+          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado} wide />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Driver WoW section ─────────────────────────────────────────────────── */
+
+/**
+ * 3 driver KPI charts in 2-column grid.
+ *
+ * Layout:
+ *   % entregas tardías | % entregas fallidas
+ *   Entregas erróneas  ← full width (col-span-2)
+ */
+function DriverWowSection({
+  driverTrend,
+  hubId,
+  hubName,
+}: {
+  driverTrend: Peer[];
+  hubId: string;
+  hubName: string;
+}) {
+  const hubRows = driverTrend.filter((p) => p.scope_key === hubId);
+  const rows    = (id: string) => hubRows.filter((r) => r.kpi_id === id);
+
+  const hasAnyData = [
+    'pct_tardias_reparto', 'pct_undelivered', 'entregas_erroneas',
+  ].some((id) => rows(id).length > 0);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">
+          Repartidores · tendencia WoW · {hubName}
+        </div>
+        <div className="text-[10.5px] text-[var(--muted)] opacity-60">· últimas 5 semanas</div>
+      </div>
+      {!hasAnyData ? (
+        <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft p-8 text-center text-[12px] text-[var(--muted)]">
+          Sin datos de repartidores. Sube el archivo de desempeño repartidores para habilitar esta sección.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} />
+          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered} />
+          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas} wide />
+        </div>
       )}
     </div>
   );
