@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip, YAxis } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
   type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku,
@@ -428,15 +428,6 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
                           data={trend.map((t) => ({ ...t }))}
                           margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
                         >
-                          {/*
-                            Fixed Y-axis so slope is proportional to actual movement:
-                            pct KPIs → 0..1 (so 2 pp change looks smaller than 20 pp)
-                            all others → 0..auto (anchors at 0; relative magnitude is visible)
-                          */}
-                          <YAxis
-                            hide
-                            domain={kpi.unit === 'pct' ? [0, 1] : [0, 'auto']}
-                          />
                           {thisWeek?.rolling_mean_4w != null && (
                             <ReferenceLine y={thisWeek.rolling_mean_4w} stroke="#94a3b8" strokeDasharray="2 2" />
                           )}

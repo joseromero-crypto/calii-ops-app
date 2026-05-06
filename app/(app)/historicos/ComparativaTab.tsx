@@ -18,24 +18,19 @@ function CompareTooltip({
   payload,
   label,
   unit,
-  direction,
   hubs,
 }: {
   active?: boolean;
   payload?: Array<{ dataKey: string; value: number | null; stroke: string }>;
   label?: string;
   unit: string;
-  direction: string;
   hubs: Hub[];
 }) {
   if (!active || !payload?.length) return null;
+  // Always highest value on top — matches the visual order on the graph axis.
   const sorted = [...payload]
     .filter((p) => p.value != null)
-    .sort((a, b) =>
-      direction === 'lower_is_better'
-        ? (a.value ?? 0) - (b.value ?? 0)   // lowest first (best on top for lower_is_better)
-        : (b.value ?? 0) - (a.value ?? 0)    // highest first (best on top for higher_is_better)
-    );
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   return (
     <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-lg text-[12px] min-w-[180px]">
       <div className="font-semibold text-[var(--ink)] mb-1.5">{label}</div>
@@ -166,12 +161,7 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
             <XAxis dataKey="week" hide />
             <Tooltip
               content={(props: any) => (
-                <CompareTooltip
-                  {...props}
-                  unit={kpi.unit}
-                  direction={kpi.direction}
-                  hubs={hubs}
-                />
+                <CompareTooltip {...props} unit={kpi.unit} hubs={hubs} />
               )}
             />
             {hubs.map((h) => (
