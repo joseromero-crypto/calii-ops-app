@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip, YAxis } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
   type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku,
@@ -268,13 +268,61 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
           const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
           const peerVal = peerThis?.value ?? null;
 
+          // ── Tile color: WoW trend vs own 4-week rolling average ─────────────
+          //
+          // Compare this week's value against the hub's own 4-week rolling mean
+          // using std dev (σ) as the sensitivity yardstick:
+          //
+          //   • Baseline  = rolling_mean_4w (stored on the snapshot)
+          //   • σ         = std dev of the last 4 non-null hub values (excl. current)
+          //   • Green     = current is >0.75σ better than baseline (direction-aware)
+          //   • Red       = current is >0.75σ worse  than baseline
+          //   • White     = within ±0.75σ (normal week-to-week noise)
+          //
+          // Fallback when σ is undefined/0 (new hub, very stable KPI, first weeks):
+          //   use a ±5% relative threshold instead.
+          //
+          // This replaces the old "vs peer mean" logic so each hub is judged
+          // against its own history, not against other hubs with different ops.
           let z: 'good' | 'mid' | 'bad' | null = null;
-          if (value !== null && peerVal !== null && peerVal !== 0) {
-            const pctDiff = ((value - peerVal) / Math.abs(peerVal)) * 100;
-            const wantsLow = kpi.direction === 'lower_is_better';
-            const goodDiff = wantsLow ? pctDiff < -10 : pctDiff > 10;
-            const badDiff  = wantsLow ? pctDiff > 10  : pctDiff < -10;
-            z = goodDiff ? 'good' : badDiff ? 'bad' : 'mid';
+          if (value !== null) {
+            const mean4w  = thisWeek?.rolling_mean_4w ?? null;
+
+            // Compute σ from the last 4 prior data points in trend (sorted asc,
+            // exclude current week so we don't include today in its own baseline).
+            const priorVals = trend
+              .slice(0, -1)                          // drop current week (last entry)
+              .map((t) => t.value)
+              .filter((v): v is number => v !== null)
+              .slice(-4);                            // at most 4 weeks
+
+            let sigma: number | null = null;
+            if (priorVals.length >= 3) {
+              const mu  = priorVals.reduce((a, b) => a + b, 0) / priorVals.length;
+              const variance = priorVals.reduce((a, b) => a + (b - mu) ** 2, 0) / priorVals.length;
+              sigma = Math.sqrt(variance);
+            }
+
+            if (mean4w !== null) {
+              const wantsLow   = kpi.direction === 'lower_is_better';
+              const diff       = value - mean4w;  // positive = higher than baseline
+
+              if (sigma !== null && sigma > 0) {
+                // σ-based threshold: 0.75 standard deviations from own mean
+                const SIGMA_THRESHOLD = 0.75;
+                const sigmas = diff / sigma;
+                const isBetter = wantsLow ? sigmas < -SIGMA_THRESHOLD : sigmas > SIGMA_THRESHOLD;
+                const isWorse  = wantsLow ? sigmas > SIGMA_THRESHOLD  : sigmas < -SIGMA_THRESHOLD;
+                z = isBetter ? 'good' : isWorse ? 'bad' : 'mid';
+              } else if (mean4w !== 0) {
+                // Fallback: ±5% relative when σ is unavailable or 0
+                const PCT_THRESHOLD = 5;
+                const pctDiff = (diff / Math.abs(mean4w)) * 100;
+                const isBetter = wantsLow ? pctDiff < -PCT_THRESHOLD : pctDiff > PCT_THRESHOLD;
+                const isWorse  = wantsLow ? pctDiff > PCT_THRESHOLD  : pctDiff < -PCT_THRESHOLD;
+                z = isBetter ? 'good' : isWorse ? 'bad' : 'mid';
+              }
+            }
           }
 
           const tileClass =
@@ -376,9 +424,21 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
                     /* Stop click propagation so hovering/clicking the chart doesn't flip the tile */
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
                       <ResponsiveContainer width="100%" height={32}>
-                        <LineChart data={trend.map((t) => ({ ...t }))}>
-                          {peerVal !== null && (
-                            <ReferenceLine y={peerVal} stroke="#94a3b8" strokeDasharray="2 2" />
+                        <LineChart
+                          data={trend.map((t) => ({ ...t }))}
+                          margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
+                        >
+                          {/*
+                            Fixed Y-axis so slope is proportional to actual movement:
+                            pct KPIs → 0..1 (so 2 pp change looks smaller than 20 pp)
+                            all others → 0..auto (anchors at 0; relative magnitude is visible)
+                          */}
+                          <YAxis
+                            hide
+                            domain={kpi.unit === 'pct' ? [0, 1] : [0, 'auto']}
+                          />
+                          {thisWeek?.rolling_mean_4w != null && (
+                            <ReferenceLine y={thisWeek.rolling_mean_4w} stroke="#94a3b8" strokeDasharray="2 2" />
                           )}
                           <Tooltip
                             content={<SparkTooltip unit={kpi.unit} />}
@@ -399,7 +459,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, mnaProducts, faltantes
                     </div>
                   )}
                   <div className="text-[10.5px] text-[var(--muted)] mt-1.5 flex justify-between">
-                    <span>Peer: {formatValue(peerVal, kpi.unit)}</span>
+                    <span title="Promedio de las últimas 4 semanas de este hub">
+                      4w avg: {formatValue(thisWeek?.rolling_mean_4w ?? null, kpi.unit)}
+                    </span>
                     <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
                   </div>
                 </div>

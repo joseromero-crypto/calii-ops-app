@@ -7,6 +7,55 @@ import {
   type Kpi, type Hub, type Snapshot,
 } from './_shared';
 
+/**
+ * Custom tooltip for the comparativa chart — sorts hubs by the hovered week's
+ * value so the order always matches the visual ranking, not alphabetical order.
+ * direction = 'lower_is_better' → lowest (best) value first.
+ * direction = 'higher_is_better' → highest (best) value first.
+ */
+function CompareTooltip({
+  active,
+  payload,
+  label,
+  unit,
+  direction,
+  hubs,
+}: {
+  active?: boolean;
+  payload?: Array<{ dataKey: string; value: number | null; stroke: string }>;
+  label?: string;
+  unit: string;
+  direction: string;
+  hubs: Hub[];
+}) {
+  if (!active || !payload?.length) return null;
+  const sorted = [...payload]
+    .filter((p) => p.value != null)
+    .sort((a, b) =>
+      direction === 'lower_is_better'
+        ? (a.value ?? 0) - (b.value ?? 0)   // lowest first (best on top for lower_is_better)
+        : (b.value ?? 0) - (a.value ?? 0)    // highest first (best on top for higher_is_better)
+    );
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-lg text-[12px] min-w-[180px]">
+      <div className="font-semibold text-[var(--ink)] mb-1.5">{label}</div>
+      {sorted.map((p) => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-3 py-0.5">
+          <div className="flex items-center gap-1.5">
+            <span style={{ color: p.stroke }} className="text-[10px]">●</span>
+            <span className="text-slate-700">
+              {hubs.find((h) => h.id === p.dataKey)?.display_name ?? p.dataKey}
+            </span>
+          </div>
+          <span className="font-semibold tabular-nums">
+            {formatValue(p.value == null ? null : Number(p.value), unit)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface Props {
   kpis: Kpi[];
   hubs: Hub[];
@@ -116,12 +165,14 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
           <LineChart data={chartData}>
             <XAxis dataKey="week" hide />
             <Tooltip
-              formatter={(v: any, name: string) => [
-                v == null ? '—' : formatValue(Number(v), kpi.unit),
-                hubs.find((h) => h.id === name)?.display_name ?? name,
-              ]}
-              contentStyle={{ fontSize: 11 }}
-              labelStyle={{ fontSize: 11 }}
+              content={(props: any) => (
+                <CompareTooltip
+                  {...props}
+                  unit={kpi.unit}
+                  direction={kpi.direction}
+                  hubs={hubs}
+                />
+              )}
             />
             {hubs.map((h) => (
               <Line

@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   HUB_COLORS, formatValue, formatDelta, weekEndLabel, weekEndLabelLong,
-  deltaClassForDirection, zToHeatmapClass, groupBy,
+  deltaClassForDirection, zToHeatmapClass,
   type Kpi, type Hub, type Snapshot, type Peer,
 } from './_shared';
 
@@ -51,19 +51,15 @@ interface Props {
   selectedKpi?: string;
 }
 
-export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, selectedKpi }: Props) {
+export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: Props) {
   const router = useRouter();
 
   const defaultKpi = kpis.find((k) => k.watched_globally)?.id ?? kpis[0]?.id;
   const kpiId = selectedKpi || defaultKpi;
   const kpi = kpis.find((k) => k.id === kpiId);
 
-  const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
-
   // -1 = YTD, otherwise number of weeks to show
   const [weeksShown, setWeeksShown] = useState(5);
-  // city filter for the per-entity drill table
-  const [drillCity, setDrillCity] = useState<string | null>(null);
 
   if (!kpi) return <p className="text-[var(--muted)]">No hay KPIs configurados.</p>;
 
@@ -128,72 +124,6 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
     const g = snapshots.find((s) => s.kpi_id === kpi.id && s.week_start === currentWeek && s.scope_level === 'global');
     return g?.value ?? null;
   }, [snapshots, kpi.id, currentWeek]);
-
-  // ------------------------------ Per-entity drill ------------------------------
-  const drillEntities = useMemo(() => {
-    const entityType = ['tasa_armado', 'pct_armado_tardio', 'incidentes_manuales_pct', 'incidentes_calidad_pct',
-      'incidentes_faltantes_pct', 'incidentes_faltantes_completos_pct', 'incidentes_faltantes_parciales_pct'].includes(kpi.id) ? 'operator' :
-      ['pct_tardias_reparto', 'pct_undelivered', 'eggs_issue_rate'].includes(kpi.id) ? 'driver' : null;
-    if (!entityType) return null;
-
-    // PRIMARY: global scope — one row per entity, z-scores and rank computed
-    // against the entire fleet. Shows the worst performers across ALL hubs.
-    const globalPeers = peers.filter(
-      (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'global' && p.value !== null
-    );
-
-    let source: typeof peers;
-
-    if (globalPeers.length >= 2) {
-      // hub_id is now stored directly on every peer_comparisons row (from the geofence column).
-      // Use it to populate scope_key so the Hub column resolves via the hubs array.
-      source = globalPeers.map((p) => ({
-        ...p,
-        scope_key: (p as any).hub_id ?? p.scope_key,
-      }));
-    } else {
-      // FALLBACK: all within_hub peers from every hub combined, deduplicated.
-      // within_city as last resort (single-hub cities where within_hub is absent).
-      const withinHub = peers.filter(
-        (p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_hub' && p.value !== null
-      );
-      const pool = withinHub.length >= 2
-        ? withinHub
-        : peers.filter((p) => p.kpi_id === kpi.id && p.entity_type === entityType && p.scope_type === 'within_city' && p.value !== null);
-      const seen = new Set<string>();
-      source = pool.filter((p) => {
-        if (seen.has(p.entity_key)) return false;
-        seen.add(p.entity_key);
-        return true;
-      });
-    }
-
-    return source.sort((a, b) => {
-      if (kpi.direction === 'lower_is_better') return (b.value ?? 0) - (a.value ?? 0);
-      return (a.value ?? 0) - (b.value ?? 0);
-    });
-  }, [peers, kpi]);
-
-  // Cities available in the current drill data (for the city filter chips).
-  // scope_key may be a hub_id (within_hub or augmented global) or a city string
-  // (within_city). Try hub lookup first, fall back to raw scope_key.
-  const drillCities = useMemo(() => {
-    if (!drillEntities) return [];
-    const cities = new Set<string>();
-    for (const p of drillEntities) {
-      const city = hubs.find((h) => h.id === p.scope_key)?.city ?? p.scope_key ?? null;
-      if (city) cities.add(city);
-    }
-    return [...cities].sort();
-  }, [drillEntities, hubs]);
-
-  const filteredDrillEntities = useMemo(() => {
-    if (!drillEntities || !drillCity) return drillEntities;
-    return drillEntities.filter((p) => {
-      const city = hubs.find((h) => h.id === p.scope_key)?.city ?? p.scope_key ?? null;
-      return city === drillCity;
-    });
-  }, [drillEntities, drillCity, hubs]);
 
   // ------------------------------ Heatmap pivot ------------------------------
   const heatmapData = useMemo(() => {
@@ -368,89 +298,6 @@ export function PorKpiTab({ kpis, hubs, snapshots, peers, roles, currentWeek, se
           </ResponsiveContainer>
         )}
       </div>
-
-      {/* Per-entity drill table */}
-      {drillEntities && drillEntities.length > 0 && (
-        <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
-          <div className="px-5 py-3 border-b border-[var(--line)] flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <h3 className="text-[14px] font-semibold">Acercamiento por entidad · esta sem.</h3>
-              <p className="text-[11.5px] text-[var(--muted)]">
-                {drillEntities[0].entity_type === 'operator' ? 'Armadores' : 'Repartidores'} ordenados peor → mejor (según dirección del KPI).
-              </p>
-            </div>
-            {drillCities.length > 1 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10.5px] uppercase tracking-wide text-[var(--muted)] font-bold">Ciudad:</span>
-                <button
-                  onClick={() => setDrillCity(null)}
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
-                    !drillCity ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
-                  }`}
-                >
-                  Todas
-                </button>
-                {drillCities.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setDrillCity(c)}
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
-                      drillCity === c ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <table className="w-full text-[12.5px]">
-            <thead className="bg-slate-50 text-[10.5px] uppercase tracking-wide text-[var(--muted)] font-bold">
-              <tr>
-                <th className="px-5 py-2 text-left">Rank</th>
-                <th className="px-5 py-2 text-left">Nombre</th>
-                <th className="px-5 py-2 text-left">Hub / Ciudad</th>
-                <th className="px-5 py-2 text-right">Valor</th>
-                <th className="px-5 py-2 text-right">Peer mean</th>
-                <th className="px-5 py-2 text-right">z-score</th>
-                <th className="px-5 py-2 text-right">Posición</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(filteredDrillEntities ?? []).slice(0, 25).map((p) => {
-                const hubMatch = hubs.find((h) => h.id === p.scope_key);
-                // scope_key is either a hub_id ('mh_contry') or a city value ('mty'/'Monterrey').
-                // Try hub lookup; then try matching a hub whose city equals scope_key (display-name city);
-                // finally show raw or a dash.
-                const cityHub = !hubMatch && p.scope_key ? hubs.find((h) => h.city === p.scope_key) : null;
-                const scopeLabel = hubMatch
-                  ? `${hubMatch.display_name} · ${hubMatch.city}`
-                  : cityHub
-                  ? cityHub.city
-                  : p.scope_key ?? '—';
-                const z = p.z_score ?? 0;
-                const flip = kpi.direction === 'higher_is_better' ? -1 : 1;
-                const adj = z * flip;
-                const rowClass = adj >= 1.5 ? 'bg-red-50' : adj <= -1.5 ? 'bg-emerald-50' : '';
-                return (
-                  <tr key={`${p.entity_key}-${p.scope_key}`} className={`border-t border-slate-100 ${rowClass}`}>
-                    <td className="px-5 py-2 text-[var(--muted)] font-bold">{p.rank ?? '—'}</td>
-                    <td className="px-5 py-2 font-medium">{p.entity_key}</td>
-                    <td className="px-5 py-2 text-[var(--muted)]">{scopeLabel}</td>
-                    <td className="px-5 py-2 text-right font-semibold">{formatValue(p.value, kpi.unit)}</td>
-                    <td className="px-5 py-2 text-right text-[var(--muted)]">{formatValue(p.peer_mean, kpi.unit)}</td>
-                    <td className="px-5 py-2 text-right text-[var(--muted)] font-mono">{p.z_score === null ? '—' : p.z_score.toFixed(2)}</td>
-                    <td className="px-5 py-2 text-right text-[var(--muted)]">{p.rank}/{p.rank_total}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {(filteredDrillEntities?.length ?? 0) === 0 && (
-            <div className="px-5 py-6 text-center text-[12px] text-[var(--muted)]">Sin datos para esta ciudad esta semana.</div>
-          )}
-        </div>
-      )}
 
       {/* Heatmap pivot */}
       <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
