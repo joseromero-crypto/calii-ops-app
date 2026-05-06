@@ -285,7 +285,11 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     }
   }
 
-  const faltantesSkuAgg = new Map<string, FaltantesSku>();
+  const faltantesSkuAgg  = new Map<string, FaltantesSku>();
+  // Dedup set: skips rows where the same SKU was reported by the same assembler
+  // within the same second — those are duplicate items from one order, not
+  // separate faltante events (mirrors the hub % deduplication logic).
+  const faltantesSkuSeen = new Set<string>();
 
   if (allFaltantesRows.length > 0) {
     const faltantesById = new Map<string, { id: string; hub_id: string | null }>();
@@ -302,19 +306,26 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       const hubId = resolveHubId(rawHub);
       if (!hubId) continue;
 
-      const producto = String((r.data as any)['Producto'] ?? '').trim();
+      const producto  = String((r.data as any)['Producto']    ?? '').trim();
+      const opId      = String((r.data as any)['Operator ID'] ?? '').trim();
+      const tsSecond  = String((r.data as any)['Fecha']       ?? '').trim().slice(0, 19);
       if (!producto) continue;
+
+      // Skip if this exact SKU was already counted for this assembler-second
+      const dedupeKey = `${hubId}|${opId}|${tsSecond}|${producto}`;
+      if (faltantesSkuSeen.has(dedupeKey)) continue;
+      faltantesSkuSeen.add(dedupeKey);
 
       // Resolve category: prefer MNA cross-reference, fall back to keyword-only
       const category: MnaCategory =
         skuCategoryFromMna.get(producto) ?? classifyMnaProduct(producto, '');
 
-      const key = `${hubId}|${producto}`;
-      const ex  = faltantesSkuAgg.get(key);
+      const aggKey = `${hubId}|${producto}`;
+      const ex     = faltantesSkuAgg.get(aggKey);
       if (ex) {
         ex.count += 1;
       } else {
-        faltantesSkuAgg.set(key, { hub_id: hubId, producto, count: 1, category });
+        faltantesSkuAgg.set(aggKey, { hub_id: hubId, producto, count: 1, category });
       }
     }
   }
