@@ -285,15 +285,28 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     }
   }
 
-  const faltantesSkuAgg  = new Map<string, FaltantesSku>();
-  // Dedup set: skips rows where the same SKU was reported by the same assembler
-  // within the same second — those are duplicate items from one order, not
-  // separate faltante events (mirrors the hub % deduplication logic).
-  const faltantesSkuSeen = new Set<string>();
+  const faltantesSkuAgg = new Map<string, FaltantesSku>();
 
+  // 3-minute sliding window deduplication:
+  // Multiple rows with the same (hub, assembler, SKU) within 180 s of each
+  // other are part of the same faltante incident and count as 1 event.
+  // Algorithm: collect raw events → group by (hub|op|producto) → sort by ts
+  // → walk sorted list, starting a new session whenever the gap to the prior
+  // event exceeds 180 s → count distinct sessions per (hub, producto).
   if (allFaltantesRows.length > 0) {
     const faltantesById = new Map<string, { id: string; hub_id: string | null }>();
     for (const u of faltantesUploadList) faltantesById.set(u.id, u);
+
+    // ── pass 1: parse and normalise every row ──────────────────────────────
+    type RawEvent = {
+      hubId: string;
+      opId: string;
+      producto: string;
+      tsMs: number;          // epoch ms — NaN for unparseable timestamps
+      category: MnaCategory;
+    };
+
+    const rawEvents: RawEvent[] = [];
 
     for (const r of allFaltantesRows) {
       const u = faltantesById.get(r.upload_id);
@@ -306,26 +319,67 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       const hubId = resolveHubId(rawHub);
       if (!hubId) continue;
 
-      const producto  = String((r.data as any)['Producto']    ?? '').trim();
-      const opId      = String((r.data as any)['Operator ID'] ?? '').trim();
-      const tsSecond  = String((r.data as any)['Fecha']       ?? '').trim().slice(0, 19);
+      const producto = String((r.data as any)['Producto']    ?? '').trim();
+      const opId     = String((r.data as any)['Operator ID'] ?? '').trim();
+      const fechaStr = String((r.data as any)['Fecha']       ?? '').trim();
       if (!producto) continue;
 
-      // Skip if this exact SKU was already counted for this assembler-second
-      const dedupeKey = `${hubId}|${opId}|${tsSecond}|${producto}`;
-      if (faltantesSkuSeen.has(dedupeKey)) continue;
-      faltantesSkuSeen.add(dedupeKey);
+      const tsMs = fechaStr ? new Date(fechaStr).getTime() : NaN;
 
-      // Resolve category: prefer MNA cross-reference, fall back to keyword-only
       const category: MnaCategory =
         skuCategoryFromMna.get(producto) ?? classifyMnaProduct(producto, '');
 
+      rawEvents.push({ hubId, opId, producto, tsMs, category });
+    }
+
+    // ── pass 2: group by (hub|op|producto) ────────────────────────────────
+    const groups = new Map<string, RawEvent[]>();
+    for (const ev of rawEvents) {
+      const gk = `${ev.hubId}|${ev.opId}|${ev.producto}`;
+      if (!groups.has(gk)) groups.set(gk, []);
+      groups.get(gk)!.push(ev);
+    }
+
+    // ── pass 3: sliding-window session count, then aggregate ──────────────
+    const WINDOW_MS = 180_000; // 3 minutes
+
+    for (const events of groups.values()) {
+      // Sort ascending by timestamp; rows with NaN ts go to the end.
+      events.sort((a, b) => {
+        if (isNaN(a.tsMs) && isNaN(b.tsMs)) return 0;
+        if (isNaN(a.tsMs)) return 1;
+        if (isNaN(b.tsMs)) return -1;
+        return a.tsMs - b.tsMs;
+      });
+
+      let sessionCount = 0;
+      let lastSessionTs = NaN;
+
+      for (const ev of events) {
+        if (isNaN(ev.tsMs)) {
+          // Unparseable timestamp → treat as a new session (safe fallback)
+          sessionCount += 1;
+          lastSessionTs = NaN;
+          continue;
+        }
+        if (isNaN(lastSessionTs) || ev.tsMs - lastSessionTs > WINDOW_MS) {
+          // Gap exceeds window → new session
+          sessionCount += 1;
+          lastSessionTs = ev.tsMs;
+        } else {
+          // Still within the same session — update the anchor so the window
+          // slides forward with each qualifying event (chain dedup).
+          lastSessionTs = ev.tsMs;
+        }
+      }
+
+      const { hubId, producto, category } = events[0];
       const aggKey = `${hubId}|${producto}`;
       const ex     = faltantesSkuAgg.get(aggKey);
       if (ex) {
-        ex.count += 1;
+        ex.count += sessionCount;
       } else {
-        faltantesSkuAgg.set(aggKey, { hub_id: hubId, producto, count: 1, category });
+        faltantesSkuAgg.set(aggKey, { hub_id: hubId, producto, count: sessionCount, category });
       }
     }
   }
