@@ -46,7 +46,7 @@ export default async function UploadPage({ searchParams }: PageProps) {
   // Apps registry — what tiles to show
   const { data: apps } = await supabase
     .from('apps')
-    .select('id, name_es, scope, expected_files_per_week')
+    .select('id, name_es, scope, expected_files_per_week, group_id, group_label_es')
     .eq('active', true)
     .order('id');
 
@@ -120,15 +120,7 @@ export default async function UploadPage({ searchParams }: PageProps) {
       </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}>
-        {(apps ?? []).map(app => (
-          <AppTile
-            key={app.id}
-            app={app}
-            uploads={(uploads ?? []).filter(u => u.app_id === app.id)}
-            hubs={hubs ?? []}
-            weekStartIso={weekStartIso}
-          />
-        ))}
+        {renderAppTiles(apps ?? [], uploads ?? [], hubs ?? [], weekStartIso)}
         <AddAppCard />
       </div>
     </div>
@@ -136,6 +128,97 @@ export default async function UploadPage({ searchParams }: PageProps) {
 }
 
 // --------- helpers ---------
+
+type AppRow = { id: string; name_es: string; scope: string; expected_files_per_week: number; group_id?: string | null; group_label_es?: string | null };
+
+/** Renders app tiles, collapsing apps that share a group_id into one card. */
+function renderAppTiles(
+  apps: AppRow[],
+  uploads: any[],
+  hubs: { id: string; display_name: string; city: string }[],
+  weekStartIso: string
+) {
+  const rendered: React.ReactNode[] = [];
+  const seen = new Set<string>();
+
+  for (const app of apps) {
+    if (app.group_id) {
+      if (seen.has(app.group_id)) continue; // already rendered this group
+      seen.add(app.group_id);
+      const groupApps = apps.filter(a => a.group_id === app.group_id);
+      rendered.push(
+        <GroupedAppTile
+          key={app.group_id}
+          groupLabel={app.group_label_es ?? app.group_id}
+          apps={groupApps}
+          uploads={uploads}
+          weekStartIso={weekStartIso}
+        />
+      );
+    } else {
+      rendered.push(
+        <AppTile
+          key={app.id}
+          app={app}
+          uploads={uploads.filter(u => u.app_id === app.id)}
+          hubs={hubs}
+          weekStartIso={weekStartIso}
+        />
+      );
+    }
+  }
+  return rendered;
+}
+
+/** Single card for a group of related apps — each app gets one upload slot. */
+function GroupedAppTile({
+  groupLabel, apps, uploads, weekStartIso,
+}: {
+  groupLabel: string;
+  apps: AppRow[];
+  uploads: any[];
+  weekStartIso: string;
+}) {
+  const total = apps.reduce((s, a) => s + a.expected_files_per_week, 0);
+  const done  = apps.filter(a => uploads.some(u => u.app_id === a.id && u.status === 'validated')).length;
+
+  return (
+    <div className="bg-white border border-[var(--line)] rounded-xl p-5 shadow-soft">
+      <div className="flex items-start justify-between mb-3 gap-3">
+        <div>
+          <h3 className="text-[15px] font-semibold m-0 mb-1">{groupLabel}</h3>
+          <span className="text-[10.5px] text-[var(--muted)] bg-slate-100 px-2 py-0.5 rounded font-semibold uppercase tracking-wide">
+            Total · {total} archivo{total !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div className="text-right">
+          <div className="text-[12.5px] text-[var(--muted)]">
+            <b className="text-[var(--ink)] font-bold">{done}</b>/{total} listos
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(apps.length, 3)}, 1fr)` }}>
+        {apps.map(app => {
+          // Strip "GroupLabel · " prefix to get a short slot label
+          const prefix = groupLabel + ' · ';
+          const label  = app.name_es.startsWith(prefix)
+            ? app.name_es.slice(prefix.length)
+            : app.name_es;
+          const uploadedRow = uploads.find(u => u.app_id === app.id);
+          return (
+            <UploadDropzone
+              key={app.id}
+              appId={app.id}
+              weekStart={weekStartIso}
+              label={label}
+              alreadyUploaded={uploadedRow?.status === 'validated'}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function Stat({ n, l, tone }: { n: number; l: string; tone: 'ok' | 'warn' | 'danger' }) {
   const colors = { ok: 'text-emerald-500', warn: 'text-amber-500', danger: 'text-red-500' };
