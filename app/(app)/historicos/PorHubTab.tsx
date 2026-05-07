@@ -841,7 +841,6 @@ function WowChart({
           title={`Eje Y: ${manualYMax.toFixed(unit === 'pct' ? 1 : 0)}${unit === 'pct' ? '%' : ''} · arrastra para ajustar`}
           style={{
             writingMode: 'vertical-lr',
-            direction: 'rtl',
             width: 18,
             height: chartHeight,
             cursor: 'ns-resize',
@@ -867,6 +866,7 @@ function WowChart({
                 axisLine={false}
                 tickLine={false}
                 domain={[0, Math.max(0.1, manualYMax)]}
+                allowDataOverflow
               />
               <Tooltip
                 content={<WowTooltip colorMap={colorMap} unit={unit} />}
