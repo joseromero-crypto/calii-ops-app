@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -642,89 +642,6 @@ function MnaBackFaceList({ items, max }: {
 
 /* ─── WoW chart components ───────────────────────────────────────────────── */
 
-/**
- * Vertical drag-to-adjust y-axis slider.
- *
- * Physical mapping:
- *   Top    → min ceiling (most zoomed in — smallest y-axis max)
- *   Bottom → max ceiling (most zoomed out — full unit range)
- *
- * Default position comes from computeYMax (smart cap). Drag resets on hub
- * switch because the parent passes a new `value` and fires useEffect.
- */
-function YSlider({
-  value,
-  min,
-  max,
-  height,
-  onChange,
-}: {
-  value: number;
-  min: number;
-  max: number;
-  height: number;
-  onChange: (v: number) => void;
-}) {
-  const trackRef = useRef<HTMLDivElement>(null);
-
-  // Map value → pixel offset (0 = top = min, height = bottom = max)
-  const clamped = Math.max(min, Math.min(max, value));
-  const handleY = Math.round(((clamped - min) / (max - min)) * height);
-
-  function startDrag(e: React.PointerEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const track = trackRef.current;
-    if (!track) return;
-
-    function move(evt: PointerEvent) {
-      const rect = track!.getBoundingClientRect();
-      const y    = Math.max(0, Math.min(height, evt.clientY - rect.top));
-      const raw  = min + (y / height) * (max - min);
-      onChange(Math.round(raw * 10) / 10);
-    }
-    function up() {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    }
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    // Respond to the initial click position immediately
-    move(e.nativeEvent as PointerEvent);
-  }
-
-  return (
-    <div
-      ref={trackRef}
-      style={{
-        width: 14, height, position: 'relative',
-        cursor: 'ns-resize', flexShrink: 0, touchAction: 'none',
-      }}
-      onPointerDown={startDrag}
-      title={`Eje Y: ${value.toFixed(1)} · arrastra para ajustar`}
-    >
-      {/* Background track */}
-      <div style={{
-        position: 'absolute', left: '50%', top: 0, bottom: 0,
-        width: 4, transform: 'translateX(-50%)',
-        borderRadius: 2, background: '#e2e8f0',
-      }} />
-      {/* Active fill below handle (zoomed-out region) */}
-      <div style={{
-        position: 'absolute', left: '50%', top: handleY, bottom: 0,
-        width: 4, transform: 'translateX(-50%)',
-        borderRadius: '0 0 2px 2px', background: '#94a3b8', opacity: 0.6,
-      }} />
-      {/* Knob */}
-      <div style={{
-        position: 'absolute', left: '50%', top: handleY,
-        width: 10, height: 10, marginLeft: -5, marginTop: -5,
-        borderRadius: '50%', background: '#64748b',
-        border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-        pointerEvents: 'none',
-      }} />
-    </div>
-  );
-}
 
 /**
  * Tooltip for WoW line charts.
@@ -904,7 +821,7 @@ function WowChart({
       {/* Header — 18 px left offset matches slider width + gap so title aligns with plot */}
       <div
         className="text-[12px] font-semibold text-[var(--ink)] mb-3 flex items-center justify-between"
-        style={{ paddingLeft: 18 }}
+        style={{ paddingLeft: 22 }}
       >
         <span>{title}</span>
         <span className="text-[10px] font-normal text-[var(--muted)]">
@@ -912,14 +829,26 @@ function WowChart({
         </span>
       </div>
 
-      {/* Chart row: y-axis drag slider + line chart */}
+      {/* Chart row: native vertical range slider (top=0, bottom=unitMaxCeil) + line chart */}
       <div className="flex items-stretch gap-1">
-        <YSlider
-          value={manualYMax}
+        <input
+          type="range"
           min={0}
           max={unitMaxCeil}
-          height={chartHeight}
-          onChange={setManualYMax}
+          step={unit === 'pct' ? 0.5 : 1}
+          value={manualYMax}
+          onChange={(e) => setManualYMax(Number(e.target.value))}
+          title={`Eje Y: ${manualYMax.toFixed(unit === 'pct' ? 1 : 0)}${unit === 'pct' ? '%' : ''} · arrastra para ajustar`}
+          style={{
+            writingMode: 'vertical-lr',
+            direction: 'rtl',
+            width: 18,
+            height: chartHeight,
+            cursor: 'ns-resize',
+            accentColor: '#475569',
+            flexShrink: 0,
+            padding: 0,
+          } as React.CSSProperties}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <ResponsiveContainer width="100%" height={chartHeight}>
