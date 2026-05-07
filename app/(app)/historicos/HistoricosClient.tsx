@@ -44,10 +44,10 @@ export function HistoricosClient(props: Props) {
           Esta sem: jue {weekEndLabel(currentWeek)}
         </span>
       </div>
-      <div className="flex gap-1 border-b border-[var(--line)] mb-5">
-        <Tab href={tabHref('kpi')}  active={tab === 'kpi'}>📈 Por KPI · análisis profundo</Tab>
-        <Tab href={tabHref('hub')}  active={tab === 'hub'}>🏬 Por hub · vista 1:1</Tab>
-        <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa entre MHs</Tab>
+      <div className="flex gap-1 border-b border-[var(--line)] mb-5 overflow-x-auto">
+        <Tab href={tabHref('kpi')}  active={tab === 'kpi'}>📈 Por KPI<span className="hidden sm:inline"> · análisis profundo</span></Tab>
+        <Tab href={tabHref('hub')}  active={tab === 'hub'}>🏬 Por hub<span className="hidden sm:inline"> · vista 1:1</span></Tab>
+        <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa<span className="hidden sm:inline"> entre MHs</span></Tab>
       </div>
       {tab === 'kpi' && <PorKpiTab {...props} />}
       {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} />}
@@ -59,7 +59,7 @@ function Tab({ href, active, children }: { href: string; active: boolean; childr
   return (
     <a
       href={href}
-      className={`px-3.5 py-2.5 text-[13px] font-medium border-b-2 -mb-px ${
+      className={`shrink-0 whitespace-nowrap px-3.5 py-2.5 text-[13px] font-medium border-b-2 -mb-px ${
         active
           ? 'border-teal-400 text-[var(--ink)] font-semibold'
           : 'border-transparent text-[var(--muted)] hover:text-[var(--ink)]'

@@ -817,7 +817,7 @@ function WowChart({
     unit === 'pct' ? `${v.toFixed(1)}%` : unit === 'rate' ? v.toFixed(1) : v.toFixed(0);
 
   return (
-    <div className={`bg-white border border-[var(--line)] rounded-xl shadow-soft p-4${wide ? ' col-span-2' : ''}`}>
+    <div className={`bg-white border border-[var(--line)] rounded-xl shadow-soft p-4${wide ? ' sm:col-span-2' : ''}`}>
       {/* Header — 18 px left offset matches slider width + gap so title aligns with plot */}
       <div
         className="text-[12px] font-semibold text-[var(--ink)] mb-3 flex items-center justify-between"
@@ -942,7 +942,7 @@ function AssemblerWowSection({
           Sin datos de armadores. Sube el archivo de desempeño operadores para habilitar esta sección.
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct}              displayWeeks={displayWeeks} />
           <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct}            displayWeeks={displayWeeks} />
           <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct}             displayWeeks={displayWeeks} />
@@ -998,7 +998,7 @@ function DriverWowSection({
           Sin datos de repartidores. Sube el archivo de desempeño repartidores para habilitar esta sección.
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} />
           <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} />
           <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} wide />

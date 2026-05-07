@@ -21,13 +21,25 @@ const NAV = [
   },
 ] as const;
 
-export function Sidebar({ userEmail = 'jose.romero@calii.com' }: { userEmail?: string }) {
+export function Sidebar({ userEmail = 'jose.romero@calii.com', onClose }: { userEmail?: string; onClose?: () => void }) {
   const pathname = usePathname() ?? '/';
   const initials = userEmail.split('@')[0].slice(0, 2).toUpperCase();
 
   return (
-    <aside className="bg-black text-slate-300 w-[232px] sticky top-0 h-screen p-[22px_16px] flex flex-col">
+    <aside className="bg-black text-slate-300 w-full sticky top-0 h-screen p-[22px_16px] flex flex-col relative">
       <div className="flex items-center gap-2 px-2 pb-[22px] border-b border-slate-800 mb-4">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-200"
+            aria-label="Cerrar menú"
+          >
+            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
         <span className="wordmark">calii</span>
         <span className="text-[11px] tracking-[2px] uppercase text-slate-500 self-end mb-1">ops</span>
       </div>

@@ -1,235 +1,292 @@
-# Task Transition — Calii Ops Weekly Dashboard
-**Date:** 2026-05-06
-**Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)
-**Prepared for:** Jose Romero / next session handoff
+# Calii Ops App — Engineering Handoff
 
----
-
-## 0. Rules for the Next Claude Session
-
-### ⚠️ Netlify Credit Strategy — Read This First
-Every `git push` triggers a Netlify deploy and burns credits. Deploys are not free. The rule is:
-
-- **Batch changes.** Work on several fixes in one session, commit each separately, push once at the end.
-- **Never push to check if something "looks right"** — verify logic in code first.
-- **Before writing any code, confirm the request is 100% clear.** If there is any ambiguity — ask. Do not guess. A wrong deploy that requires a correction deploy doubles the cost.
-
-**Real example of what NOT to do:** Jose asked to fix sparkline slopes because "they all look the same." Claude interpreted this as "make them flatter" and set `domain={[0, 1]}`. Jose wanted the opposite — steeper. This caused 2 deploys for 1 change. Ask first.
-
-### Clarification Checklist — Ask Before Coding
-When Jose describes a visual or behavioral change, confirm:
-1. Is the desired direction clear? ("bigger" / "smaller" / "remove" / "add")
-2. Is the comparison basis clear? ("vs other hubs" vs "vs own history" vs "vs last week")
-3. If sorting: ascending or descending? Best on top or worst on top?
-4. Which tab / which component exactly?
-
-If any of these are ambiguous, ask before touching code.
+**Last updated:** 2026-05-06  
+**Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
+**Prepared for:** Jose Romero / next session
 
 ---
 
 ## 1. Project Overview
 
-Internal Next.js 14 App Router dashboard showing weekly KPI snapshots for all Calii hubs (Monterrey, Saltillo, Guadalajara, CDMX).
+Internal ops dashboard for Calii hub operations. Tracks weekly KPIs per hub (MH), including assembler performance, driver performance, MNA (merma / no-apto), and faltantes. Data is uploaded weekly via a separate upload flow and computed into two main tables: `kpi_snapshots` and `peer_comparisons`.
 
-**Stack:** Next.js 14 App Router · Supabase (PostgREST) · TypeScript · Tailwind CSS · Netlify
+The main feature area touched across these sessions is **`/historicos`** — the historical analytics page with three tabs: Por KPI, Por Hub, and Comparativa.
 
-**Repo:** `~/Desktop/calii-ops-app`
-**Git remote:** GitHub (PAT saved in macOS Keychain — push works from terminal)
-**Deploy:** Netlify auto-deploys on push to `main`
+---
 
-**Key Supabase tables:**
+## 2. Key Files
 
-| Table | Purpose |
+| File | Role |
 |---|---|
-| `kpi_snapshots` | Pre-computed KPI values per week × scope (hub / city / global) |
-| `peer_comparisons` | Z-scores and rankings per operator / driver entity |
-| `uploads` | Weekly file uploads per app (one row per file) |
-| `upload_rows` | Individual CSV rows from each upload, with `is_excluded` flag |
-| `kpis` | KPI registry — id, unit, direction, source_app_id, display_order, etc. |
-| `hubs` | Hub registry — id, display_name, city |
-| `apps` | Upload app registry — id, name_es, scope, expected_files_per_week, group_id |
-| `current_week` | Single-row table for active week (currently empty — site falls back to latest kpi_snapshots) |
+| `app/(app)/historicos/page.tsx` | Server component — fetches ALL data from Supabase, passes to client |
+| `app/(app)/historicos/HistoricosClient.tsx` | Client shell — tab routing (Por KPI / Por Hub / Comparativa) |
+| `app/(app)/historicos/PorHubTab.tsx` | Main client component for the "Por Hub" tab — KPI tiles + WoW charts |
+| `app/(app)/historicos/PorKpiTab.tsx` | "Por KPI" tab — not touched in these sessions |
+| `app/(app)/historicos/ComparativaTab.tsx` | "Comparativa" tab — not touched |
+| `app/(app)/historicos/_shared.ts` | Shared types, formatting helpers, utility functions |
+| `lib/kpi-compute.ts` | Core KPI computation — processes raw upload rows into peer_comparisons rows |
+| `lib/sku-classifier.ts` | Classifies product names into MnaCategory: 'fyv' / 'carnes' / 'abarrotes' |
 
-**Canonical hub slugs:**
-`mh_contry`, `mh_cumbres`, `mh_san_nicolas`, `mh_guadalupe`, `mh_avicola` (Saltillo maps here too), `mh_zapopan`, `mh_condesa`, `mh_san_pedro`
+---
 
-**Hub colors (used throughout charts):**
+## 3. Database Tables (relevant)
+
+### `kpi_snapshots`
+One row per KPI × week × scope. Columns used:
+- `kpi_id`, `week_start`, `scope_level` ('hub' | 'city' | 'global'), `scope_key` (hub_id or city name)
+- `value`, `numerator`, `denominator`, `prev_week_value`, `rolling_mean_4w`
+
+Note: `rolling_mean_4w` and `value` for pct KPIs are stored as **0–1 fractions** here, not percentages.
+
+### `peer_comparisons`
+One row per entity × KPI × week × scope. Columns:
+- `kpi_id`, `week_start`, `entity_type` ('operator' | 'driver'), `entity_key` (person name)
+- `scope_type` ('within_hub' | 'within_city'), `scope_key` (hub_id or city key)
+- `value`, `peer_mean`, `z_score`, `rank`, `rank_total`
+
+⚠️ **CRITICAL: `peer_comparisons` has NO `hub_id` column.** PostgREST silently ignores unknown columns on UPSERT but returns `data: null` on SELECT if you request a non-existent column. All SELECTs must omit `hub_id`. Use `scope_key` to identify hub — for `within_hub` rows, `scope_key === hub_id`.
+
+Note: pct KPI `value` in `peer_comparisons` is also stored as **0–1 fraction**.
+
+### `upload_rows`
+Raw uploaded data rows. `data` column is a JSON blob. Processed by `lib/kpi-compute.ts`.
+
+### `desempeño_repartidores`
+Driver roster — used to zero-fill drivers with no incidents in `extractIncidentesValues`.
+
+---
+
+## 4. Data Flow in `/historicos`
+
+```
+page.tsx (server)
+  ├── Counts all rows across 6 data sets (parallel HEAD requests)
+  ├── Paginates ALL pages in parallel (PAGE = 1000 rows/request)
+  │     ├── kpi_snapshots       (52 weeks, hub/city/global scope)
+  │     ├── peer_comparisons    (current week only — KPI tile back faces)
+  │     ├── upload_rows MNA     (current week)
+  │     ├── upload_rows faltantes_armador (current week)
+  │     ├── assemblerTrend      (multi-week, entity_type=operator, scope=within_hub)
+  │     └── driverTrend         (multi-week, entity_type=driver,   scope=within_hub)
+  └── Flat arrays → HistoricosClient → PorHubTab / PorKpiTab / ComparativaTab
+```
+
+Hub switching is **client-side only** — all hubs' data is fetched once and filtered in the browser.
+
+---
+
+## 5. PorHubTab Architecture
+
+### KPI Tiles (top section)
+- Grid of all active KPIs for the selected hub.
+- **Front face:** value, WoW delta, 12-week sparkline, 4w rolling average reference line.
+- **Back face (click to flip):** ranked list of operators/drivers worst→best per the current week.
+  - MNA KPIs: top products by `$` (amount) + `%` per row — sourced from `upload_rows`, NOT `peer_comparisons`.
+  - Faltantes subcategory KPIs (fyv/carnes/graneles): top SKUs by event count from the breakdown upload.
+  - All other KPIs: `peer_comparisons` ranked list, worst→best.
+- **Tile color:** green / red / white based on this week vs the hub's own 4w rolling mean. Uses σ-based threshold (0.75σ). Fallback: ±5% relative when σ is unavailable or 0.
+
+### MNA Tile Category Filter Map
 ```ts
-mh_contry: '#0ea5e9', mh_cumbres: '#22c55e', mh_san_nicolas: '#a855f7',
-mh_guadalupe: '#ef4444', mh_avicola: '#f59e0b', mh_zapopan: '#06b6d4',
-mh_condesa: '#ec4899'
+const MNA_CATEGORY_FILTER: Record<string, MnaCategory | null> = {
+  mna_pct:          null,        // all categories
+  mna_graneles_pct: 'abarrotes', // shelf-stable / dry goods ("Graneles" in Spanish)
+  mna_fyv_pct:      'fyv',
+  mna_carnes_pct:   'carnes',
+};
+```
+Note: "Graneles" (Calii's term) = `'abarrotes'` in the classifier.
+
+### Faltantes SKU Category Filter Map
+```ts
+const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
+  faltantes_fyv_pct:      'fyv',
+  faltantes_carnes_pct:   'carnes',
+  faltantes_graneles_pct: 'abarrotes',
+};
+// faltantes_armador_pct (general) is intentionally excluded —
+// its flip shows the assembler peer ranking, not SKU data.
 ```
 
 ---
 
-## 2. Key Files Map
+## 6. WoW Charts
 
+Two sections at the bottom of PorHubTab: Assemblers (7 KPIs) and Drivers (3 KPIs).
+
+### Data source
+`assemblerTrend` / `driverTrend` — multi-week `peer_comparisons` rows, `within_hub` scope only. Filtered client-side to `scope_key === hubId`, then to `kpi_id`.
+
+### KPI_META lookup
+```ts
+const KPI_META: Record<string, KpiMeta> = {
+  // Assembler KPIs
+  faltantes_armador_pct:              { title: 'Faltantes armador',    unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_manuales_pct:            { title: 'Incidentes general',   unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_calidad_pct:             { title: 'Incidentes calidad',   unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_faltantes_pct:           { title: 'Incidentes faltantes', unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_faltantes_completos_pct: { title: 'Faltantes completos',  unit: 'pct',   direction: 'lower_is_better'  },
+  incidentes_faltantes_parciales_pct: { title: 'Faltantes parciales',  unit: 'pct',   direction: 'lower_is_better'  },
+  tasa_armado:                        { title: 'Velocidad de armado',  unit: 'rate',  direction: 'higher_is_better' },
+  // Driver KPIs
+  pct_tardias_reparto:                { title: '% entregas tardías',   unit: 'pct',   direction: 'lower_is_better'  },
+  pct_undelivered:                    { title: '% entregas fallidas',  unit: 'pct',   direction: 'lower_is_better'  },
+  entregas_erroneas:                  { title: 'Entregas erróneas',    unit: 'count', direction: 'lower_is_better'  },
+};
 ```
-app/(app)/historicos/
-  page.tsx              ← Server component: fetches all data, aggregates MNA + faltantes SKUs
-  HistoricosClient.tsx  ← Client shell: tab routing
-  PorKpiTab.tsx         ← "Por KPI" tab: top movers, line chart, heatmap
-  PorHubTab.tsx         ← "Por Hub" tab: KPI tiles with sparklines + tile flips
-  ComparativaTab.tsx    ← "Comparativa" tab: multi-hub line charts
-  _shared.ts            ← Shared types, formatters, color helpers
 
-app/(app)/upload/
-  page.tsx              ← Upload page: dropzone tiles grouped by app group_id
+### Layout (2-column grid)
+```
+Assemblers:
+  Faltantes armador    | Incidentes general
+  Incidentes calidad   | Incidentes faltantes
+  Faltantes completos  | Faltantes parciales
+  Velocidad de armado  ← col-span-2 (wide=true)
 
-components/
-  UploadDropzone.tsx    ← Individual file drop slot
-  RecomputeButton.tsx   ← Triggers kpi-compute for one or all weeks
+Drivers:
+  % entregas tardías   | % entregas fallidas
+  Entregas erróneas    ← col-span-2 (wide=true)
+```
 
-lib/
-  kpi-compute.ts        ← Core KPI computation engine (called by /api/recompute)
-  sku-classifier.ts     ← classifyMnaProduct(producto, proveedor) → 'fyv'|'carnes'|'abarrotes'
-  supabase-server.ts    ← Server-side Supabase client
+### Shared x-axis
+`displayWeeks` is computed once per section from ALL KPI rows for that hub (not per chart). All charts in the section show the same last-5-weeks range. Ensures Entregas erróneas and % tardías show the same weeks.
 
-supabase/migrations/    ← All DB migrations in order
+### WowChart rules
+- Only entities with a **non-null value in the most recent week** are plotted. Departed assemblers (absent from most recent week) are excluded automatically.
+- `connectNulls={true}` bridges gaps for mid-period joiners.
+- Tooltip sorts dynamically by hovered week value (highest first).
+- `wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}` on Tooltip — without this, adjacent chart lines render over the tooltip popup.
+- pct values stored as 0–1 fractions → multiplied ×100 (`toDisplay`) before charting. All chart data and y-axis in display units.
+
+### Y-axis Slider
+Native `<input type="range">` rotated vertical:
+```tsx
+style={{
+  writingMode: 'vertical-lr',  // NO direction: 'rtl' — that inverts the slider
+  width: 18,
+  height: chartHeight,
+  ...
+}}
+```
+- **Top = 0** (most zoomed in), **Bottom = unitMaxCeil** (most zoomed out)
+- `UNIT_MAX_CEIL = { pct: 100, rate: 250, count: 20 }` (in display units)
+- Default = `smartYMax` (p75-based auto cap) — resets on hub switch
+- `allowDataOverflow={true}` on YAxis — **required** so Recharts respects the domain even when data exceeds the specified max. Without this, zooming in has no visible effect.
+- `domain={[0, Math.max(0.1, manualYMax)]}` — 0.1 floor avoids a [0,0] domain
+
+### computeYMax (smart cap)
+```ts
+function computeYMax(vals: (number | null)[]): number | undefined {
+  const nums = vals.filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
+  if (nums.length === 0) return undefined;
+  const sorted = [...nums].sort((a, b) => a - b);
+  // CRITICAL: (n-1)*0.75, NOT n*0.75 — for n=4, n*0.75 gives index 3 = max = outlier
+  const p75idx = Math.floor((sorted.length - 1) * 0.75);
+  const p75    = sorted[p75idx];
+  const raw    = p75 * 1.3;                                      // 30% headroom
+  const mag    = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm   = raw / mag;
+  const niceMult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return niceMult * mag;
+}
+```
+Filters zeros (zero incidents = no active range to measure). Returns `undefined` if all values are 0 or null → slider falls back to `unitMaxCeil`.
+
+### Hub switch reset (hooks pattern)
+```ts
+// All hooks MUST come before any early return
+const [manualYMax, setManualYMax] = useState<number>(smartYMax ?? unitMaxCeil);
+const hubKey = rows.length > 0 ? (rows[0].scope_key ?? '') : '';
+useEffect(() => {
+  setManualYMax(smartYMax ?? unitMaxCeil);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [hubKey]);
+
+// Early returns AFTER all hooks:
+if (rowWeeks.length === 0 || activeEntities.size === 0) return null;
 ```
 
 ---
 
-## 3. Cumulative Work Done (Both Sessions)
+## 7. lib/kpi-compute.ts — extractIncidentesValues
 
-### Session 1 (2026-05-05)
+Generates `peer_comparisons` rows for incident KPIs (faltantes, calidad, etc.).
 
-**3.1 MNA Hub Resolution Bug Fixed (`lib/kpi-compute.ts`)**
-MNA uploads at city level have `hub_id = null`. `extractMnaValues` was skipping all rows because it only looked at `r.upload.hub_id`. Added fallback to read `Hub` / `geofence` / `Geofence` column from row data and run through `hubNameToId()`.
+**Zero-fill for roster:** After processing incident rows, iterates all drivers in `desempeño_repartidores` for that hub/week and inserts `{ numerator: 0, denominator: 1 }` for any driver NOT found in incidents. This ensures drivers with zero incidents appear in the WoW chart — without this, zero-incident drivers look "departed."
 
-**3.2 RecomputeButton (`components/RecomputeButton.tsx`)**
-- Added "Recomputar todo (N sem)" that processes all weeks sequentially, oldest first
-- Fixed JSON parse from streaming API response (`res.text()` + `JSON.parse(text.trim())`)
-
-**3.3 UI Fixes**
-- `ComparativaTab`: hidden XAxis default number labels
-- `PorKpiTab`: chart legend + heatmap rows sort by current week value; custom `ChartTooltip` re-sorts tooltip dynamically per hovered week
+```ts
+// driverHub map: entity_key → { hub_id, city, originalName }
+for (const [, info] of driverHub) {
+  if (!byDriver.has(info.originalName)) {
+    byDriver.set(info.originalName, {
+      entity_type: 'driver', entity_key: info.originalName,
+      city: info.city, hub_id: info.hub_id,
+      numerator: 0, denominator: 1,
+    });
+  }
+}
+```
 
 ---
 
-### Session 2 (2026-05-06)
+## 8. HubCityKey Resolution
 
-**3.4 Faltantes Armador — Full Architecture Redesign**
+`peer_comparisons.scope_key` for `within_city` rows = a city enum like `'mty'`.  
+`hubs.city` = display name like `'Monterrey'`. These don't match as strings.
 
-Previous approach computed hub-level % from the raw event log (approximating Retool's formula using assembler×second deduplication). Values were close but rankings were occasionally wrong for hubs within ~1% of each other.
+Resolution waterfall in PorHubTab:
+1. Exact string match
+2. Cross-reference: find scope_key whose entity_keys overlap most with this hub's `within_hub` entities
+3. Accent/case-normalized match
+4. Single-hub-city fallback (only one within_city scope_key exists → use it)
 
-New approach — direct Retool exports:
+---
 
-- **5 upload slots** added to the upload page under "Faltantes Armador" group:
-  - `faltantes_armador` — Todos los faltantes (breakdown) — existing, renamed
-  - `faltantes_hub_general_pct` — % General — new
-  - `faltantes_hub_fyv_pct` — % FyV — new
-  - `faltantes_hub_carnes_pct` — % Carnes — new
-  - `faltantes_hub_graneles_pct` — % Graneles y Abarrotes — new
+## 9. Known Footguns
 
-- **3 new KPIs** in the database:
-  - `faltantes_fyv_pct` (display_order 41, parent: `faltantes_armador_pct`)
-  - `faltantes_carnes_pct` (display_order 42)
-  - `faltantes_graneles_pct` (display_order 43)
-
-- **Column schema** for all 4 hub % files: `Geofence ID` (ignored) · `Hub` (dimension) · `Ciudad` (dimension) · `Faltante armador (%)` (metric)
-
-- **`extractFaltantesHubPctDirect`** in `lib/kpi-compute.ts` reads `Faltante armador (%)` directly — no formula, exact Retool values
-
-- **Migration file:** `supabase/migrations/20260506000001_faltantes_armador_hub_pct.sql`
-
-**3.5 Faltantes SKU Tile Flips**
-
-The 3 subcategory KPIs (`faltantes_fyv_pct`, `faltantes_carnes_pct`, `faltantes_graneles_pct`) have a tile flip in Por Hub tab showing top SKUs by faltante event count.
-
-- SKU data comes from the breakdown upload (`upload_rows` for `app_id='faltantes_armador'`)
-- Category resolved by cross-referencing product name against MNA rows (which carry `Proveedor` for accurate classification). The MNA file has ALL catalogue items even if waste = 0, so cross-reference coverage is very high (tested: 4,926 / 4,927 items resolved via MNA, 1 via keyword fallback)
-- **3-minute sliding window deduplication** (implemented in `page.tsx`): same (hub, assembler, SKU) events within 180s of the previous one are counted as 1 incident. Algorithm: group → sort by timestamp → session breaks when gap > 180s. Replaced broken second-level dedup that was undercounting.
-- `FaltantesSku` interface in `_shared.ts`
-
-**3.6 Upload Page Grouping**
-
-Added `group_id` / `group_label_es` columns to `apps` table. Apps sharing a `group_id` render as one `GroupedAppTile` card instead of separate cards. Faltantes armador's 5 slots are grouped under "Faltantes Armador". Upload page now fetches `group_id, group_label_es` in the apps query.
-
-**3.7 UI Changes (Historicos)**
-
-| Component | Change |
+| Issue | Detail |
 |---|---|
-| `ComparativaTab` | Custom `CompareTooltip`: sorts hubs by value on hover (highest on top) — was alphabetical |
-| `PorHubTab` | Tile colors: now WoW vs own 4-week rolling avg using σ threshold (see detail below) |
-| `PorHubTab` | Sparkline reference line: now shows `rolling_mean_4w` (was global peer mean) |
-| `PorHubTab` | Tile footer: "4w avg: X" (was "Peer: X") with tooltip "Promedio de las últimas 4 semanas" |
-| `PorKpiTab` | Removed "Acercamiento por entidad · esta sem." section (operator/driver drill table) entirely |
-
-**Tile Color Logic (current):**
-```
-Baseline = rolling_mean_4w from kpi_snapshots (stored server-side)
-σ = std dev of last 4 prior data points in this hub's trend
-Threshold = 0.75σ
-
-Green  → current > baseline + 0.75σ in the "better" direction
-Red    → current > baseline + 0.75σ in the "worse" direction
-White  → within ±0.75σ (normal noise)
-
-Fallback when σ = 0 or < 3 data points: ±5% relative threshold
-```
-This replaces the old "vs peer mean ±10%" logic. Each hub is judged against its own history, not against other hubs with different operations.
+| `peer_comparisons` has no `hub_id` | SELECT with `hub_id` returns `data: null` silently. Always omit. Use `scope_key`. |
+| Recharts domain override | Without `allowDataOverflow={true}` on YAxis, Recharts silently extends the domain to fit data, ignoring your max. Zoom-in appears to do nothing. |
+| p75 index formula | `Math.floor((n-1) * 0.75)` not `Math.floor(n * 0.75)`. For n=4: wrong gives index 3 (max), correct gives index 2 (second-highest). |
+| `writingMode` on range input | Works in Chrome/Firefox with `writingMode: 'vertical-lr'`. Do NOT add `direction: 'rtl'` — it inverts the slider direction. |
+| Rules of Hooks in WowChart | Hooks (`useState`, `useEffect`) must be called before any early `return null`. Pre-compute everything above the hooks, guard after. |
+| pct fraction vs display | `peer_comparisons.value` for pct KPIs = 0–1 fraction. Multiply ×100 before charting. `computeYMax` and `manualYMax` are in display units (0–100). |
+| `kpi_snapshots.value` pct | Also stored as 0–1 fraction. `formatValue(v, 'pct')` handles the ×100 conversion internally. |
 
 ---
 
-## 4. Git Push Instructions (Full Copy-Paste)
+## 10. Commits (these sessions)
 
-**Standard push — run this in Terminal:**
-```bash
-cd ~/Desktop/calii-ops-app
-rm -f .git/HEAD.lock .git/index.lock
-git push origin main
 ```
-
-**If you need to stage and commit first:**
-```bash
-cd ~/Desktop/calii-ops-app
-rm -f .git/HEAD.lock .git/index.lock
-git add <file1> <file2>
-git commit -m "description of change"
-git push origin main
+e17bc0a  WoW charts: fix p75 index; dynamic tooltip sort; entregas erróneas zero-fill for roster drivers
+4952076  WoW charts: p75 y-axis cap; tooltip z-index fix
+82bf8da  WoW charts: remove legend; cap y-axis; fix mid-line endings; consistent x-axis per section
+682dbf1  fix: remove hub_id from peer_comparisons SELECT; MNA flip to single $ list; defensive prop defaults
+[pending push]  WoW charts: native range slider (writingMode); allowDataOverflow; smart cap default
 ```
-
-**Check what's pending before pushing:**
-```bash
-cd ~/Desktop/calii-ops-app
-git log --oneline origin/main..HEAD
-```
-
-**Note:** The sandbox Claude works in can't push directly (proxy blocks GitHub). Always run git push from your own terminal. The `rm -f` lines clear lock files that the sandbox occasionally leaves — safe to run even if the files don't exist.
 
 ---
 
-## 5. Post-Push QA Checklist
+## 11. What's Working ✓
 
-After each deploy, verify these on the live site:
-
-### Faltantes SKU dedup (3-min window)
-- Por Hub → Contry → flip FyV, Carnes, or Graneles tile — confirm Frijoles Chata (Contry, ~13:18) and Tomate Cidacos (Contry, ~06:45) each appear once with lower count than before the fix
-
-### Comparativa tooltip
-- Comparativa tab → hover any week on any KPI chart → hubs should appear highest value on top, lowest on bottom (not alphabetical). Test both a `lower_is_better` KPI and a `higher_is_better` KPI.
-
-### Tile colors (WoW vs 4w avg)
-- Por Hub → check several tiles: footer should say "4w avg: X" not "Peer: X"
-- Hover the "4w avg" label → tooltip says "Promedio de las últimas 4 semanas"
-- Sparkline dotted reference line sits at the 4w avg, not the old peer mean
-- A hub with a genuinely good week → green; stable week → white. Small deltas (0.1pp) should not trigger red
-
-### Entity drill removal
-- Por KPI → select tasa de armado or faltantes armador → no "Acercamiento por entidad" table between the chart and heatmap. Page should flow cleanly chart → heatmap.
-
-### Sparklines
-- Por Hub → KPI tiles should have visible slopes (auto-scale fills height). All tiles should NOT look flat.
+- All 7 assembler WoW charts + all 3 driver WoW charts
+- Shared x-axis per section (consistent weeks across all charts in a section)
+- Departed assemblers/drivers auto-excluded (no value in most recent week)
+- Zero-incident drivers appear in Entregas erróneas chart (zero-filled from roster)
+- Y-axis slider: full 0–unitMaxCeil range, smart cap default, resets on hub switch
+- Tooltip: dark popup, sorts by hovered week value, z-index above adjacent charts
+- MNA tile flip: single $ list with % alongside, sorted highest $ first
+- Faltantes SKU tile flip: top SKUs by event count per subcategory
+- Tile colors: σ-based vs own 4w rolling mean (not vs peers)
+- Hub switching: fully client-side, no server round-trip
 
 ---
 
-## 6. Open Items
+## 12. Environment
 
-| Priority | Item |
-|---|---|
-| 🔴 | After pushing, upload the 4 new Retool hub % files each week (% General, % FyV, % Carnes, % Graneles) alongside the existing breakdown file |
-| 🟡 | `current_week` table is empty — site falls back correctly to latest kpi_snapshots, but worth setting explicitly |
-| 🟡 | MNA % vs Retool discrepancy is accepted — Retool uses full receiving data, site uses MNA CSV only. Not a bug. |
-| 🟢 | New supplier onboarding → update `CARNES_SUPPLIERS` / `FYV_SUPPLIERS` in `lib/sku-classifier.ts` |
-| 🟢 | `.env.local` points to wrong Supabase project — verify if local scripts are ever needed |
+```
+Workspace:   /Users/adrianrodriguez/Desktop/calii-ops-app
+Bash mount:  /sessions/beautiful-friendly-ptolemy/mnt/calii-ops-app/
+Deploy:      Netlify (git push triggers deploy)
+```
