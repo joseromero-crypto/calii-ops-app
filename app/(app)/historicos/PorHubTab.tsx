@@ -683,14 +683,39 @@ function WowTooltip({
 }
 
 /**
+ * Compute a y-axis ceiling that suppresses outliers.
+ *
+ * Strategy: take the 90th-percentile of all displayed values, add 25% headroom,
+ * then snap up to the nearest "nice" magnitude step. This keeps the majority of
+ * lines visible and distinct even when a single outlier would otherwise flatten
+ * everything else. Returns undefined when there is no data (auto-scale).
+ */
+function computeYMax(vals: (number | null)[]): number | undefined {
+  const nums = vals.filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
+  if (nums.length === 0) return undefined;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const p90    = sorted[Math.min(Math.floor(sorted.length * 0.9), sorted.length - 1)];
+  const raw    = p90 * 1.25;
+  if (raw <= 0) return undefined;
+  const mag      = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm     = raw / mag;
+  const niceMult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return niceMult * mag;
+}
+
+/**
  * Generic WoW line chart — works for both assemblers and drivers.
  *
  * Rules:
- *   • Shows the last 5 weeks; older weeks are dropped automatically.
- *   • Only graphs entities active in the most recent week (present in the data).
- *     Cut entities disappear; new entities start mid-chart with blank prior weeks.
+ *   • `displayWeeks` (passed by parent) is shared across all charts in a section
+ *     so every chart shows the same date range on the x-axis.
+ *   • Only graphs entities with a non-null value in the most recent data week.
+ *     Departed assemblers (absent from the last week) are excluded automatically.
+ *     New assemblers start mid-chart; gaps in history are bridged with connectNulls.
  *   • Entity line order is fixed by most-recent-week value, biggest → smallest.
  *     Hover tooltip follows the same order regardless of which week is hovered.
+ *   • Y-axis is capped at the 90th-percentile + headroom to prevent outliers from
+ *     compressing the majority of lines.
  *   • `wide` = col-span-2 (full row width), used for the "hero" KPI in each section.
  */
 function WowChart({
@@ -699,29 +724,31 @@ function WowChart({
   unit,
   direction,
   wide = false,
+  displayWeeks,
 }: {
   rows: Peer[];
   title: string;
   unit: string;
   direction: string;
   wide?: boolean;
+  displayWeeks: string[];
 }) {
-  // All weeks present in the data, sorted ascending.
-  const allWeeks = [...new Set(rows.map((r) => r.week_start))].sort();
-  if (allWeeks.length === 0) return null;
+  // Weeks actually present in this KPI's data — used only to find mostRecentWeek.
+  const rowWeeks = [...new Set(rows.map((r) => r.week_start))].sort();
+  if (rowWeeks.length === 0) return null;
+  const mostRecentWeek = rowWeeks[rowWeeks.length - 1];
 
-  // Rolling 5-week window.
-  const displayWeeks   = allWeeks.slice(-5);
-  const mostRecentWeek = allWeeks[allWeeks.length - 1];
-
-  // Active entities: those with at least one row in the most recent week.
+  // Active entities: non-null value in the most recent week they appear in.
+  // Excludes departed assemblers (no row in mostRecentWeek) and those with a
+  // null most-recent value (absent / no data that week).
   const activeEntities = new Set(
-    rows.filter((r) => r.week_start === mostRecentWeek).map((r) => r.entity_key)
+    rows
+      .filter((r) => r.week_start === mostRecentWeek && r.value !== null)
+      .map((r) => r.entity_key)
   );
   if (activeEntities.size === 0) return null;
 
   // Fixed order: descending by most-recent-week value (biggest first).
-  // Entities with null most-recent value go to the bottom.
   const entityOrder = [...activeEntities].sort((a, b) => {
     const av = rows.find((r) => r.week_start === mostRecentWeek && r.entity_key === a)?.value ?? null;
     const bv = rows.find((r) => r.week_start === mostRecentWeek && r.entity_key === b)?.value ?? null;
@@ -742,7 +769,7 @@ function WowChart({
     return unit === 'pct' ? +(v * 100).toFixed(2) : v;
   };
 
-  // Build chart data for the 5 display weeks, active entities only.
+  // Build chart data using the shared displayWeeks from the parent section.
   const data = displayWeeks.map((w) => {
     const point: Record<string, string | number | null> = { week: weekEndLabel(w) };
     for (const e of entityOrder) {
@@ -751,6 +778,12 @@ function WowChart({
     }
     return point;
   });
+
+  // Y-axis: cap at 90th-percentile + headroom to suppress outliers.
+  const allDisplayVals = data.flatMap((pt) =>
+    entityOrder.map((e) => pt[e] as number | null)
+  );
+  const yMax = computeYMax(allDisplayVals);
 
   const yFmt = (v: number) =>
     unit === 'pct' ? `${v.toFixed(1)}%` : unit === 'rate' ? v.toFixed(1) : v.toFixed(0);
@@ -763,7 +796,7 @@ function WowChart({
           {direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}
         </span>
       </div>
-      <ResponsiveContainer width="100%" height={wide ? 200 : 170}>
+      <ResponsiveContainer width="100%" height={wide ? 210 : 180}>
         <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis
@@ -778,6 +811,7 @@ function WowChart({
             width={44}
             axisLine={false}
             tickLine={false}
+            domain={yMax !== undefined ? [0, yMax] : [0, 'auto']}
           />
           <Tooltip
             content={<WowTooltip entityOrder={entityOrder} colorMap={colorMap} unit={unit} />}
@@ -792,26 +826,12 @@ function WowChart({
               stroke={colorMap.get(e)!}
               strokeWidth={1.6}
               dot={false}
-              connectNulls={false}
+              connectNulls
               isAnimationActive={false}
             />
           ))}
         </LineChart>
       </ResponsiveContainer>
-      {/* Inline legend — same fixed order as the tooltip */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2.5">
-        {entityOrder.map((e) => (
-          <div key={e} className="flex items-center gap-1 min-w-0">
-            <div
-              style={{
-                width: 16, height: 2, borderRadius: 1, flexShrink: 0,
-                backgroundColor: colorMap.get(e),
-              }}
-            />
-            <span className="text-[9px] text-[var(--muted)] truncate max-w-[88px]">{e}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -846,6 +866,11 @@ function AssemblerWowSection({
     'tasa_armado',
   ].some((id) => rows(id).length > 0);
 
+  // Shared x-axis: last 5 weeks across ALL assembler KPIs for this hub so every
+  // chart shows the same date range regardless of per-KPI data availability.
+  const allSectionWeeks = [...new Set(hubRows.map((r) => r.week_start))].sort();
+  const displayWeeks    = allSectionWeeks.slice(-5);
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
@@ -860,13 +885,13 @@ function AssemblerWowSection({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct} />
-          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct} />
-          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct} />
-          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct} />
-          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} />
-          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} />
-          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado} wide />
+          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct}              displayWeeks={displayWeeks} />
+          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct}            displayWeeks={displayWeeks} />
+          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct}             displayWeeks={displayWeeks} />
+          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct}           displayWeeks={displayWeeks} />
+          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} displayWeeks={displayWeeks} />
+          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} displayWeeks={displayWeeks} />
+          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado}                        displayWeeks={displayWeeks} wide />
         </div>
       )}
     </div>
@@ -898,6 +923,10 @@ function DriverWowSection({
     'pct_tardias_reparto', 'pct_undelivered', 'entregas_erroneas',
   ].some((id) => rows(id).length > 0);
 
+  // Shared x-axis: last 5 weeks across ALL driver KPIs for this hub.
+  const allSectionWeeks = [...new Set(hubRows.map((r) => r.week_start))].sort();
+  const displayWeeks    = allSectionWeeks.slice(-5);
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
@@ -912,9 +941,9 @@ function DriverWowSection({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} />
-          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered} />
-          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas} wide />
+          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} />
+          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} />
+          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} wide />
         </div>
       )}
     </div>
