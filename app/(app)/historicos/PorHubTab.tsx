@@ -685,18 +685,24 @@ function WowTooltip({
 /**
  * Compute a y-axis ceiling that suppresses outliers.
  *
- * Strategy: take the 90th-percentile of all displayed values, add 25% headroom,
- * then snap up to the nearest "nice" magnitude step. This keeps the majority of
- * lines visible and distinct even when a single outlier would otherwise flatten
- * everything else. Returns undefined when there is no data (auto-scale).
+ * Strategy: 75th-percentile + 50% headroom, snapped to a nice magnitude step.
+ * p75 is used instead of p90 because with small datasets (e.g. 5 assemblers ×
+ * 5 weeks ≈ 15–25 non-null points) p90 often lands on or near the outlier
+ * itself. p75 reliably represents the "normal" operating range even with few
+ * rows, and the 50% headroom provides enough breathing room above typical peaks.
+ * Values above the cap are rendered clipped at the chart boundary — the user
+ * can hover to see the actual value.
+ * Returns undefined (→ auto-scale) when there is no positive data.
  */
 function computeYMax(vals: (number | null)[]): number | undefined {
   const nums = vals.filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
   if (nums.length === 0) return undefined;
   const sorted = [...nums].sort((a, b) => a - b);
-  const p90    = sorted[Math.min(Math.floor(sorted.length * 0.9), sorted.length - 1)];
-  const raw    = p90 * 1.25;
+  const p75idx = Math.floor(sorted.length * 0.75);
+  const p75    = sorted[Math.min(p75idx, sorted.length - 1)];
+  const raw    = p75 * 1.5;   // 50% headroom above the 75th percentile
   if (raw <= 0) return undefined;
+  // Snap up to the nearest nice magnitude ceiling (1 / 2 / 5 / 10 × 10^n).
   const mag      = Math.pow(10, Math.floor(Math.log10(raw)));
   const norm     = raw / mag;
   const niceMult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
@@ -817,6 +823,7 @@ function WowChart({
             content={<WowTooltip entityOrder={entityOrder} colorMap={colorMap} unit={unit} />}
             cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
             isAnimationActive={false}
+            wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
           />
           {entityOrder.map((e) => (
             <Line
