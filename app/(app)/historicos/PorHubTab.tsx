@@ -647,14 +647,12 @@ function WowTooltip({
   active,
   payload,
   label,
-  entityOrder,
   colorMap,
   unit,
 }: {
   active?: boolean;
   payload?: Array<{ name: string; value: number | null }>;
   label?: string;
-  entityOrder: string[];
   colorMap: Map<string, string>;
   unit: string;
 }) {
@@ -665,17 +663,22 @@ function WowTooltip({
     if (unit === 'rate')  return v.toFixed(1);
     return v.toFixed(0);
   };
-  const valueMap = new Map(payload.map((p) => [p.name, p.value]));
+  // Sort by current-hovered-week value (highest first) — updates as you pan across weeks.
+  const sorted = [...payload].sort((a, b) => {
+    const av = a.value ?? -Infinity;
+    const bv = b.value ?? -Infinity;
+    return bv - av;
+  });
   return (
     <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded-lg shadow-lg pointer-events-none min-w-[150px]">
       <div className="font-semibold mb-1.5 text-[11px] opacity-80">{label}</div>
-      {entityOrder.map((entity) => (
-        <div key={entity} className="flex items-center justify-between gap-4 leading-5">
+      {sorted.map((entry) => (
+        <div key={entry.name} className="flex items-center justify-between gap-4 leading-5">
           <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(entity) }} />
-            <span className="opacity-90 truncate max-w-[110px]">{entity}</span>
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(entry.name) }} />
+            <span className="opacity-90 truncate max-w-[110px]">{entry.name}</span>
           </div>
-          <span className="font-bold tabular-nums">{fmt(valueMap.get(entity))}</span>
+          <span className="font-bold tabular-nums">{fmt(entry.value)}</span>
         </div>
       ))}
     </div>
@@ -685,24 +688,26 @@ function WowTooltip({
 /**
  * Compute a y-axis ceiling that suppresses outliers.
  *
- * Strategy: 75th-percentile + 50% headroom, snapped to a nice magnitude step.
- * p75 is used instead of p90 because with small datasets (e.g. 5 assemblers ×
- * 5 weeks ≈ 15–25 non-null points) p90 often lands on or near the outlier
- * itself. p75 reliably represents the "normal" operating range even with few
- * rows, and the 50% headroom provides enough breathing room above typical peaks.
- * Values above the cap are rendered clipped at the chart boundary — the user
- * can hover to see the actual value.
- * Returns undefined (→ auto-scale) when there is no positive data.
+ * Works on NON-ZERO values only — zeros (no incidents / no waste) don't
+ * represent the "normal active range" and would drag the percentile down to 0.
+ *
+ * Key fix: percentile index uses (n-1)*p (0-based interpolation), NOT n*p.
+ * With n*p, p75 for 4 values = floor(3) = index 3 = the max → outlier wins.
+ * With (n-1)*p, p75 for 4 values = floor(2.25) = index 2 = second-highest. ✓
+ *
+ * Headroom is 1.3× (30%) above the 75th percentile, then snapped up to a
+ * nice magnitude ceiling. Values above the cap are clipped at the chart top;
+ * users can hover to see the exact value.
  */
 function computeYMax(vals: (number | null)[]): number | undefined {
   const nums = vals.filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
   if (nums.length === 0) return undefined;
   const sorted = [...nums].sort((a, b) => a - b);
-  const p75idx = Math.floor(sorted.length * 0.75);
-  const p75    = sorted[Math.min(p75idx, sorted.length - 1)];
-  const raw    = p75 * 1.5;   // 50% headroom above the 75th percentile
+  // Correct 0-based percentile: use (n-1) not n so the index never exceeds the last element.
+  const p75idx = Math.floor((sorted.length - 1) * 0.75);
+  const p75    = sorted[p75idx];
+  const raw    = p75 * 1.3;
   if (raw <= 0) return undefined;
-  // Snap up to the nearest nice magnitude ceiling (1 / 2 / 5 / 10 × 10^n).
   const mag      = Math.pow(10, Math.floor(Math.log10(raw)));
   const norm     = raw / mag;
   const niceMult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
@@ -820,7 +825,7 @@ function WowChart({
             domain={yMax !== undefined ? [0, yMax] : [0, 'auto']}
           />
           <Tooltip
-            content={<WowTooltip entityOrder={entityOrder} colorMap={colorMap} unit={unit} />}
+            content={<WowTooltip colorMap={colorMap} unit={unit} />}
             cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
             isAnimationActive={false}
             wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}

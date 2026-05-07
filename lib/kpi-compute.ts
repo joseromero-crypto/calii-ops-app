@@ -347,17 +347,20 @@ function extractIncidentesValues(
   rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
   hubCity: Map<string, City>
 ): EntityValue[] {
-  // Build driver name (lowercase) → { hub_id, city } from repartidores rows.
-  const driverHub = new Map<string, { hub_id: string; city: City | null }>();
+  // Build driver name (lowercase) → { hub_id, city, originalName } from repartidores rows.
+  // originalName is stored so we can add zero-incident entries for roster drivers
+  // who don't appear in the incidentes file at all.
+  const driverHub = new Map<string, { hub_id: string; city: City | null; originalName: string }>();
   for (const r of rowsByApp.get('desempeno_repartidores') ?? []) {
-    const name = (
+    const originalName = (
       String(r.data['driver_name']     ?? '').trim() ||
       String(r.data['driver_nickname'] ?? '').trim()
-    ).toLowerCase();
+    );
+    const name = originalName.toLowerCase();
     const hubName = String(r.data['hub'] ?? '').trim();
     const hubId   = hubNameToId(hubName);
     if (name && hubId) {
-      driverHub.set(name, { hub_id: hubId, city: r.upload.city ?? null });
+      driverHub.set(name, { hub_id: hubId, city: r.upload.city ?? null, originalName });
     }
   }
 
@@ -403,6 +406,24 @@ function extractIncidentesValues(
       });
     }
   }
+
+  // Fill in zero-incident entries for every driver on this week's repartidores
+  // roster who had no qualifying incidents. This ensures the WoW chart shows all
+  // active drivers, not only those who had errors — matching the user expectation
+  // that the roster defines who is graphed, incidents just determine their count.
+  for (const [, info] of driverHub) {
+    if (!byDriver.has(info.originalName)) {
+      byDriver.set(info.originalName, {
+        entity_type: 'driver',
+        entity_key:  info.originalName,
+        city:        info.city,
+        hub_id:      info.hub_id,
+        numerator:   0,
+        denominator: 1,
+      });
+    }
+  }
+
   return Array.from(byDriver.values());
 }
 
