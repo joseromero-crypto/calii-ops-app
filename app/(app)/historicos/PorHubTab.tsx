@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import {
   LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -71,6 +71,16 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
   faltantes_carnes_pct:   'carnes',
   faltantes_graneles_pct: 'abarrotes',
 };
+
+/**
+ * Per-unit y-axis ceiling when slider is dragged all the way to the bottom.
+ * pct values are in display units (0–100), not fractions.
+ */
+const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20 };
+/**
+ * Per-unit y-axis floor (top of slider = most zoomed in).
+ */
+const UNIT_MIN_CEIL: Record<string, number> = { pct: 5, rate: 10, count: 1 };
 
 /** Distinct color palette for individual assembler lines (up to 14). */
 const ASSEMBLER_PALETTE = [
@@ -637,11 +647,94 @@ function MnaBackFaceList({ items, max }: {
 /* ─── WoW chart components ───────────────────────────────────────────────── */
 
 /**
+ * Vertical drag-to-adjust y-axis slider.
+ *
+ * Physical mapping:
+ *   Top    → min ceiling (most zoomed in — smallest y-axis max)
+ *   Bottom → max ceiling (most zoomed out — full unit range)
+ *
+ * Default position comes from computeYMax (smart cap). Drag resets on hub
+ * switch because the parent passes a new `value` and fires useEffect.
+ */
+function YSlider({
+  value,
+  min,
+  max,
+  height,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  height: number;
+  onChange: (v: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  // Map value → pixel offset (0 = top = min, height = bottom = max)
+  const clamped = Math.max(min, Math.min(max, value));
+  const handleY = Math.round(((clamped - min) / (max - min)) * height);
+
+  function startDrag(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const track = trackRef.current;
+    if (!track) return;
+
+    function move(evt: PointerEvent) {
+      const rect = track!.getBoundingClientRect();
+      const y    = Math.max(0, Math.min(height, evt.clientY - rect.top));
+      const raw  = min + (y / height) * (max - min);
+      onChange(Math.round(raw * 10) / 10);
+    }
+    function up() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    // Respond to the initial click position immediately
+    move(e.nativeEvent as PointerEvent);
+  }
+
+  return (
+    <div
+      ref={trackRef}
+      style={{
+        width: 14, height, position: 'relative',
+        cursor: 'ns-resize', flexShrink: 0, touchAction: 'none',
+      }}
+      onPointerDown={startDrag}
+      title={`Eje Y: ${value.toFixed(1)} · arrastra para ajustar`}
+    >
+      {/* Background track */}
+      <div style={{
+        position: 'absolute', left: '50%', top: 0, bottom: 0,
+        width: 4, transform: 'translateX(-50%)',
+        borderRadius: 2, background: '#e2e8f0',
+      }} />
+      {/* Active fill below handle (zoomed-out region) */}
+      <div style={{
+        position: 'absolute', left: '50%', top: handleY, bottom: 0,
+        width: 4, transform: 'translateX(-50%)',
+        borderRadius: '0 0 2px 2px', background: '#94a3b8', opacity: 0.6,
+      }} />
+      {/* Knob */}
+      <div style={{
+        position: 'absolute', left: '50%', top: handleY,
+        width: 10, height: 10, marginLeft: -5, marginTop: -5,
+        borderRadius: '50%', background: '#64748b',
+        border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        pointerEvents: 'none',
+      }} />
+    </div>
+  );
+}
+
+/**
  * Tooltip for WoW line charts.
  *
- * Order is FIXED to the most-recent-week ranking (biggest → smallest) passed
- * in via `entityOrder`. This keeps the legend stable as the user hovers across
- * weeks, making it easy to trace each line without it jumping around.
+ * Entries are sorted by the hovered week's value (highest first) so the ranking
+ * updates dynamically as you pan across weeks — easier to read than a fixed order.
  */
 function WowTooltip({
   active,
@@ -724,9 +817,12 @@ function computeYMax(vals: (number | null)[]): number | undefined {
  *     Departed assemblers (absent from the last week) are excluded automatically.
  *     New assemblers start mid-chart; gaps in history are bridged with connectNulls.
  *   • Entity line order is fixed by most-recent-week value, biggest → smallest.
- *     Hover tooltip follows the same order regardless of which week is hovered.
- *   • Y-axis is capped at the 90th-percentile + headroom to prevent outliers from
- *     compressing the majority of lines.
+ *     Hover tooltip sorts dynamically per hovered week.
+ *   • Y-axis default is the smart p75 cap from computeYMax.
+ *     A vertical drag slider on the left lets the user override the ceiling live:
+ *       top    = most zoomed in (UNIT_MIN_CEIL)
+ *       bottom = full unit range (UNIT_MAX_CEIL: 100% / 250 rate / 20 count)
+ *     Slider resets to smart cap on hub switch.
  *   • `wide` = col-span-2 (full row width), used for the "hero" KPI in each section.
  */
 function WowChart({
@@ -744,20 +840,15 @@ function WowChart({
   wide?: boolean;
   displayWeeks: string[];
 }) {
-  // Weeks actually present in this KPI's data — used only to find mostRecentWeek.
-  const rowWeeks = [...new Set(rows.map((r) => r.week_start))].sort();
-  if (rowWeeks.length === 0) return null;
-  const mostRecentWeek = rowWeeks[rowWeeks.length - 1];
+  // ── Derive all chart values BEFORE hooks (hooks must be unconditional) ────
+  const rowWeeks       = [...new Set(rows.map((r) => r.week_start))].sort();
+  const mostRecentWeek = rowWeeks.length > 0 ? rowWeeks[rowWeeks.length - 1] : null;
 
-  // Active entities: non-null value in the most recent week they appear in.
-  // Excludes departed assemblers (no row in mostRecentWeek) and those with a
-  // null most-recent value (absent / no data that week).
   const activeEntities = new Set(
-    rows
-      .filter((r) => r.week_start === mostRecentWeek && r.value !== null)
-      .map((r) => r.entity_key)
+    mostRecentWeek
+      ? rows.filter((r) => r.week_start === mostRecentWeek && r.value !== null).map((r) => r.entity_key)
+      : []
   );
-  if (activeEntities.size === 0) return null;
 
   // Fixed order: descending by most-recent-week value (biggest first).
   const entityOrder = [...activeEntities].sort((a, b) => {
@@ -766,84 +857,112 @@ function WowChart({
     if (av === null && bv === null) return 0;
     if (av === null) return 1;
     if (bv === null) return -1;
-    return bv - av; // descending
+    return bv - av;
   });
 
   const colorMap = new Map(
     entityOrder.map((e, i) => [e, ASSEMBLER_PALETTE[i % ASSEMBLER_PALETTE.length]])
   );
 
-  // Convert stored value to display value.
-  // pct KPIs are stored as 0–1 fractions in peer_comparisons → ×100 for display.
+  // pct KPIs stored as 0–1 fractions in peer_comparisons → ×100 for display.
   const toDisplay = (v: number | null): number | null => {
     if (v === null) return null;
     return unit === 'pct' ? +(v * 100).toFixed(2) : v;
   };
 
-  // Build chart data using the shared displayWeeks from the parent section.
   const data = displayWeeks.map((w) => {
     const point: Record<string, string | number | null> = { week: weekEndLabel(w) };
     for (const e of entityOrder) {
-      const row  = rows.find((r) => r.week_start === w && r.entity_key === e);
-      point[e] = toDisplay(row?.value ?? null);
+      const row = rows.find((r) => r.week_start === w && r.entity_key === e);
+      point[e]  = toDisplay(row?.value ?? null);
     }
     return point;
   });
 
-  // Y-axis: cap at 90th-percentile + headroom to suppress outliers.
-  const allDisplayVals = data.flatMap((pt) =>
-    entityOrder.map((e) => pt[e] as number | null)
-  );
-  const yMax = computeYMax(allDisplayVals);
+  const allDisplayVals = data.flatMap((pt) => entityOrder.map((e) => pt[e] as number | null));
+  const smartYMax      = computeYMax(allDisplayVals);
+
+  const unitMaxCeil = UNIT_MAX_CEIL[unit] ?? 100;
+  const unitMinCeil = UNIT_MIN_CEIL[unit] ?? 1;
+  const chartHeight = wide ? 210 : 180;
+
+  // ── Hooks — called unconditionally, before any early return ───────────────
+  const [manualYMax, setManualYMax] = useState<number>(smartYMax ?? unitMaxCeil);
+
+  // Reset slider to smart cap whenever the hub changes (smartYMax will differ).
+  useEffect(() => {
+    setManualYMax(smartYMax ?? unitMaxCeil);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smartYMax]);
+
+  // ── Early returns (after all hooks) ──────────────────────────────────────
+  if (rowWeeks.length === 0 || activeEntities.size === 0) return null;
 
   const yFmt = (v: number) =>
     unit === 'pct' ? `${v.toFixed(1)}%` : unit === 'rate' ? v.toFixed(1) : v.toFixed(0);
 
   return (
     <div className={`bg-white border border-[var(--line)] rounded-xl shadow-soft p-4${wide ? ' col-span-2' : ''}`}>
-      <div className="text-[12px] font-semibold text-[var(--ink)] mb-3 flex items-center justify-between">
+      {/* Header — 18 px left offset matches slider width + gap so title aligns with plot */}
+      <div
+        className="text-[12px] font-semibold text-[var(--ink)] mb-3 flex items-center justify-between"
+        style={{ paddingLeft: 18 }}
+      >
         <span>{title}</span>
         <span className="text-[10px] font-normal text-[var(--muted)]">
           {direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}
         </span>
       </div>
-      <ResponsiveContainer width="100%" height={wide ? 210 : 180}>
-        <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis
-            dataKey="week"
-            tick={{ fontSize: 9, fill: '#94a3b8' }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tickFormatter={yFmt}
-            tick={{ fontSize: 9, fill: '#94a3b8' }}
-            width={44}
-            axisLine={false}
-            tickLine={false}
-            domain={yMax !== undefined ? [0, yMax] : [0, 'auto']}
-          />
-          <Tooltip
-            content={<WowTooltip colorMap={colorMap} unit={unit} />}
-            cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
-            isAnimationActive={false}
-            wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
-          />
-          {entityOrder.map((e) => (
-            <Line
-              key={e}
-              type="monotone"
-              dataKey={e}
-              stroke={colorMap.get(e)!}
-              strokeWidth={1.6}
-              dot={false}
-              connectNulls
-              isAnimationActive={false}
-            />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
+
+      {/* Chart row: y-axis drag slider + line chart */}
+      <div className="flex items-stretch gap-1">
+        <YSlider
+          value={manualYMax}
+          min={unitMinCeil}
+          max={unitMaxCeil}
+          height={chartHeight}
+          onChange={setManualYMax}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis
+                dataKey="week"
+                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tickFormatter={yFmt}
+                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                width={44}
+                axisLine={false}
+                tickLine={false}
+                domain={[0, manualYMax]}
+              />
+              <Tooltip
+                content={<WowTooltip colorMap={colorMap} unit={unit} />}
+                cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                isAnimationActive={false}
+                wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+              />
+              {entityOrder.map((e) => (
+                <Line
+                  key={e}
+                  type="monotone"
+                  dataKey={e}
+                  stroke={colorMap.get(e)!}
+                  strokeWidth={1.6}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 }

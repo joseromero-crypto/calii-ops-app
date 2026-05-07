@@ -9,6 +9,10 @@ interface Props {
   hubs: Hub[];
   snapshots: Snapshot[];
   peers: Peer[];
+  /** Multi-week operator peer rows (within_hub) for the assembler WoW charts. */
+  assemblerTrend: Peer[];
+  /** Multi-week driver peer rows (within_hub) for the driver WoW charts. */
+  driverTrend: Peer[];
   mnaProducts: MnaProduct[];
   faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
@@ -46,7 +50,7 @@ export function HistoricosClient(props: Props) {
         <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa entre MHs</Tab>
       </div>
       {tab === 'kpi' && <PorKpiTab {...props} />}
-      {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} />}
+      {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} />}
       {tab === 'cmp' && <ComparativaTab {...props} />}
     </div>
   );
