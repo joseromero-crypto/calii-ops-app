@@ -73,16 +73,10 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
 };
 
 /**
- * Per-unit y-axis ceiling when slider is dragged all the way to the bottom
- * (most zoomed out). pct values are in display units (0–100), not fractions.
- * This is also the DEFAULT starting position — charts open fully zoomed out.
+ * Per-unit y-axis ceiling when slider is at the very bottom (most zoomed out).
+ * pct values are in display units (0–100), not fractions.
  */
 const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20 };
-/**
- * Per-unit y-axis floor (top of slider = most zoomed in).
- * Kept at 1 to avoid a zero domain; effectively the full range is 0–max.
- */
-const UNIT_MIN_CEIL: Record<string, number> = { pct: 1, rate: 1, count: 1 };
 
 /** Distinct color palette for individual assembler lines (up to 14). */
 const ASSEMBLER_PALETTE = [
@@ -885,17 +879,17 @@ function WowChart({
   const smartYMax      = computeYMax(allDisplayVals);
 
   const unitMaxCeil = UNIT_MAX_CEIL[unit] ?? 100;
-  const unitMinCeil = UNIT_MIN_CEIL[unit] ?? 1;
   const chartHeight = wide ? 210 : 180;
 
   // ── Hooks — called unconditionally, before any early return ───────────────
-  // Default: fully zoomed out (unitMaxCeil). User drags UP to set a custom ceiling.
-  const [manualYMax, setManualYMax] = useState<number>(unitMaxCeil);
+  // Default = smart cap so each chart loads at a sensible zoom level.
+  // Full drag range: top = 0, bottom = unitMaxCeil (100% / 250 / 20).
+  const [manualYMax, setManualYMax] = useState<number>(smartYMax ?? unitMaxCeil);
 
-  // Reset to full range when the hub changes so every hub starts fresh.
-  const hubKey = rows.map((r) => r.scope_key).find(Boolean) ?? '';
+  // Reset to smart cap when the hub changes (scope_key in rows changes).
+  const hubKey = rows.length > 0 ? (rows[0].scope_key ?? '') : '';
   useEffect(() => {
-    setManualYMax(unitMaxCeil);
+    setManualYMax(smartYMax ?? unitMaxCeil);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hubKey]);
 
@@ -922,7 +916,7 @@ function WowChart({
       <div className="flex items-stretch gap-1">
         <YSlider
           value={manualYMax}
-          min={unitMinCeil}
+          min={0}
           max={unitMaxCeil}
           height={chartHeight}
           onChange={setManualYMax}
@@ -943,7 +937,7 @@ function WowChart({
                 width={44}
                 axisLine={false}
                 tickLine={false}
-                domain={[0, manualYMax]}
+                domain={[0, Math.max(0.1, manualYMax)]}
               />
               <Tooltip
                 content={<WowTooltip colorMap={colorMap} unit={unit} />}
