@@ -73,14 +73,16 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
 };
 
 /**
- * Per-unit y-axis ceiling when slider is dragged all the way to the bottom.
- * pct values are in display units (0–100), not fractions.
+ * Per-unit y-axis ceiling when slider is dragged all the way to the bottom
+ * (most zoomed out). pct values are in display units (0–100), not fractions.
+ * This is also the DEFAULT starting position — charts open fully zoomed out.
  */
 const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20 };
 /**
  * Per-unit y-axis floor (top of slider = most zoomed in).
+ * Kept at 1 to avoid a zero domain; effectively the full range is 0–max.
  */
-const UNIT_MIN_CEIL: Record<string, number> = { pct: 5, rate: 10, count: 1 };
+const UNIT_MIN_CEIL: Record<string, number> = { pct: 1, rate: 1, count: 1 };
 
 /** Distinct color palette for individual assembler lines (up to 14). */
 const ASSEMBLER_PALETTE = [
@@ -887,13 +889,15 @@ function WowChart({
   const chartHeight = wide ? 210 : 180;
 
   // ── Hooks — called unconditionally, before any early return ───────────────
-  const [manualYMax, setManualYMax] = useState<number>(smartYMax ?? unitMaxCeil);
+  // Default: fully zoomed out (unitMaxCeil). User drags UP to set a custom ceiling.
+  const [manualYMax, setManualYMax] = useState<number>(unitMaxCeil);
 
-  // Reset slider to smart cap whenever the hub changes (smartYMax will differ).
+  // Reset to full range when the hub changes so every hub starts fresh.
+  const hubKey = rows.map((r) => r.scope_key).find(Boolean) ?? '';
   useEffect(() => {
-    setManualYMax(smartYMax ?? unitMaxCeil);
+    setManualYMax(unitMaxCeil);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [smartYMax]);
+  }, [hubKey]);
 
   // ── Early returns (after all hooks) ──────────────────────────────────────
   if (rowWeeks.length === 0 || activeEntities.size === 0) return null;
