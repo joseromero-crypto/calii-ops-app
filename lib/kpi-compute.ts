@@ -150,12 +150,41 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   // Enrich with prev_week_value + rolling stats
   const enriched = await enrichWithHistory(sb, allSnapshots, weekStart);
 
+  // Deduplicate both arrays on their respective conflict keys before upserting.
+  //
+  // Duplicates can arise from:
+  //   a) Multiple upload records for the same (app, week, hub) slot — a known
+  //      edge case that the upload route now prevents but may exist in older data.
+  //   b) Same-named drivers across different hubs colliding on the global scope
+  //      (entity_key × scope_type='global' × scope_key=null).
+  //
+  // PostgreSQL raises "ON CONFLICT DO UPDATE command cannot affect row a second
+  // time" when two rows in the same batch share the same conflict key.
+  function dedupByKey<T extends Record<string, unknown>>(rows: T[], key: (r: T) => string): T[] {
+    const seen = new Set<string>();
+    return rows.filter((r) => {
+      const k = key(r);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  const dedupedSnapshots = dedupByKey(
+    enriched,
+    (r) => `${r.kpi_id}|${r.week_start}|${r.scope_level}|${r.scope_key ?? '__null__'}`
+  );
+  const dedupedPeers = dedupByKey(
+    allPeers,
+    (r) => `${r.kpi_id}|${r.week_start}|${r.entity_type}|${r.entity_key}|${r.scope_type}|${r.scope_key ?? '__null__'}`
+  );
+
   // Upsert both tables in parallel — each table's own batches run concurrently,
   // and the two tables are written simultaneously to maximise throughput and
   // stay well within the 60 s Netlify maxDuration.
   const [snapshotsWritten, peersWritten] = await Promise.all([
-    parallelUpsert(sb, 'kpi_snapshots', enriched, 'kpi_id,week_start,scope_level,scope_key'),
-    parallelUpsert(sb, 'peer_comparisons', allPeers, 'kpi_id,week_start,entity_type,entity_key,scope_type,scope_key'),
+    parallelUpsert(sb, 'kpi_snapshots', dedupedSnapshots, 'kpi_id,week_start,scope_level,scope_key'),
+    parallelUpsert(sb, 'peer_comparisons', dedupedPeers, 'kpi_id,week_start,entity_type,entity_key,scope_type,scope_key'),
   ]);
 
   return { week_start: weekStart, snapshots_written: snapshotsWritten, peers_written: peersWritten, kpis_processed: kpisProcessed, warnings };
@@ -186,6 +215,8 @@ function computeEntityValues(
       return extractMnaValues(rows, kpi, hubCity);
     case 'incidentes':
       return extractIncidentesValues(rows, rowsByApp, hubCity);
+    case 'discrepancia':
+      return extractDiscrepanciaValues(rows, hubCity);
     default:
       return [];
   }
@@ -427,6 +458,58 @@ function extractIncidentesValues(
   return Array.from(byDriver.values());
 }
 
+/**
+ * Discrepancia — DRIVER-LEVEL cash reconciliation shortfall.
+ *
+ * CSV columns expected:
+ *   Repartidor                  → driver display name
+ *   Hub                         → hub name (resolved via hubNameToId)
+ *   Cálculo digital efectivo    → expected amount (order totals)
+ *   Conciliación manual         → actual amount deposited
+ *
+ * shortfall = expected − deposited  (positive = driver is short, owes money)
+ *
+ * Hub-level KPI value = Σ shortfalls across all drivers in the hub.
+ * KPI direction: lower_is_better (minimise shortfall).
+ */
+function extractDiscrepanciaValues(
+  rows: { upload: UploadRef; data: Record<string, unknown> }[],
+  hubCity: Map<string, City>
+): EntityValue[] {
+  const out: EntityValue[] = [];
+  for (const r of rows) {
+    const drvName = String(r.data['Repartidor'] ?? '').trim();
+    const hubName = String(r.data['Hub']         ?? '').trim();
+    // Hub from row takes precedence; fall back to upload-level hub_id.
+    const hubId   = hubNameToId(hubName) ?? r.upload.hub_id ?? null;
+    if (!drvName || !hubId) continue;
+
+    // Accept both accented and unaccented variants in case encoding varies.
+    const expected  = toNum(
+      r.data['Cálculo digital efectivo'] ??
+      r.data['Calculo digital efectivo']
+    );
+    const deposited = toNum(
+      r.data['Conciliación manual'] ??
+      r.data['Conciliacion manual']
+    );
+    if (!Number.isFinite(expected) || !Number.isFinite(deposited)) continue;
+
+    // Positive shortfall = driver deposited less than expected.
+    const shortfall = expected - deposited;
+
+    out.push({
+      entity_type: 'driver',
+      entity_key:  drvName,
+      city:        hubCity.get(hubId) ?? null,
+      hub_id:      hubId,
+      numerator:   shortfall,
+      denominator: 1, // currency KPI — ratio() returns numerator directly
+    });
+  }
+  return out;
+}
+
 // KPI IDs that read hub % directly from a Retool export file.
 const FALTANTES_HUB_PCT_KPI_IDS = new Set([
   'faltantes_armador_pct',
@@ -582,17 +665,42 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
   }
 
   // Global
-  const num = sum(values, (v) => v.numerator);
-  const den = sum(values, (v) => v.denominator);
-  snapshots.push({
-    kpi_id:      kpi.id,
-    week_start:  weekStart,
-    scope_level: 'global',
-    scope_key:   null,
-    value:       ratio(num, den, kpi),
-    numerator:   num,
-    denominator: den,
-  });
+  //
+  // For currency KPIs (unit === 'currency'), use the mean of hub totals rather
+  // than the raw sum of all entity values. The sum would be ~8× the size of any
+  // individual hub's value, making the Por KPI reference line useless for
+  // comparison. Mean-of-hubs gives a fair benchmark for each hub to compare against.
+  //
+  // For all other units (pct, rate, count), keep the standard weighted-sum formula.
+  if (kpi.unit === 'currency') {
+    const hubTotals = [...byHub.entries()]
+      .filter(([hubId]) => hubId !== '_unassigned')
+      .map(([, vs]) => sum(vs, (v) => v.numerator));
+    const globalVal = hubTotals.length > 0
+      ? sum(hubTotals, (x) => x) / hubTotals.length
+      : null;
+    snapshots.push({
+      kpi_id:      kpi.id,
+      week_start:  weekStart,
+      scope_level: 'global',
+      scope_key:   null,
+      value:       globalVal,
+      numerator:   globalVal ?? 0,
+      denominator: 1,
+    });
+  } else {
+    const num = sum(values, (v) => v.numerator);
+    const den = sum(values, (v) => v.denominator);
+    snapshots.push({
+      kpi_id:      kpi.id,
+      week_start:  weekStart,
+      scope_level: 'global',
+      scope_key:   null,
+      value:       ratio(num, den, kpi),
+      numerator:   num,
+      denominator: den,
+    });
+  }
 
   return snapshots;
 }

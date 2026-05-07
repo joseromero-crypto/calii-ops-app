@@ -76,7 +76,7 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
  * Per-unit y-axis ceiling when slider is at the very bottom (most zoomed out).
  * pct values are in display units (0–100), not fractions.
  */
-const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20 };
+const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20, currency: 50_000 };
 
 /** Distinct color palette for individual assembler lines (up to 14). */
 const ASSEMBLER_PALETTE = [
@@ -97,9 +97,10 @@ const KPI_META: Record<string, KpiMeta> = {
   incidentes_faltantes_parciales_pct: { title: 'Faltantes parciales',     unit: 'pct',   direction: 'lower_is_better'  },
   tasa_armado:                        { title: 'Velocidad de armado',     unit: 'rate',  direction: 'higher_is_better' },
   // Driver KPIs
-  pct_tardias_reparto:                { title: '% entregas tardías',      unit: 'pct',   direction: 'lower_is_better'  },
-  pct_undelivered:                    { title: '% entregas fallidas',     unit: 'pct',   direction: 'lower_is_better'  },
-  entregas_erroneas:                  { title: 'Entregas erróneas',       unit: 'count', direction: 'lower_is_better'  },
+  pct_tardias_reparto:                { title: '% entregas tardías',      unit: 'pct',      direction: 'lower_is_better'  },
+  pct_undelivered:                    { title: '% entregas fallidas',     unit: 'pct',      direction: 'lower_is_better'  },
+  entregas_erroneas:                  { title: 'Entregas erróneas',       unit: 'count',    direction: 'lower_is_better'  },
+  discrepancia_mxn:                   { title: 'Discrepancia ($)',         unit: 'currency', direction: 'lower_is_better'  },
 };
 
 export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], currentWeek, selectedHub }: Props) {
@@ -665,8 +666,9 @@ function WowTooltip({
   if (!active || !payload?.length) return null;
   const fmt = (v: number | null | undefined) => {
     if (v === null || v === undefined) return '—';
-    if (unit === 'pct')   return `${v.toFixed(1)}%`;
-    if (unit === 'rate')  return v.toFixed(1);
+    if (unit === 'pct')      return `${v.toFixed(1)}%`;
+    if (unit === 'rate')     return v.toFixed(1);
+    if (unit === 'currency') return `$${Math.round(v).toLocaleString('es-MX')}`;
     return v.toFixed(0);
   };
   // Sort by current-hovered-week value (highest first) — updates as you pan across weeks.
@@ -814,7 +816,10 @@ function WowChart({
   if (rowWeeks.length === 0 || activeEntities.size === 0) return null;
 
   const yFmt = (v: number) =>
-    unit === 'pct' ? `${v.toFixed(1)}%` : unit === 'rate' ? v.toFixed(1) : v.toFixed(0);
+    unit === 'pct'      ? `${v.toFixed(1)}%`
+    : unit === 'rate'   ? v.toFixed(1)
+    : unit === 'currency' ? `$${Math.round(v).toLocaleString('es-MX')}`
+    : v.toFixed(0);
 
   return (
     <div className={`bg-white border border-[var(--line)] rounded-xl shadow-soft p-4${wide ? ' sm:col-span-2' : ''}`}>
@@ -978,7 +983,7 @@ function DriverWowSection({
   const rows    = (id: string) => hubRows.filter((r) => r.kpi_id === id);
 
   const hasAnyData = [
-    'pct_tardias_reparto', 'pct_undelivered', 'entregas_erroneas',
+    'pct_tardias_reparto', 'pct_undelivered', 'entregas_erroneas', 'discrepancia_mxn',
   ].some((id) => rows(id).length > 0);
 
   // Shared x-axis: last 5 weeks across ALL driver KPIs for this hub.
@@ -1002,6 +1007,7 @@ function DriverWowSection({
           <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} />
           <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} />
           <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} wide />
+          <WowChart rows={rows('discrepancia_mxn')}    {...KPI_META.discrepancia_mxn}    displayWeeks={displayWeeks} wide />
         </div>
       )}
     </div>

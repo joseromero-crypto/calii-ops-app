@@ -42,8 +42,11 @@ export async function POST(req: Request) {
   }
   const { app_id, week_start, city, hub_id } = parsed.data;
 
-  // Sanity-check that week_start is a Friday
-  const weekDate = new Date(week_start + 'T00:00:00Z');
+  // Sanity-check that week_start is a Friday.
+  // Use local-time noon (T12:00:00) — NOT UTC midnight (T00:00:00Z) — so that
+  // weekStartFriday's local-time methods (getDay, setDate, setHours) see the
+  // correct calendar day regardless of the server's timezone offset.
+  const weekDate = new Date(week_start + 'T12:00:00');
   const fri = weekStartFriday(weekDate);
   if (fri.toISOString().slice(0, 10) !== week_start) {
     return NextResponse.json({
@@ -105,13 +108,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'storage_failed', message: storageErr.message }, { status: 500 });
   }
 
-  // ----- Upsert upload record (one slot per (app, week, city, hub)) -----
+  // ----- Replace upload record (one slot per (app, week, city, hub)) -----
+  //
+  // We use delete-then-insert rather than upsert because PostgreSQL unique
+  // constraints treat NULL != NULL — two rows with (app_id, week_start,
+  // city=NULL, hub_id=NULL) do NOT conflict, so upsert silently inserts a
+  // duplicate for total-scope apps. Explicit lookup + delete guarantees
+  // exactly one record per slot regardless of scope.
   const promptVersionRow = await admin.from('prompt_versions').select('id').order('id', { ascending: false }).limit(1).single();
   const promptVersion = promptVersionRow.data?.id ?? 1;
 
+  // Look up ALL existing uploads for this slot, handling NULLs explicitly.
+  // We use select() not maybeSingle() because prior bugs may have left duplicate
+  // records; maybeSingle() would silently error on >1 row and return null,
+  // causing yet another INSERT to be added on top of the duplicates.
+  let existingIds: string[] = [];
+  {
+    let q = admin.from('uploads').select('id')
+      .eq('app_id', app_id)
+      .eq('week_start', week_start);
+    q = city   ? q.eq('city',   city)   : q.is('city',   null);
+    q = hub_id ? q.eq('hub_id', hub_id) : q.is('hub_id', null);
+    const { data: existing } = await q;
+    existingIds = (existing ?? []).map((r: { id: string }) => r.id);
+  }
+
+  // Delete all duplicate records: rows first (FK constraint), then the uploads.
+  if (existingIds.length > 0) {
+    await Promise.all(
+      existingIds.map((id) => admin.from('upload_rows').delete().eq('upload_id', id))
+    );
+    await admin.from('uploads').delete().in('id', existingIds);
+  }
+
   const { data: upload, error: upErr } = await admin
     .from('uploads')
-    .upsert({
+    .insert({
       app_id,
       week_start,
       city: city ?? null,
@@ -123,7 +155,7 @@ export async function POST(req: Request) {
       status: 'validated',
       validation_report: report,
       prompt_version: promptVersion,
-    }, { onConflict: 'app_id,week_start,city,hub_id' })
+    })
     .select('id')
     .single();
 
@@ -132,8 +164,6 @@ export async function POST(req: Request) {
   }
 
   // ----- Persist rows -----
-  // Wipe prior rows for this upload (re-upload case), then insert in batches.
-  await admin.from('upload_rows').delete().eq('upload_id', upload.id);
 
   const coerced = coerceRows(csv.rows as Record<string, string>[], columns as AppColumn[]);
   const BATCH = 500;
