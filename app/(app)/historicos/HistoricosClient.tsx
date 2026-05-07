@@ -45,7 +45,7 @@ export function HistoricosClient(props: Props) {
         </span>
       </div>
       <div className="flex gap-1 border-b border-[var(--line)] mb-5 overflow-x-auto">
-        <Tab href={tabHref('kpi')}  active={tab === 'kpi'}>📈 Por KPI<span className="hidden sm:inline"> · análisis profundo</span></Tab>
+        <Tab href={tabHref('kpi')}  active={tab === 'kpi'}>📈 Por KPI</Tab>
         <Tab href={tabHref('hub')}  active={tab === 'hub'}>🏬 Por hub<span className="hidden sm:inline"> · vista 1:1</span></Tab>
         <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa<span className="hidden sm:inline"> entre MHs</span></Tab>
       </div>

@@ -6,12 +6,11 @@ import {
 } from 'recharts';
 import {
   HUB_COLORS, formatValue, formatDelta, weekEndLabel, weekEndLabelLong,
-  deltaClassForDirection, zToHeatmapClass,
+  deltaClassForDirection,
   type Kpi, type Hub, type Snapshot, type Peer,
 } from './_shared';
 
-// Custom tooltip that re-sorts hubs by the hovered week's value (highest → lowest).
-// This way the legend order matches the tooltip order for every week, not just currentWeek.
+// ─── Chart tooltip ────────────────────────────────────────────────────────────
 function ChartTooltip({
   active, payload, label, unit, hubs,
 }: {
@@ -28,15 +27,19 @@ function ChartTooltip({
   return (
     <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-lg text-[12px] min-w-[180px]">
       <div className="font-semibold text-[var(--ink)] mb-1.5">{label}</div>
-      {sorted.map((p) => (
-        <div key={p.dataKey} className="flex items-center justify-between gap-3 py-0.5">
-          <div className="flex items-center gap-1.5">
-            <span style={{ color: p.stroke }} className="text-[10px]">●</span>
-            <span className="text-slate-700">{hubs.find((h) => h.id === p.dataKey)?.display_name ?? p.dataKey}</span>
+      {sorted.map((p) => {
+        const isGlobal = p.dataKey === '__global__';
+        const name = isGlobal ? 'Media global' : (hubs.find((h) => h.id === p.dataKey)?.display_name ?? p.dataKey);
+        return (
+          <div key={p.dataKey} className="flex items-center justify-between gap-3 py-0.5">
+            <div className="flex items-center gap-1.5">
+              <span style={{ color: p.stroke }} className="text-[10px]">{isGlobal ? '- -' : '●'}</span>
+              <span className={`${isGlobal ? 'text-slate-500 italic' : 'text-slate-700'}`}>{name}</span>
+            </div>
+            <span className="font-semibold tabular-nums">{formatValue(p.value == null ? null : Number(p.value), unit)}</span>
           </div>
-          <span className="font-semibold tabular-nums">{formatValue(p.value == null ? null : Number(p.value), unit)}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -58,7 +61,6 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
   const kpiId = selectedKpi || defaultKpi;
   const kpi = kpis.find((k) => k.id === kpiId);
 
-  // -1 = YTD, otherwise number of weeks to show
   const [weeksShown, setWeeksShown] = useState(5);
 
   if (!kpi) return <p className="text-[var(--muted)]">No hay KPIs configurados.</p>;
@@ -67,9 +69,8 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
     router.push(`/historicos?tab=kpi&kpi=${id}`);
   }
 
-  // ------------------------------ Top movers (all KPIs, biggest WoW) -------
+  // ── Top movers ──────────────────────────────────────────────────────────────
   const topMovers = useMemo(() => {
-    // All KPIs, not just watched — user wants to see the biggest absolute changes
     const thisWeekHub = snapshots.filter(
       (s) => s.week_start === currentWeek && s.scope_level === 'hub' && s.value !== null && s.prev_week_value !== null
     );
@@ -85,32 +86,37 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
     return enriched.slice(0, 5);
   }, [snapshots, kpis, currentWeek]);
 
-  // ------------------------------ Chart data ------------------------------
+  // ── Chart data (hub lines + global mean line) ───────────────────────────────
   const allChartData = useMemo(() => {
     const byWeek = new Map<string, Record<string, any>>();
+
     for (const s of snapshots) {
       if (s.kpi_id !== kpi.id) continue;
-      if (s.scope_level !== 'hub' || !s.scope_key) continue;
-      if (!byWeek.has(s.week_start)) {
-        byWeek.set(s.week_start, { week: weekEndLabel(s.week_start), _iso: s.week_start });
-      }
-      byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
-    }
-    // For count KPIs a missing row means 0 (no incidents), not unknown — fill so the chart plots 0 instead of a gap.
-  if (kpi.unit === 'count') {
-    for (const weekData of byWeek.values()) {
-      for (const h of hubs) {
-        if (!(h.id in weekData)) weekData[h.id] = 0;
+
+      if (s.scope_level === 'hub' && s.scope_key) {
+        if (!byWeek.has(s.week_start))
+          byWeek.set(s.week_start, { week: weekEndLabel(s.week_start), _iso: s.week_start });
+        byWeek.get(s.week_start)![s.scope_key] = s.value === null ? null : Number(s.value);
+      } else if (s.scope_level === 'global') {
+        if (!byWeek.has(s.week_start))
+          byWeek.set(s.week_start, { week: weekEndLabel(s.week_start), _iso: s.week_start });
+        byWeek.get(s.week_start)!['__global__'] = s.value === null ? null : Number(s.value);
       }
     }
-  }
-  return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0));
-}, [snapshots, kpi.id, kpi.unit, hubs]);
+
+    if (kpi.unit === 'count') {
+      for (const weekData of byWeek.values()) {
+        for (const h of hubs) {
+          if (!(h.id in weekData)) weekData[h.id] = 0;
+        }
+      }
+    }
+    return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0));
+  }, [snapshots, kpi.id, kpi.unit, hubs]);
 
   const chartData = useMemo(() => {
     let filtered = allChartData;
     if (weeksShown === -1) {
-      // YTD: from Jan 1 of the current year
       const yearStart = `${currentWeek.slice(0, 4)}-01-01`;
       filtered = allChartData.filter((d) => d._iso >= yearStart);
     } else {
@@ -119,37 +125,114 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
     return filtered.map(({ _iso, ...rest }) => rest);
   }, [allChartData, weeksShown, currentWeek]);
 
-  // Peer mean from global snapshots
   const peerMeanThisWeek = useMemo(() => {
     const g = snapshots.find((s) => s.kpi_id === kpi.id && s.week_start === currentWeek && s.scope_level === 'global');
     return g?.value ?? null;
   }, [snapshots, kpi.id, currentWeek]);
 
-  // ------------------------------ Heatmap pivot ------------------------------
+  // ── Heatmap: value + WoW delta, cell color = absolute vs own 4w baseline ───
   const heatmapData = useMemo(() => {
-    const weeks = [...new Set(snapshots.filter((s) => s.kpi_id === kpi.id).map((s) => s.week_start))]
-      .sort((a, b) => (a > b ? -1 : 1));
-    const cells: Record<string, Record<string, { value: number | null; z: number | null }>> = {};
+    const weeks = [...new Set(
+      snapshots.filter((s) => s.kpi_id === kpi.id && s.scope_level === 'hub').map((s) => s.week_start)
+    )].sort((a, b) => (a > b ? -1 : 1)); // most recent first
+
+    // Pre-sort hub values chronologically for σ computation
+    const hubChronological = new Map<string, Array<{ week: string; value: number | null }>>();
+    for (const h of hubs) hubChronological.set(h.id, []);
+    for (const s of snapshots) {
+      if (s.kpi_id !== kpi.id || s.scope_level !== 'hub' || !s.scope_key) continue;
+      const arr = hubChronological.get(s.scope_key);
+      if (arr) arr.push({ week: s.week_start, value: s.value === null ? null : Number(s.value) });
+    }
+    for (const [, arr] of hubChronological) arr.sort((a, b) => (a.week > b.week ? 1 : -1));
+
+    const cells: Record<string, Record<string, {
+      value: number | null;
+      deltaDisplay: number | null; // WoW delta in display units (pp for pct)
+      deltaGood: boolean | null;   // true = improvement, false = worse, null = flat/no data
+      bgClass: string;
+    }>> = {};
+
     for (const h of hubs) cells[h.id] = {};
+
     for (const wk of weeks) {
-      const hubVals: Array<{ hubId: string; v: number }> = [];
-      for (const s of snapshots) {
-        if (s.kpi_id !== kpi.id || s.week_start !== wk || s.scope_level !== 'hub' || !s.scope_key || s.value === null) continue;
-        hubVals.push({ hubId: s.scope_key, v: Number(s.value) });
-      }
-      const mean = hubVals.length > 0 ? hubVals.reduce((a, b) => a + b.v, 0) / hubVals.length : 0;
-      const variance = hubVals.length > 1 ? hubVals.reduce((a, b) => a + (b.v - mean) ** 2, 0) / (hubVals.length - 1) : 0;
-      const std = Math.sqrt(variance);
-      for (const { hubId, v } of hubVals) {
-        if (!cells[hubId]) continue; // skip hub IDs in snapshots that aren't in the hubs list
-        cells[hubId][wk] = { value: v, z: std > 0 ? (v - mean) / std : null };
+      for (const h of hubs) {
+        const snap = snapshots.find(
+          (s) => s.kpi_id === kpi.id && s.week_start === wk && s.scope_level === 'hub' && s.scope_key === h.id
+        );
+
+        if (!snap || snap.value === null) {
+          cells[h.id][wk] = { value: null, deltaDisplay: null, deltaGood: null, bgClass: '' };
+          continue;
+        }
+
+        const value = Number(snap.value);
+        const hubVals = hubChronological.get(h.id) ?? [];
+        const wkIdx   = hubVals.findIndex((v) => v.week === wk);
+
+        // Prior values from chronological array — more reliable than DB prev_week_value
+        // which is only populated for the most recent weeks.
+        const priorVals = hubVals
+          .slice(Math.max(0, wkIdx - 4), wkIdx)
+          .map((v) => v.value)
+          .filter((v): v is number => v !== null);
+
+        // WoW delta: use adjacent chronological value, not snap.prev_week_value
+        const prevVal = wkIdx > 0 ? hubVals[wkIdx - 1]?.value ?? null : null;
+        let deltaDisplay: number | null = null;
+        let deltaGood: boolean | null = null;
+        if (prevVal !== null) {
+          const rawDiff = value - prevVal;
+          deltaDisplay = kpi.unit === 'pct' ? rawDiff * 100 : rawDiff;
+          const isFlat = Math.abs(rawDiff) < 0.00001;
+          if (!isFlat) {
+            deltaGood = kpi.direction === 'lower_is_better' ? rawDiff < 0 : rawDiff > 0;
+          }
+        }
+
+        // Cell background: absolute value vs hub's own 4w rolling mean (σ-based).
+        // Use DB rolling_mean_4w if available; otherwise compute from chronological array.
+        const mean4w = snap.rolling_mean_4w !== null
+          ? Number(snap.rolling_mean_4w)
+          : priorVals.length > 0
+            ? priorVals.reduce((a, b) => a + b, 0) / priorVals.length
+            : null;
+
+        let bgClass = '';
+        if (mean4w !== null) {
+          const wantsLow = kpi.direction === 'lower_is_better';
+          const diff = value - mean4w;
+
+          if (priorVals.length >= 2) {
+            const mu       = priorVals.reduce((a, b) => a + b, 0) / priorVals.length;
+            const variance = priorVals.reduce((a, b) => a + (b - mu) ** 2, 0) / priorVals.length;
+            const sigma    = Math.sqrt(variance);
+            if (sigma > 0) {
+              const sigmas = diff / sigma;
+              const T = 0.75;
+              if (wantsLow ? sigmas < -T : sigmas > T) bgClass = 'bg-emerald-50';
+              else if (wantsLow ? sigmas > T : sigmas < -T) bgClass = 'bg-red-50';
+            }
+          }
+
+          // Fallback: ±5% relative (works even with just 1 prior week)
+          if (!bgClass && mean4w !== 0) {
+            const pctDiff = (diff / Math.abs(mean4w)) * 100;
+            const PCT = 5;
+            if (wantsLow ? pctDiff < -PCT : pctDiff > PCT) bgClass = 'bg-emerald-50';
+            else if (wantsLow ? pctDiff > PCT : pctDiff < -PCT) bgClass = 'bg-red-50';
+          }
+        }
+
+        cells[h.id][wk] = { value, deltaDisplay, deltaGood, bgClass };
       }
     }
-    return { weeks, cells };
-  }, [snapshots, kpi.id, hubs]);
 
-  // Hubs sorted by current week value — drives both the chart legend order and the
-  // heatmap rows so the highest/lowest performing hub is always first visually.
+    return { weeks, cells };
+  }, [snapshots, kpi.id, kpi.unit, kpi.direction, hubs]);
+
+
+  // Hubs sorted by current week value
   const sortedHubsByValue = useMemo(() => {
     return [...hubs].sort((a, b) => {
       const av = snapshots.find(
@@ -161,10 +244,9 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
       if (av === null && bv === null) return 0;
       if (av === null) return 1;
       if (bv === null) return -1;
-      // Always highest value first — matches top-to-bottom visual order on the chart
       return bv - av;
     });
-  }, [hubs, snapshots, kpi.id, kpi.direction, currentWeek]);
+  }, [hubs, snapshots, kpi.id, currentWeek]);
 
   return (
     <div className="space-y-4">
@@ -220,17 +302,16 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
           )}
           {peerMeanThisWeek !== null && (
             <span className="ml-auto text-[11.5px] text-[var(--muted)]">
-              Peer mean: <b className="text-[var(--ink)]">{formatValue(peerMeanThisWeek, kpi.unit)}</b>
+              Media global esta sem: <b className="text-[var(--ink)]">{formatValue(peerMeanThisWeek, kpi.unit)}</b>
             </span>
           )}
         </div>
       </div>
 
-      {/* Main chart */}
+      {/* Main chart — hub lines + global mean trend */}
       <div className="bg-white border border-[var(--line)] rounded-xl p-5 shadow-soft">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
           <h3 className="text-[15px] font-semibold">{kpi.name_es} · por micro-hub</h3>
-          {/* Timeline selector */}
           <div className="flex items-center gap-1">
             {([
               { label: '5 sem', value: 5 },
@@ -254,7 +335,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
           </div>
         </div>
         <p className="text-[12px] text-[var(--muted)] mb-3">
-          Línea por hub. Línea punteada = peer mean global esta semana.
+          Línea sólida por hub · línea punteada gris = media global histórica
         </p>
         {chartData.length === 0 ? (
           <div className="border border-dashed border-[var(--line)] rounded-md p-10 text-center text-[var(--muted)] text-[13px]">
@@ -277,12 +358,25 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
                 )}
               />
               <Legend
-                formatter={(value: string) => hubs.find((h) => h.id === value)?.display_name ?? value}
+                formatter={(value: string) =>
+                  value === '__global__'
+                    ? 'Media global'
+                    : hubs.find((h) => h.id === value)?.display_name ?? value
+                }
                 wrapperStyle={{ fontSize: 11 }}
               />
-              {peerMeanThisWeek !== null && (
-                <ReferenceLine y={peerMeanThisWeek} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: 'peer mean', position: 'right', fill: '#64748b', fontSize: 10 }} />
-              )}
+              {/* Global mean trend line */}
+              <Line
+                key="__global__"
+                type="monotone"
+                dataKey="__global__"
+                stroke="#94a3b8"
+                strokeWidth={1.5}
+                strokeDasharray="5 3"
+                dot={false}
+                connectNulls
+              />
+              {/* Hub lines */}
               {sortedHubsByValue.map((h) => (
                 <Line
                   key={h.id}
@@ -299,10 +393,13 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
         )}
       </div>
 
-      {/* Heatmap pivot */}
+      {/* Heatmap — value + WoW delta, color = absolute vs own 4w baseline */}
       <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft overflow-hidden">
         <div className="px-5 py-3 border-b border-[var(--line)]">
-          <h3 className="text-[14px] font-semibold">Heatmap · semana × hub · color = z-score vs peers de la semana</h3>
+          <h3 className="text-[14px] font-semibold">Heatmap · semana × hub</h3>
+          <p className="text-[11px] text-[var(--muted)] mt-0.5">
+            Valor de la semana + delta WoW · color = valor vs promedio propio 4 semanas
+          </p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px]">
@@ -319,13 +416,37 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
             <tbody>
               {sortedHubsByValue.map((h) => (
                 <tr key={h.id} className="border-t border-slate-100">
-                  <td className="px-5 py-2 font-semibold">{h.display_name}<span className="text-[10px] text-[var(--muted)] ml-2">{h.city}</span></td>
+                  <td className="px-5 py-2 font-semibold">
+                    {h.display_name}
+                    <span className="text-[10px] text-[var(--muted)] ml-2">{h.city}</span>
+                  </td>
                   {heatmapData.weeks.slice(0, 8).map((wk) => {
                     const cell = heatmapData.cells[h.id]?.[wk];
-                    const cls = zToHeatmapClass(cell?.z ?? null, kpi.direction);
                     return (
-                      <td key={wk} className={`px-3 py-2 text-right font-mono text-[11.5px] ${cls}`}>
-                        {cell?.value !== undefined && cell?.value !== null ? formatValue(cell.value, kpi.unit) : '—'}
+                      <td key={wk} className={`px-3 py-1.5 text-right ${cell?.bgClass ?? ''}`}>
+                        {cell?.value !== null && cell?.value !== undefined ? (
+                          <>
+                            <div className="font-mono text-[11.5px] font-semibold">
+                              {formatValue(cell.value, kpi.unit)}
+                            </div>
+                            {cell.deltaDisplay !== null ? (
+                              <div className={`text-[9.5px] font-mono ${
+                                cell.deltaGood === true  ? 'text-emerald-600' :
+                                cell.deltaGood === false ? 'text-red-500' :
+                                'text-[var(--muted)]'
+                              }`}>
+                                {cell.deltaDisplay > 0 ? '+' : ''}
+                                {kpi.unit === 'pct'
+                                  ? `${cell.deltaDisplay.toFixed(1)}pp`
+                                  : cell.deltaDisplay.toFixed(kpi.unit === 'rate' ? 1 : 0)}
+                              </div>
+                            ) : (
+                              <div className="text-[9.5px] text-[var(--muted)]">—</div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="font-mono text-[11.5px] text-[var(--muted)]">—</div>
+                        )}
                       </td>
                     );
                   })}
@@ -335,9 +456,10 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
           </table>
         </div>
         <div className="px-5 py-2 text-[10.5px] text-[var(--muted)] border-t border-slate-100">
-          Verde = z-score "bueno" (vs el promedio de los hubs en esa semana, ajustado por dirección del KPI). Rojo = malo.
+          Verde = por encima de su propio promedio 4w · Rojo = por debajo · Delta WoW: verde = mejora, rojo = empeora
         </div>
       </div>
+
     </div>
   );
 }

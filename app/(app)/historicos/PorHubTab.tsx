@@ -515,15 +515,15 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                     </div>
                   ) : hasOps && !hasDrvs ? (
                     /* ── Single column: only assembler data ── */
-                    <BackFaceList label="Armadores" items={sortedOps} unit={kpi.unit} max={8} />
+                    <BackFaceList label="Armadores" items={sortedOps} unit={kpi.unit} />
                   ) : !hasOps && hasDrvs ? (
                     /* ── Single column: only driver data ── */
-                    <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} max={8} />
+                    <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} />
                   ) : (
                     /* ── Two columns: both operator and driver data ── */
                     <div className="grid grid-cols-2 gap-x-3">
-                      <BackFaceList label="Armadores"    items={sortedOps}  unit={kpi.unit} max={5} />
-                      <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} max={5} />
+                      <BackFaceList label="Armadores"    items={sortedOps}  unit={kpi.unit} />
+                      <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} />
                     </div>
                   )}
                 </div>
@@ -543,8 +543,8 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
 }
 
 /* ─── Back-face ranked list (worst → best, #1 = red, last shown = green) ─── */
-function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[]; unit: string; max: number }) {
-  const shown = items.slice(0, max);
+function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[]; unit: string; max?: number }) {
+  const shown = max !== undefined ? items.slice(0, max) : items;
   return (
     <div>
       <div className="text-[9px] uppercase tracking-wide font-bold text-[var(--muted)] mb-1">{label}</div>
