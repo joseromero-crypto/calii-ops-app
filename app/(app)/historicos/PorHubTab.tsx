@@ -285,34 +285,30 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
           const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
           const peerVal = peerThis?.value ?? null;
 
-          // ── Tile color: WoW trend vs own 4-week rolling average ─────────────
+          // ── 4-week rolling mean — DB value preferred, trend fallback ────────
           //
-          // Compare this week's value against the hub's own 4-week rolling mean
-          // using std dev (σ) as the sensitivity yardstick:
+          // rolling_mean_4w is only populated for the most recent upload weeks in
+          // the DB. For older history (and for newly-uploaded KPIs) it is null.
+          // We compute it client-side from the trend array so the tile label,
+          // sparkline reference line, and coloring all work regardless of DB state.
+          const priorVals = trend
+            .slice(0, -1)                            // drop current week
+            .map((t) => t.value)
+            .filter((v): v is number => v !== null)
+            .slice(-4);                              // at most last 4 weeks
+
+          const mean4w: number | null =
+            thisWeek?.rolling_mean_4w ??
+            (priorVals.length > 0
+              ? priorVals.reduce((a, b) => a + b, 0) / priorVals.length
+              : null);
+
+          // ── Tile color: this week vs own 4-week rolling average ──────────────
           //
-          //   • Baseline  = rolling_mean_4w (stored on the snapshot)
-          //   • σ         = std dev of the last 4 non-null hub values (excl. current)
-          //   • Green     = current is >0.75σ better than baseline (direction-aware)
-          //   • Red       = current is >0.75σ worse  than baseline
-          //   • White     = within ±0.75σ (normal week-to-week noise)
-          //
-          // Fallback when σ is undefined/0 (new hub, very stable KPI, first weeks):
-          //   use a ±5% relative threshold instead.
-          //
-          // This replaces the old "vs peer mean" logic so each hub is judged
-          // against its own history, not against other hubs with different ops.
+          //   • σ-based (0.75σ threshold) when ≥3 prior data points available
+          //   • ±5% relative fallback when σ is undefined/0
           let z: 'good' | 'mid' | 'bad' | null = null;
-          if (value !== null) {
-            const mean4w  = thisWeek?.rolling_mean_4w ?? null;
-
-            // Compute σ from the last 4 prior data points in trend (sorted asc,
-            // exclude current week so we don't include today in its own baseline).
-            const priorVals = trend
-              .slice(0, -1)                          // drop current week (last entry)
-              .map((t) => t.value)
-              .filter((v): v is number => v !== null)
-              .slice(-4);                            // at most 4 weeks
-
+          if (value !== null && mean4w !== null) {
             let sigma: number | null = null;
             if (priorVals.length >= 3) {
               const mu  = priorVals.reduce((a, b) => a + b, 0) / priorVals.length;
@@ -320,25 +316,21 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               sigma = Math.sqrt(variance);
             }
 
-            if (mean4w !== null) {
-              const wantsLow   = kpi.direction === 'lower_is_better';
-              const diff       = value - mean4w;  // positive = higher than baseline
+            const wantsLow = kpi.direction === 'lower_is_better';
+            const diff     = value - mean4w;  // positive = higher than baseline
 
-              if (sigma !== null && sigma > 0) {
-                // σ-based threshold: 0.75 standard deviations from own mean
-                const SIGMA_THRESHOLD = 0.75;
-                const sigmas = diff / sigma;
-                const isBetter = wantsLow ? sigmas < -SIGMA_THRESHOLD : sigmas > SIGMA_THRESHOLD;
-                const isWorse  = wantsLow ? sigmas > SIGMA_THRESHOLD  : sigmas < -SIGMA_THRESHOLD;
-                z = isBetter ? 'good' : isWorse ? 'bad' : 'mid';
-              } else if (mean4w !== 0) {
-                // Fallback: ±5% relative when σ is unavailable or 0
-                const PCT_THRESHOLD = 5;
-                const pctDiff = (diff / Math.abs(mean4w)) * 100;
-                const isBetter = wantsLow ? pctDiff < -PCT_THRESHOLD : pctDiff > PCT_THRESHOLD;
-                const isWorse  = wantsLow ? pctDiff > PCT_THRESHOLD  : pctDiff < -PCT_THRESHOLD;
-                z = isBetter ? 'good' : isWorse ? 'bad' : 'mid';
-              }
+            if (sigma !== null && sigma > 0) {
+              const SIGMA_THRESHOLD = 0.75;
+              const sigmas   = diff / sigma;
+              const isBetter = wantsLow ? sigmas < -SIGMA_THRESHOLD : sigmas > SIGMA_THRESHOLD;
+              const isWorse  = wantsLow ? sigmas > SIGMA_THRESHOLD  : sigmas < -SIGMA_THRESHOLD;
+              z = isBetter ? 'good' : isWorse ? 'bad' : 'mid';
+            } else if (mean4w !== 0) {
+              const PCT_THRESHOLD = 5;
+              const pctDiff  = (diff / Math.abs(mean4w)) * 100;
+              const isBetter = wantsLow ? pctDiff < -PCT_THRESHOLD : pctDiff > PCT_THRESHOLD;
+              const isWorse  = wantsLow ? pctDiff > PCT_THRESHOLD  : pctDiff < -PCT_THRESHOLD;
+              z = isBetter ? 'good' : isWorse ? 'bad' : 'mid';
             }
           }
 
@@ -444,8 +436,8 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                           data={trend.map((t) => ({ ...t }))}
                           margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
                         >
-                          {thisWeek?.rolling_mean_4w != null && (
-                            <ReferenceLine y={thisWeek.rolling_mean_4w} stroke="#94a3b8" strokeDasharray="2 2" />
+                          {mean4w != null && (
+                            <ReferenceLine y={mean4w} stroke="#94a3b8" strokeDasharray="2 2" />
                           )}
                           <Tooltip
                             content={<SparkTooltip unit={kpi.unit} />}
@@ -467,7 +459,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                   )}
                   <div className="text-[10.5px] text-[var(--muted)] mt-1.5 flex justify-between">
                     <span title="Promedio de las últimas 4 semanas de este hub">
-                      4w avg: {formatValue(thisWeek?.rolling_mean_4w ?? null, kpi.unit)}
+                      4w avg: {formatValue(mean4w, kpi.unit)}
                     </span>
                     <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
                   </div>
@@ -641,6 +633,87 @@ function MnaBackFaceList({ items, max }: {
   );
 }
 
+/* ─── Multi-select person filter dropdown ───────────────────────────────── */
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const allSelected = selected.size === options.length;
+  const buttonLabel = allSelected
+    ? `Todos (${options.length})`
+    : selected.size === 0
+    ? 'Ninguno'
+    : `${selected.size} de ${options.length}`;
+
+  const toggle = (name: string) => {
+    const next = new Set(selected);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    onChange(next);
+  };
+
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-white border border-[var(--line)] rounded-lg hover:border-slate-400 transition-colors"
+      >
+        <span className="text-[var(--muted)]">{label}:</span>
+        <span className="font-semibold text-[var(--ink)]">{buttonLabel}</span>
+        <svg
+          className={`w-3 h-3 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"
+        >
+          <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <>
+          {/* Click-outside backdrop */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          {/* Dropdown panel */}
+          <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-[var(--line)] rounded-xl shadow-lg min-w-[200px] max-h-64 overflow-y-auto py-1.5">
+            <div className="flex gap-3 px-3 py-1.5 border-b border-[var(--line)] mb-1">
+              <button
+                onClick={() => onChange(new Set(options))}
+                className="text-[10px] text-blue-600 hover:underline"
+              >Todos</button>
+              <span className="text-[var(--muted)] text-[10px]">·</span>
+              <button
+                onClick={() => onChange(new Set())}
+                className="text-[10px] text-[var(--muted)] hover:underline"
+              >Ninguno</button>
+            </div>
+            {options.map((name) => (
+              <label
+                key={name}
+                className="flex items-center gap-2 px-3 py-1 hover:bg-slate-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(name)}
+                  onChange={() => toggle(name)}
+                  className="w-3 h-3 accent-slate-700 shrink-0"
+                />
+                <span className="text-[11px] truncate max-w-[160px]">{name}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── WoW chart components ───────────────────────────────────────────────── */
 
 
@@ -656,14 +729,17 @@ function WowTooltip({
   label,
   colorMap,
   unit,
+  allEntities,
 }: {
   active?: boolean;
   payload?: Array<{ name: string; value: number | null }>;
   label?: string;
   colorMap: Map<string, string>;
   unit: string;
+  /** Full ordered list of selected entities — tooltip always shows all of them. */
+  allEntities: string[];
 }) {
-  if (!active || !payload?.length) return null;
+  if (!active) return null;
   const fmt = (v: number | null | undefined) => {
     if (v === null || v === undefined) return '—';
     if (unit === 'pct')      return `${v.toFixed(1)}%`;
@@ -671,22 +747,28 @@ function WowTooltip({
     if (unit === 'currency') return `$${Math.round(v).toLocaleString('es-MX')}`;
     return v.toFixed(0);
   };
-  // Sort by current-hovered-week value (highest first) — updates as you pan across weeks.
-  const sorted = [...payload].sort((a, b) => {
-    const av = a.value ?? -Infinity;
-    const bv = b.value ?? -Infinity;
+  // Build a value lookup from Recharts payload (only includes entities that
+  // have data for this specific week — missing ones stay null).
+  const valueMap = new Map<string, number | null>(
+    (payload ?? []).map((e) => [e.name, e.value])
+  );
+  // Always render every selected entity. Sort by value (highest first),
+  // entities with no data this week drop to the bottom.
+  const sorted = [...allEntities].sort((a, b) => {
+    const av = valueMap.get(a) ?? -Infinity;
+    const bv = valueMap.get(b) ?? -Infinity;
     return bv - av;
   });
   return (
     <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded-lg shadow-lg pointer-events-none min-w-[150px]">
       <div className="font-semibold mb-1.5 text-[11px] opacity-80">{label}</div>
-      {sorted.map((entry) => (
-        <div key={entry.name} className="flex items-center justify-between gap-4 leading-5">
+      {sorted.map((name) => (
+        <div key={name} className="flex items-center justify-between gap-4 leading-5">
           <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(entry.name) }} />
-            <span className="opacity-90 truncate max-w-[110px]">{entry.name}</span>
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(name) }} />
+            <span className="opacity-90 truncate max-w-[110px]">{name}</span>
           </div>
-          <span className="font-bold tabular-nums">{fmt(entry.value)}</span>
+          <span className="font-bold tabular-nums">{fmt(valueMap.get(name))}</span>
         </div>
       ))}
     </div>
@@ -703,18 +785,20 @@ function WowTooltip({
  * With n*p, p75 for 4 values = floor(3) = index 3 = the max → outlier wins.
  * With (n-1)*p, p75 for 4 values = floor(2.25) = index 2 = second-highest. ✓
  *
- * Headroom is 1.3× (30%) above the 75th percentile, then snapped up to a
- * nice magnitude ceiling. Values above the cap are clipped at the chart top;
- * users can hover to see the exact value.
+ * Uses the actual maximum non-zero value + 10% headroom, then snaps up to a
+ * nice magnitude ceiling. This means the default view always shows all data
+ * without clipping. Users can zoom in with the vertical slider when needed.
+ *
+ * Previously used p75 (too conservative — clipped outliers, looked dirty) then
+ * p90 (overshot — for hubs with values in 50-70% range the 90th-pct snaps to
+ * the unit ceiling of 100%). Using max is honest: the slider is there for zoom.
  */
 function computeYMax(vals: (number | null)[]): number | undefined {
   const nums = vals.filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
   if (nums.length === 0) return undefined;
   const sorted = [...nums].sort((a, b) => a - b);
-  // Correct 0-based percentile: use (n-1) not n so the index never exceeds the last element.
-  const p75idx = Math.floor((sorted.length - 1) * 0.75);
-  const p75    = sorted[p75idx];
-  const raw    = p75 * 1.3;
+  const maxVal = sorted[sorted.length - 1];
+  const raw    = maxVal * 1.1;
   if (raw <= 0) return undefined;
   const mag      = Math.pow(10, Math.floor(Math.log10(raw)));
   const norm     = raw / mag;
@@ -747,6 +831,8 @@ function WowChart({
   direction,
   wide = false,
   displayWeeks,
+  filterEntities,
+  sectionColorMap,
 }: {
   rows: Peer[];
   title: string;
@@ -754,6 +840,10 @@ function WowChart({
   direction: string;
   wide?: boolean;
   displayWeeks: string[];
+  /** When provided, only these entity keys are rendered as lines. */
+  filterEntities?: Set<string>;
+  /** Stable color map from the parent section — keeps the same color per person across all charts. */
+  sectionColorMap?: Map<string, string>;
 }) {
   // ── Derive all chart values BEFORE hooks (hooks must be unconditional) ────
   const rowWeeks       = [...new Set(rows.map((r) => r.week_start))].sort();
@@ -765,8 +855,13 @@ function WowChart({
       : []
   );
 
+  // Apply person filter: intersect active entities with the caller's selection.
+  const visibleEntities = filterEntities
+    ? new Set([...activeEntities].filter((e) => filterEntities.has(e)))
+    : activeEntities;
+
   // Fixed order: descending by most-recent-week value (biggest first).
-  const entityOrder = [...activeEntities].sort((a, b) => {
+  const entityOrder = [...visibleEntities].sort((a, b) => {
     const av = rows.find((r) => r.week_start === mostRecentWeek && r.entity_key === a)?.value ?? null;
     const bv = rows.find((r) => r.week_start === mostRecentWeek && r.entity_key === b)?.value ?? null;
     if (av === null && bv === null) return 0;
@@ -775,9 +870,11 @@ function WowChart({
     return bv - av;
   });
 
-  const colorMap = new Map(
-    entityOrder.map((e, i) => [e, ASSEMBLER_PALETTE[i % ASSEMBLER_PALETTE.length]])
-  );
+  // Use the section-level stable color map when provided so the same person
+  // keeps the same color across all charts. Fall back to per-chart rank order.
+  const colorMap = sectionColorMap
+    ? new Map(entityOrder.map((e) => [e, sectionColorMap.get(e) ?? '#94a3b8']))
+    : new Map(entityOrder.map((e, i) => [e, ASSEMBLER_PALETTE[i % ASSEMBLER_PALETTE.length]]));
 
   // pct KPIs stored as 0–1 fractions in peer_comparisons → ×100 for display.
   const toDisplay = (v: number | null): number | null => {
@@ -813,7 +910,7 @@ function WowChart({
   }, [hubKey]);
 
   // ── Early returns (after all hooks) ──────────────────────────────────────
-  if (rowWeeks.length === 0 || activeEntities.size === 0) return null;
+  if (rowWeeks.length === 0 || visibleEntities.size === 0) return null;
 
   const yFmt = (v: number) =>
     unit === 'pct'      ? `${v.toFixed(1)}%`
@@ -874,7 +971,7 @@ function WowChart({
                 allowDataOverflow
               />
               <Tooltip
-                content={<WowTooltip colorMap={colorMap} unit={unit} />}
+                content={<WowTooltip colorMap={colorMap} unit={unit} allEntities={entityOrder} />}
                 cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
                 isAnimationActive={false}
                 wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
@@ -929,32 +1026,70 @@ function AssemblerWowSection({
     'tasa_armado',
   ].some((id) => rows(id).length > 0);
 
-  // Shared x-axis: last 5 weeks across ALL assembler KPIs for this hub so every
-  // chart shows the same date range regardless of per-KPI data availability.
+  // Shared x-axis: last 5 weeks across ALL assembler KPIs for this hub.
   const allSectionWeeks = [...new Set(hubRows.map((r) => r.week_start))].sort();
   const displayWeeks    = allSectionWeeks.slice(-5);
 
+  // Person filter — only people present in the most recent week's report,
+  // sorted alpha. Excludes employees who left before the latest upload.
+  const entityNames = useMemo(() => {
+    const latestWeek = allSectionWeeks.at(-1);
+    if (!latestWeek) return [];
+    return [...new Set(
+      hubRows.filter((r) => r.week_start === latestWeek).map((r) => r.entity_key)
+    )].sort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubId, assemblerTrend]);
+  // Derived-state pattern: reset filter synchronously when hub changes so
+  // WowChart never receives a stale filterEntities on the hub-switch render.
+  // (useEffect resets are async and cause a two-render cycle where
+  //  visibleEntities is briefly empty → smartYMax=undefined → manualYMax=100.)
+  const [filterHubId, setFilterHubId] = useState(hubId);
+  const [selectedAssemblers, setSelectedAssemblers] = useState<Set<string>>(
+    () => new Set(entityNames),
+  );
+  if (filterHubId !== hubId) {
+    setFilterHubId(hubId);
+    setSelectedAssemblers(new Set(entityNames));
+  }
+
+  // Stable color map: one color per person, consistent across all assembler charts.
+  const assemblerColorMap = useMemo(
+    () => new Map(entityNames.map((e, i) => [e, ASSEMBLER_PALETTE[i % ASSEMBLER_PALETTE.length]])),
+    [entityNames],
+  );
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">
           Armadores · tendencia WoW · {hubName}
         </div>
         <div className="text-[10.5px] text-[var(--muted)] opacity-60">· últimas 5 semanas</div>
       </div>
+      {hasAnyData && entityNames.length > 0 && (
+        <div className="mb-3">
+          <MultiSelectDropdown
+            label="Armadores"
+            options={entityNames}
+            selected={selectedAssemblers}
+            onChange={setSelectedAssemblers}
+          />
+        </div>
+      )}
       {!hasAnyData ? (
         <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft p-8 text-center text-[12px] text-[var(--muted)]">
           Sin datos de armadores. Sube el archivo de desempeño operadores para habilitar esta sección.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct}              displayWeeks={displayWeeks} />
-          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct}            displayWeeks={displayWeeks} />
-          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct}             displayWeeks={displayWeeks} />
-          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct}           displayWeeks={displayWeeks} />
-          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} displayWeeks={displayWeeks} />
-          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} displayWeeks={displayWeeks} />
-          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado}                        displayWeeks={displayWeeks} wide />
+          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct}              displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
+          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct}            displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
+          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct}             displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
+          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct}           displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
+          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
+          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
+          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado}                        displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} wide />
         </div>
       )}
     </div>
@@ -990,24 +1125,59 @@ function DriverWowSection({
   const allSectionWeeks = [...new Set(hubRows.map((r) => r.week_start))].sort();
   const displayWeeks    = allSectionWeeks.slice(-5);
 
+  // Person filter — only people present in the most recent week's report.
+  const entityNames = useMemo(() => {
+    const latestWeek = allSectionWeeks.at(-1);
+    if (!latestWeek) return [];
+    return [...new Set(
+      hubRows.filter((r) => r.week_start === latestWeek).map((r) => r.entity_key)
+    )].sort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubId, driverTrend]);
+  // Derived-state pattern: same reasoning as AssemblerWowSection above.
+  const [filterHubId, setFilterHubId] = useState(hubId);
+  const [selectedDrivers, setSelectedDrivers] = useState<Set<string>>(
+    () => new Set(entityNames),
+  );
+  if (filterHubId !== hubId) {
+    setFilterHubId(hubId);
+    setSelectedDrivers(new Set(entityNames));
+  }
+
+  // Stable color map: one color per person, consistent across all driver charts.
+  const driverColorMap = useMemo(
+    () => new Map(entityNames.map((e, i) => [e, ASSEMBLER_PALETTE[i % ASSEMBLER_PALETTE.length]])),
+    [entityNames],
+  );
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">
           Repartidores · tendencia WoW · {hubName}
         </div>
         <div className="text-[10.5px] text-[var(--muted)] opacity-60">· últimas 5 semanas</div>
       </div>
+      {hasAnyData && entityNames.length > 0 && (
+        <div className="mb-3">
+          <MultiSelectDropdown
+            label="Repartidores"
+            options={entityNames}
+            selected={selectedDrivers}
+            onChange={setSelectedDrivers}
+          />
+        </div>
+      )}
       {!hasAnyData ? (
         <div className="bg-white border border-[var(--line)] rounded-xl shadow-soft p-8 text-center text-[12px] text-[var(--muted)]">
           Sin datos de repartidores. Sube el archivo de desempeño repartidores para habilitar esta sección.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} />
-          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} />
-          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} wide />
-          <WowChart rows={rows('discrepancia_mxn')}    {...KPI_META.discrepancia_mxn}    displayWeeks={displayWeeks} wide />
+          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} />
+          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} />
+          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} wide />
+          <WowChart rows={rows('discrepancia_mxn')}    {...KPI_META.discrepancia_mxn}    displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} wide />
         </div>
       )}
     </div>

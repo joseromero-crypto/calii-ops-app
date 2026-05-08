@@ -111,6 +111,24 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
         }
       }
     }
+
+    // For count and currency KPIs the DB-stored global was historically written
+    // as the raw sum of all entity values, not the mean of hub totals. Old weeks
+    // won't be corrected by a single recompute. Recompute the global client-side
+    // as mean of hub values so every week shows the right reference line,
+    // regardless of when (or whether) those weeks were recomputed.
+    // pct and rate keep the DB global (correct weighted sum: Σnum/Σden).
+    if (kpi.unit === 'count' || kpi.unit === 'currency') {
+      for (const weekData of byWeek.values()) {
+        const hubVals = hubs
+          .map((h) => weekData[h.id])
+          .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+        weekData['__global__'] = hubVals.length > 0
+          ? hubVals.reduce((a, b) => a + b, 0) / hubVals.length
+          : null;
+      }
+    }
+
     return [...byWeek.values()].sort((a, b) => (a._iso > b._iso ? 1 : a._iso < b._iso ? -1 : 0));
   }, [snapshots, kpi.id, kpi.unit, hubs]);
 
@@ -125,10 +143,23 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
     return filtered.map(({ _iso, ...rest }) => rest);
   }, [allChartData, weeksShown, currentWeek]);
 
+  // For the toolbar "Media global esta sem" badge, use the same client-side
+  // mean for count/currency so it matches the chart reference line.
   const peerMeanThisWeek = useMemo(() => {
+    if (kpi.unit === 'count' || kpi.unit === 'currency') {
+      const hubVals = hubs
+        .map((h) => snapshots.find(
+          (s) => s.kpi_id === kpi.id && s.week_start === currentWeek && s.scope_level === 'hub' && s.scope_key === h.id
+        )?.value)
+        .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(Number(v)))
+        .map(Number);
+      return hubVals.length > 0
+        ? hubVals.reduce((a, b) => a + b, 0) / hubVals.length
+        : null;
+    }
     const g = snapshots.find((s) => s.kpi_id === kpi.id && s.week_start === currentWeek && s.scope_level === 'global');
     return g?.value ?? null;
-  }, [snapshots, kpi.id, currentWeek]);
+  }, [snapshots, kpi.id, kpi.unit, hubs, currentWeek]);
 
   // ── Heatmap: value + WoW delta, cell color = absolute vs own 4w baseline ───
   const heatmapData = useMemo(() => {

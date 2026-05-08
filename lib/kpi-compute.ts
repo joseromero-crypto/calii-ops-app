@@ -666,13 +666,19 @@ function aggregateAllScopes(kpi: Kpi, values: EntityValue[], weekStart: string):
 
   // Global
   //
-  // For currency KPIs (unit === 'currency'), use the mean of hub totals rather
-  // than the raw sum of all entity values. The sum would be ~8× the size of any
-  // individual hub's value, making the Por KPI reference line useless for
-  // comparison. Mean-of-hubs gives a fair benchmark for each hub to compare against.
+  // For currency and count KPIs, use the mean of hub totals rather than the
+  // raw sum of all entity values:
+  //   - currency: sum of all driver shortfalls per hub, then mean across hubs.
+  //               Sum-of-all-drivers would be ~N× any individual hub value.
+  //   - count:    same problem — sum of all driver error counts globally dwarfs
+  //               a single hub's count, making the reference line useless.
+  //               Mean-of-hub-totals keeps the global line in the same range as
+  //               individual hub lines so the comparison is meaningful.
   //
-  // For all other units (pct, rate, count), keep the standard weighted-sum formula.
-  if (kpi.unit === 'currency') {
+  // For pct and rate KPIs, keep the standard weighted-sum formula:
+  //   global pct  = sum(all numerators) / sum(all denominators)  — correct weighted mean
+  //   global rate = sum(orders) / sum(time)                      — correct weighted rate
+  if (kpi.unit === 'currency' || kpi.unit === 'count') {
     const hubTotals = [...byHub.entries()]
       .filter(([hubId]) => hubId !== '_unassigned')
       .map(([, vs]) => sum(vs, (v) => v.numerator));
