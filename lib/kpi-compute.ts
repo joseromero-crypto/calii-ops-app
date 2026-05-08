@@ -13,6 +13,7 @@ import { createAdminSupabase } from './supabase-server';
 import { classifyMnaProduct } from './sku-classifier';
 import type { MnaCategory } from './sku-classifier';
 import type { Kpi, City } from './types';
+import { resolveHubId } from './hub-aliases';
 
 type SB = ReturnType<typeof createAdminSupabase>;
 
@@ -914,47 +915,10 @@ function groupBy<T, K>(arr: T[], f: (t: T) => K): Map<K, T[]> {
 }
 
 /**
- * Map a geofence/hub string from any CSV to a canonical hub slug.
- *
- * Handles both prefixed ("MH Avícola") and bare ("Avícola") forms — the
- * per_city CSVs for single-hub cities (Saltillo, GDL, CDMX) often omit the
- * "MH " prefix since there is only one hub in that city.
- * CH Guadalupe is always excluded (returns null).
+ * Resolve a hub label from any CSV column to the canonical hub_id slug.
+ * Delegates to the shared lib/hub-aliases.ts so kpi-compute and page.tsx
+ * always use the same map — add new aliases there, not here.
  */
-const HUB_ALIAS_MAP: Record<string, string> = {
-  // Monterrey
-  'mh_contry':      'mh_contry',
-  'contry':         'mh_contry',
-  'mh_cumbres':     'mh_cumbres',
-  'cumbres':        'mh_cumbres',
-  'mh_san_nicolas': 'mh_san_nicolas',
-  'san_nicolas':    'mh_san_nicolas',
-  'mh_guadalupe':   'mh_guadalupe',
-  'guadalupe':      'mh_guadalupe',
-  // Saltillo — Retool labels by city name since there's only one hub
-  'mh_avicola':     'mh_avicola',
-  'avicola':        'mh_avicola',
-  'mh_saltillo':    'mh_avicola',
-  'saltillo':       'mh_avicola',
-  // Guadalajara
-  'mh_zapopan':     'mh_zapopan',
-  'zapopan':        'mh_zapopan',
-  // CDMX
-  'mh_condesa':     'mh_condesa',
-  'condesa':        'mh_condesa',
-  // San Pedro
-  'mh_san_pedro':   'mh_san_pedro',
-  'san_pedro':      'mh_san_pedro',
-};
-
 function hubNameToId(name: string): string | null {
-  if (!name) return null;
-  const cleaned = name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '_');
-  if (cleaned.startsWith('ch_')) return null; // CH Guadalupe excluded
-  return HUB_ALIAS_MAP[cleaned] ?? null;
+  return resolveHubId(name);
 }

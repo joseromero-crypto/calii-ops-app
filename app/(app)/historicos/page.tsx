@@ -4,6 +4,7 @@ import { classifyMnaProduct } from '@/lib/sku-classifier';
 import type { MnaCategory } from '@/lib/sku-classifier';
 import type { FaltantesSku } from './_shared';
 import { HistoricosClient } from './HistoricosClient';
+import { resolveHubId } from '@/lib/hub-aliases';
 
 export const dynamic = 'force-dynamic';
 
@@ -230,34 +231,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   // Formula: MNA($) / (MNA($) + Recibido × Source price) — monetary, same as
   // kpi_snapshots. Price cancels at individual SKU level so the ranking is
   // equivalent to volume-based, but we use monetary for consistency.
-  function resolveHubId(raw: string | null | undefined): string | null {
-    if (!raw) return null;
-    const s = raw
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .toLowerCase()
-      .trim()
-      .replace(/[-\s]+/g, '_'); // replace hyphens AND spaces → underscore
-    if (s.startsWith('ch_')) return null;
-    const map: Record<string, string> = {
-      mh_contry:      'mh_contry',  contry:      'mh_contry',
-      mh_country:     'mh_contry',  country:     'mh_contry',  // common typo
-      mh_cumbres:     'mh_cumbres', cumbres:     'mh_cumbres',
-      mh_san_nicolas: 'mh_san_nicolas', san_nicolas: 'mh_san_nicolas',
-      mh_guadalupe:   'mh_guadalupe',   guadalupe:   'mh_guadalupe',
-      mh_avicola:     'mh_avicola', avicola:     'mh_avicola',
-      mh_saltillo:    'mh_avicola', saltillo:    'mh_avicola',
-      mh_zapopan:     'mh_zapopan', zapopan:     'mh_zapopan',
-      mh_condesa:     'mh_condesa', condesa:     'mh_condesa',
-      mh_san_pedro:   'mh_san_pedro', san_pedro: 'mh_san_pedro',
-    };
-    const resolved = map[s] ?? s;
-    // Debug: log anything that didn't match a known alias so we can catch mismatches
-    if (!Object.values(map).includes(resolved)) {
-      console.warn('[resolveHubId] unrecognised hub string:', JSON.stringify(raw), '→', JSON.stringify(resolved));
-    }
-    return resolved;
-  }
+  // resolveHubId is imported from @/lib/hub-aliases — shared with kpi-compute.ts
 
   type MnaAggEntry = {
     hub_id: string;
