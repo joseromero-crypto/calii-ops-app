@@ -140,7 +140,15 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
             'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
           )
           .eq('week_start', currentWeek)
-          .order('entity_type', { ascending: true })
+          // Four-column sort guarantees a stable total order across pages.
+          // With only entity_type, rows within each type are in heap order which
+          // can shift between requests (VACUUM, concurrent writes), causing
+          // OFFSET pagination to skip or duplicate rows.
+          .order('entity_type',  { ascending: true })
+          .order('kpi_id',       { ascending: true })
+          .order('scope_type',   { ascending: true })
+          .order('scope_key',    { ascending: true, nullsFirst: false })
+          .order('entity_key',   { ascending: true })
           .range(i * PAGE, (i + 1) * PAGE - 1)
       )
     ),
@@ -212,6 +220,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   const allPeers         = peerPages.flatMap((r) => r.data ?? []);
   const allAssemblerTrend = assemblerTrendPages.flatMap((r) => r.data ?? []);
   const allDriverTrend    = driverTrendPages.flatMap((r) => r.data ?? []);
+
   const allMnaRows       = mnaRawPages.flatMap((r) => r.data ?? []);
   const allFaltantesRows = faltantesRawPages.flatMap((r) => r.data ?? []);
 

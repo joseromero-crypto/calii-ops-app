@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-08 (session 3)  
+**Last updated:** 2026-05-08 (session 4)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -89,8 +89,8 @@ page.tsx (server)
   ├── Paginates ALL pages in parallel (PAGE = 1000 rows/request)
   │     ├── kpi_snapshots       (52 weeks, hub/city/global scope)
   │     ├── peer_comparisons    (current week only — KPI tile back faces)
-  │     ├── upload_rows MNA     (current week)
-  │     ├── upload_rows faltantes_armador (current week)
+  │     ├── upload_rows MNA     (current week, one query per upload)
+  │     ├── upload_rows faltantes_armador (current week, one query per upload)
   │     ├── assemblerTrend      (multi-week, entity_type=operator, scope=within_hub)
   │     └── driverTrend         (multi-week, entity_type=driver,   scope=within_hub)
   └── Flat arrays → HistoricosClient → PorKpiTab / PorHubTab / ComparativaTab
@@ -336,7 +336,17 @@ Resolution waterfall in PorHubTab:
 
 ---
 
-## 11. Known Footguns
+## 11. peer_comparisons Pagination — Stability Requirement
+
+The `allPeers` query in `page.tsx` paginates `peer_comparisons` (current week) in 1000-row pages. **The ORDER BY must be fully deterministic** — otherwise PostgreSQL's OFFSET can shift rows between page requests (due to VACUUM, concurrent writes, or parallel query plans), silently dropping some hubs' operator rows and causing those hubs to fall back to wrong-city data on the tile flip.
+
+Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, entity_key`
+
+⚠️ Do NOT simplify back to `ORDER BY entity_type` alone — that was the root cause of all hubs showing avicola data in session 4. Confirmed via a dev diagnostic: the DB had correct data for all 7 hubs, but unstable pagination was dropping non-avicola operator rows from `allPeers`.
+
+---
+
+## 12. Known Footguns
 
 | Issue | Detail |
 |---|---|
@@ -361,13 +371,14 @@ Resolution waterfall in PorHubTab:
 | Recompute statement timeout | Supabase default statement timeout (~8 s) is hit when many uploads are processed. Fixes: (1) `ORDER BY id` removed from upload_rows fetch; (2) sequential 200-row upsert batches. `ALTER ROLE postgres SET statement_timeout = '30s'` helps but doesn't fully fix it alone — PostgREST connection pool needs to cycle for role changes to take effect. |
 | Hub alias map divergence | Previously `kpi-compute.ts` and `page.tsx` had separate copies of the hub alias map. They diverged — compute was missing the `country`/`mh_country` typo alias that page.tsx had, causing Contry MNA totals to be missing. Now unified in `lib/hub-aliases.ts`. Never duplicate the map again. |
 | MNA breakdown works, total blank | MNA breakdown reads `upload_rows` directly in page.tsx (always fresh). MNA tile total reads `kpi_snapshots` (written by recompute). They can be out of sync if recompute hasn't run or failed silently. |
-| MNA/faltantes breakdown blank for some hubs (session 3) | Range pagination over `IN(upload_ids)` without ORDER BY is non-deterministic — rows from one upload can overlap pages. Fixed in session 3: page.tsx now fetches upload_rows one upload at a time (eq upload_id + limit 10_000), same as kpi-compute.ts. |
+| MNA/faltantes breakdown blank for some hubs | Range pagination over `IN(upload_ids)` without ORDER BY is non-deterministic — rows from one upload can overlap pages. Fixed in session 3: page.tsx now fetches upload_rows one upload at a time (eq upload_id + limit 10_000), same as kpi-compute.ts. |
 | Wrong-city operators shown on tile flip | The hubCityKey step 4 fallback returned the sole city-key from allCityKeys without checking it matches hub.city. For single-hub cities (Zapopan, Condesa) this caused avicola operators to appear when only Saltillo had resolved data. Fixed in session 3: added `normalize(allCityKeys[0]) === normCity` guard. |
+| All hubs showing avicola on tile flip (session 4) | Root cause: `allPeers` pagination used `ORDER BY entity_type` only — non-deterministic within the operator group → OFFSET shifted rows between pages → non-avicola hubs' operator rows dropped → fallback to wrong city. Fixed in session 4: 5-column stable ORDER BY. Confirmed via dev diagnostic (all 7 hubs had correct DB data; it was purely a fetch issue). |
 | GDL drivers/operators with null hub_id | geofence column sometimes contains "GDL" (abbreviation) instead of "Guadalajara" or "Zapopan". Added `'gdl': 'mh_zapopan'` to hub-aliases in session 3. Similarly added `'df'`, `'ciudad_de_mexico'`, `'mexico'` → `'mh_condesa'`. |
 
 ---
 
-## 12. Local Development
+## 13. Local Development
 
 ```bash
 cd ~/Desktop/calii-ops-app
@@ -398,25 +409,24 @@ The session name changes each conversation — check the system prompt for the c
 
 ---
 
-## 13. Commits
+## 14. Commits
 
 ```
-(next)   display: MNA per-upload fetch; hubCityKey step-4 guard; hub-aliases GDL/CDMX variants
-(prev)   compute: hub-aliases shared module, upload_rows fetch fix, sequential upserts
-f40bcf0  PorHub: person filter dropdowns, stable colors, tooltip fix, tile coloring; PorKPI + compute: global mean for count KPIs
-91c9a52  feat: Discrepancia KPI; fix upload dedup + currency global mean
-6561a02  PorKPI: trend line, heatmap WoW+baseline color, tab rename; PorHub: full lists, MNA resolveHubId; mobile responsive
-71160f4  mobile: responsive layout, hamburger drawer, tab bar, WoW chart grids
-a88c9ed  WoW charts: replace custom drag slider with native vertical range input
-e17bc0a  WoW charts: fix p75 index; dynamic tooltip sort; zero-fill roster drivers
-4952076  WoW charts: p75 y-axis cap; tooltip z-index fix
-82bf8da  WoW charts: remove legend; cap y-axis; consistent x-axis per section
-682dbf1  fix: remove hub_id from peer_comparisons SELECT; MNA flip to single $ list
+(session 4) fix: stable 5-col ORDER BY for peer_comparisons pagination; remove dev diagnostic
+(session 3) fix: MNA per-upload fetch; hubCityKey step-4 guard; hub-aliases GDL/CDMX variants
+ffdea85     compute: hub-aliases shared module, upload_rows fetch fix, sequential upserts
+4d2f4da     refactor: single hub alias map in lib/hub-aliases.ts; fix country/contry typo in compute
+a7f2929     compute: fetch upload_rows one upload at a time (fix silent row truncation)
+7739782     compute: fix upload_rows fetch (remove ORDER BY timeout), sequential 200-row upserts
+f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile coloring; PorKPI + compute: global mean for count KPIs
+91c9a52     feat: Discrepancia KPI; fix upload dedup + currency global mean
+6561a02     PorKPI: trend line, heatmap WoW+baseline color, tab rename; PorHub: full lists, MNA resolveHubId; mobile responsive
+71160f4     mobile: responsive layout, hamburger drawer, tab bar, WoW chart grids
 ```
 
 ---
 
-## 14. What's Working ✓
+## 15. What's Working ✓
 
 - All 7 assembler WoW charts + all 4 driver WoW charts (incl. Discrepancia)
 - Mobile layout: hamburger drawer, responsive grids, scrollable tab bar
@@ -429,10 +439,11 @@ e17bc0a  WoW charts: fix p75 index; dynamic tooltip sort; zero-fill roster drive
 - Y-axis slider: smart cap default, resets on hub switch
 - Upload re-upload: properly replaces all previous records (no duplicates)
 - Currency KPI global mean: mean of hub totals, comparable to individual hub lines
+- Operator/driver tile flip breakdown: correct per-hub data for all 7 hubs
 
 ---
 
-## 15. Discrepancia KPI — Reference
+## 16. Discrepancia KPI — Reference
 
 **Source app:** `discrepancia` (scope: total, 1 file/week)
 
@@ -459,17 +470,17 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 ---
 
-## 16. Ideas / Possible Next Tasks
+## 17. Ideas / Possible Next Tasks
 
 - **Comparativa tab** — not touched yet; could show hub-vs-hub ranking tables
 - **Home dashboard** — quick summary of current-week KPI status across all hubs
 - **Discrepancia trend** — shows automatically once 2+ weeks of data exist
-- **New hubs** — if a hub is added to `hubs` table, add its alias to **both** `HUB_ALIAS_MAP` in `lib/kpi-compute.ts` AND `resolveHubId` in `page.tsx` — both maps must stay in sync
+- **New hubs** — if a hub is added to `hubs` table, add its alias to `lib/hub-aliases.ts` (shared by both compute and display)
 - **San Rafael Puebla** — appears in discrepancia CSV but not in alias map; drivers show 0s and are skipped. Add to alias map if the hub goes live.
 
 ---
 
-## 17. Environment
+## 18. Environment
 
 ```
 Workspace:   /Users/adrianrodriguez/Desktop/calii-ops-app
