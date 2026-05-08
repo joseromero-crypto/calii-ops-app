@@ -100,35 +100,22 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   const assemblerTrendTotal   = assemblerTrendCountRes.count ?? 0;
   const driverTrendTotal      = driverTrendCountRes.count ?? 0;
 
-  // ── Step 3: MNA + faltantes row counts ──────────────────────────────────────
-  let mnaTotal       = 0;
-  let faltantesTotal = 0;
-  await Promise.all([
-    mnaUploadList.length > 0
-      ? sb
-          .from('upload_rows')
-          .select('*', { count: 'exact', head: true })
-          .in('upload_id', mnaUploadList.map((u) => u.id))
-          .eq('is_excluded', false)
-          .then(({ count }) => { mnaTotal = count ?? 0; })
-      : Promise.resolve(),
-    faltantesUploadList.length > 0
-      ? sb
-          .from('upload_rows')
-          .select('*', { count: 'exact', head: true })
-          .in('upload_id', faltantesUploadList.map((u) => u.id))
-          .eq('is_excluded', false)
-          .then(({ count }) => { faltantesTotal = count ?? 0; })
-      : Promise.resolve(),
-  ]);
-
   // ── Step 4: fetch ALL pages in parallel ─────────────────────────────────────
-  const snapIdxs             = Array.from({ length: Math.ceil(snapTotal             / PAGE) }, (_, i) => i);
-  const peerIdxs             = Array.from({ length: Math.ceil(peerTotal             / PAGE) }, (_, i) => i);
-  const mnaIdxs              = Array.from({ length: Math.ceil(mnaTotal              / PAGE) }, (_, i) => i);
-  const faltantesIdxs        = Array.from({ length: Math.ceil(faltantesTotal        / PAGE) }, (_, i) => i);
-  const assemblerTrendIdxs   = Array.from({ length: Math.ceil(assemblerTrendTotal   / PAGE) }, (_, i) => i);
-  const driverTrendIdxs      = Array.from({ length: Math.ceil(driverTrendTotal      / PAGE) }, (_, i) => i);
+  //
+  // MNA and faltantes upload_rows are fetched ONE UPLOAD AT A TIME (same strategy
+  // as kpi-compute.ts). Rationale: range pagination over an IN(upload_ids) query
+  // without ORDER BY is non-deterministic — PostgreSQL may return rows in
+  // different order across requests, causing pages to overlap or skip rows.
+  // Per-upload fetching avoids this: each query is a single index scan on
+  // upload_rows(upload_id), O(rows for that upload), no sort, deterministic.
+  // limit(10_000) is well above any realistic single-file row count.
+  //
+  // kpi_snapshots and peer_comparisons are fetched with explicit ORDER BY so
+  // their range pagination is stable.
+  const snapIdxs           = Array.from({ length: Math.ceil(snapTotal           / PAGE) }, (_, i) => i);
+  const peerIdxs           = Array.from({ length: Math.ceil(peerTotal           / PAGE) }, (_, i) => i);
+  const assemblerTrendIdxs = Array.from({ length: Math.ceil(assemblerTrendTotal / PAGE) }, (_, i) => i);
+  const driverTrendIdxs    = Array.from({ length: Math.ceil(driverTrendTotal    / PAGE) }, (_, i) => i);
 
   const [snapPages, peerPages, mnaRawPages, faltantesRawPages, assemblerTrendPages, driverTrendPages] = await Promise.all([
     Promise.all(
@@ -157,27 +144,29 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
           .range(i * PAGE, (i + 1) * PAGE - 1)
       )
     ),
-    mnaIdxs.length > 0
+    // MNA rows: one query per upload to guarantee all rows are fetched.
+    mnaUploadList.length > 0
       ? Promise.all(
-          mnaIdxs.map((i) =>
+          mnaUploadList.map((u) =>
             sb
               .from('upload_rows')
               .select('upload_id, data')
-              .in('upload_id', mnaUploadList.map((u) => u.id))
+              .eq('upload_id', u.id)
               .eq('is_excluded', false)
-              .range(i * PAGE, (i + 1) * PAGE - 1)
+              .limit(10_000)
           )
         )
       : Promise.resolve([]),
-    faltantesIdxs.length > 0
+    // Faltantes rows: same per-upload strategy.
+    faltantesUploadList.length > 0
       ? Promise.all(
-          faltantesIdxs.map((i) =>
+          faltantesUploadList.map((u) =>
             sb
               .from('upload_rows')
               .select('upload_id, data')
-              .in('upload_id', faltantesUploadList.map((u) => u.id))
+              .eq('upload_id', u.id)
               .eq('is_excluded', false)
-              .range(i * PAGE, (i + 1) * PAGE - 1)
+              .limit(10_000)
           )
         )
       : Promise.resolve([]),

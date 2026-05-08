@@ -38,11 +38,15 @@ export const HUB_ALIAS_MAP: Record<string, string> = {
   'mh_zapopan':       'mh_zapopan',
   'zapopan':          'mh_zapopan',
   'guadalajara':      'mh_zapopan',  // city-level label fallback
+  'gdl':              'mh_zapopan',  // common CSV abbreviation
 
   // ── CDMX ────────────────────────────────────────────────────────────────
   'mh_condesa':       'mh_condesa',
   'condesa':          'mh_condesa',
   'cdmx':             'mh_condesa',  // city-level label fallback
+  'df':               'mh_condesa',  // old Mexico City abbreviation
+  'ciudad_de_mexico': 'mh_condesa',  // full unaccented form
+  'mexico':           'mh_condesa',  // short form in some geofence CSVs
 
   // ── San Pedro ───────────────────────────────────────────────────────────
   'mh_san_pedro':     'mh_san_pedro',

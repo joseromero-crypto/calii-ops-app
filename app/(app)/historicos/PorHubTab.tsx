@@ -184,10 +184,15 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
     const normMatch = allCityKeys.find((k) => normalize(k) === normCity);
     if (normMatch) return normMatch;
     // 4. For single-hub-city scenario: if this hub is the only hub in its city AND
-    //    only one within_city scope_key has data, pick that one.
+    //    there is exactly one within_city scope_key that normalises to the same city
+    //    as hub.city, use it. The normCity check is REQUIRED — without it, when a
+    //    different city happens to be the only one with peer data (e.g. only Saltillo
+    //    resolved), Zapopan and Condesa would incorrectly inherit Saltillo's operators.
     const siblingsInCity = hubs.filter((h) => h.city === hub.city);
-    if (siblingsInCity.length === 1 && allCityKeys.length === 1) return allCityKeys[0];
-    return hub.city; // last resort — may not match but won't crash
+    if (siblingsInCity.length === 1 && allCityKeys.length === 1 && normalize(allCityKeys[0]) === normCity) {
+      return allCityKeys[0];
+    }
+    return hub.city; // last resort — may not match, but won't show wrong-city data
   }, [peers, hub, hubId, hubs]);
 
   // Per-tile peer data for the back face — operators and drivers only.

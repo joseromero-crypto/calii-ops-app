@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-08 (session 2)  
+**Last updated:** 2026-05-08 (session 3)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -226,8 +226,8 @@ mh_cumbres / cumbres                       → 'mh_cumbres'
 mh_san_nicolas / san_nicolas               → 'mh_san_nicolas'
 mh_guadalupe / guadalupe                   → 'mh_guadalupe'
 mh_avicola / avicola / mh_saltillo / saltillo → 'mh_avicola'
-mh_zapopan / zapopan / guadalajara         → 'mh_zapopan'
-mh_condesa / condesa / cdmx               → 'mh_condesa'
+mh_zapopan / zapopan / guadalajara / gdl  → 'mh_zapopan'   ← gdl added session 3
+mh_condesa / condesa / cdmx / df / ciudad_de_mexico / mexico → 'mh_condesa'  ← extras added session 3
 mh_san_pedro / san_pedro                  → 'mh_san_pedro'
 ```
 
@@ -322,14 +322,17 @@ Prevents "ON CONFLICT DO UPDATE command cannot affect row a second time" from du
 
 ## 10. HubCityKey Resolution
 
-`peer_comparisons.scope_key` for `within_city` rows = city enum like `'mty'`.
-`hubs.city` = display name like `'Monterrey'`. These don't match as strings.
+`peer_comparisons.scope_key` for `within_city` rows = upload.city enum value ('Monterrey', 'Saltillo', 'Guadalajara', 'CDMX').  
+`hubs.city` = same enum value. They match as strings when the upload was processed correctly.
 
 Resolution waterfall in PorHubTab:
-1. Exact string match
+1. Exact string match — succeeds in the normal case when the city's desempeno_operadores was uploaded
 2. Cross-reference: find scope_key whose entity_keys overlap most with hub's `within_hub` entities
 3. Accent/case-normalized match
-4. Single-hub-city fallback
+4. Single-hub-city fallback — only fires when the normalized key equals hub.city (guards against returning a different city's key)
+5. Last resort: hub.city — may produce empty opsCity/drvsCity, but won't show wrong-city data
+
+⚠️ **Step 4 bug (fixed in session 3):** The old condition `siblingsInCity.length === 1 && allCityKeys.length === 1` was missing the city match check. If only Saltillo's operators resolved (hub_id='mh_avicola'), allCityKeys=['Saltillo']. Zapopan (single GDL hub, siblingsInCity=1) and Condesa (single CDMX hub, siblingsInCity=1) would both return 'Saltillo' → tile flips showed avicola operators/drivers for all non-Monterrey single-hub hubs. Fix: added `&& normalize(allCityKeys[0]) === normCity`.
 
 ---
 
@@ -358,6 +361,9 @@ Resolution waterfall in PorHubTab:
 | Recompute statement timeout | Supabase default statement timeout (~8 s) is hit when many uploads are processed. Fixes: (1) `ORDER BY id` removed from upload_rows fetch; (2) sequential 200-row upsert batches. `ALTER ROLE postgres SET statement_timeout = '30s'` helps but doesn't fully fix it alone — PostgREST connection pool needs to cycle for role changes to take effect. |
 | Hub alias map divergence | Previously `kpi-compute.ts` and `page.tsx` had separate copies of the hub alias map. They diverged — compute was missing the `country`/`mh_country` typo alias that page.tsx had, causing Contry MNA totals to be missing. Now unified in `lib/hub-aliases.ts`. Never duplicate the map again. |
 | MNA breakdown works, total blank | MNA breakdown reads `upload_rows` directly in page.tsx (always fresh). MNA tile total reads `kpi_snapshots` (written by recompute). They can be out of sync if recompute hasn't run or failed silently. |
+| MNA/faltantes breakdown blank for some hubs (session 3) | Range pagination over `IN(upload_ids)` without ORDER BY is non-deterministic — rows from one upload can overlap pages. Fixed in session 3: page.tsx now fetches upload_rows one upload at a time (eq upload_id + limit 10_000), same as kpi-compute.ts. |
+| Wrong-city operators shown on tile flip | The hubCityKey step 4 fallback returned the sole city-key from allCityKeys without checking it matches hub.city. For single-hub cities (Zapopan, Condesa) this caused avicola operators to appear when only Saltillo had resolved data. Fixed in session 3: added `normalize(allCityKeys[0]) === normCity` guard. |
+| GDL drivers/operators with null hub_id | geofence column sometimes contains "GDL" (abbreviation) instead of "Guadalajara" or "Zapopan". Added `'gdl': 'mh_zapopan'` to hub-aliases in session 3. Similarly added `'df'`, `'ciudad_de_mexico'`, `'mexico'` → `'mh_condesa'`. |
 
 ---
 
@@ -395,7 +401,8 @@ The session name changes each conversation — check the system prompt for the c
 ## 13. Commits
 
 ```
-(next)   compute: hub-aliases shared module, upload_rows fetch fix, sequential upserts
+(next)   display: MNA per-upload fetch; hubCityKey step-4 guard; hub-aliases GDL/CDMX variants
+(prev)   compute: hub-aliases shared module, upload_rows fetch fix, sequential upserts
 f40bcf0  PorHub: person filter dropdowns, stable colors, tooltip fix, tile coloring; PorKPI + compute: global mean for count KPIs
 91c9a52  feat: Discrepancia KPI; fix upload dedup + currency global mean
 6561a02  PorKPI: trend line, heatmap WoW+baseline color, tab rename; PorHub: full lists, MNA resolveHubId; mobile responsive
