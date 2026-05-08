@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-08  
+**Last updated:** 2026-05-08 (session 2)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -33,6 +33,7 @@ The main feature areas:
 | `app/(app)/historicos/_shared.ts` | Shared types, formatting helpers, utility functions |
 | `app/api/upload/route.ts` | Upload API — parses CSV, validates, stores upload + rows |
 | `lib/kpi-compute.ts` | Core KPI computation — processes raw upload rows into snapshots + peer comparisons |
+| `lib/hub-aliases.ts` | **Single source of truth** for hub name → hub_id mapping. Both kpi-compute and page.tsx import from here. Add new hubs/aliases here only. |
 | `lib/sku-classifier.ts` | Classifies product names into MnaCategory: 'fyv' / 'carnes' / 'abarrotes' |
 | `lib/parse.ts` | CSV parsing + coerceRows (applies app_columns schema to raw CSV strings) |
 | `lib/validate.ts` | Upload validation — header check, type check, distribution check |
@@ -213,25 +214,26 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
 // faltantes_armador_pct excluded — its flip shows assembler peer ranking.
 ```
 
-### MNA Hub ID Resolution (`resolveHubId` in page.tsx)
-Normalises raw hub strings from CSV/DB to canonical hub IDs.
-Normalization: NFD accent strip → lowercase → trim → hyphens + spaces → underscore.
-`ch_*` prefixes are dropped (city-level).
+### Hub ID Resolution — `lib/hub-aliases.ts`
+**Single shared module** used by both `kpi-compute.ts` (`hubNameToId` wrapper) and `page.tsx` (direct import). Previously each file had its own copy of the map, which diverged (page.tsx had the `country/mh_country` typo alias; compute didn't → Contry MNA totals were missing).
 
-Known aliases (same map exists as `HUB_ALIAS_MAP` in `lib/kpi-compute.ts`):
+`resolveHubId(raw)` normalises: NFD accent strip → lowercase → trim → hyphens + spaces → `_` → looks up `HUB_ALIAS_MAP`. `ch_*` prefixes return null (CH Guadalupe excluded).
+
+Known aliases in `HUB_ALIAS_MAP`:
 ```
-mh_contry / contry / mh_country / country → 'mh_contry'
+mh_contry / contry / mh_country / country → 'mh_contry'   ← country is a common CSV typo
 mh_cumbres / cumbres                       → 'mh_cumbres'
 mh_san_nicolas / san_nicolas               → 'mh_san_nicolas'
 mh_guadalupe / guadalupe                   → 'mh_guadalupe'
 mh_avicola / avicola / mh_saltillo / saltillo → 'mh_avicola'
-mh_zapopan / zapopan                       → 'mh_zapopan'
-mh_condesa / condesa                       → 'mh_condesa'
-mh_san_pedro / san_pedro                   → 'mh_san_pedro'
+mh_zapopan / zapopan / guadalajara         → 'mh_zapopan'
+mh_condesa / condesa / cdmx               → 'mh_condesa'
+mh_san_pedro / san_pedro                  → 'mh_san_pedro'
 ```
 
-⚠️ A `console.warn('[resolveHubId] unrecognised hub string: ...')` fires for any string not in the map.  
-⚠️ Hub names in CSVs often have **leading/trailing spaces** (e.g. `" Contry "`). Both `resolveHubId` and `hubNameToId` call `.trim()` before lookup — handled automatically.
+⚠️ **Adding a new hub:** edit ONLY `lib/hub-aliases.ts`. Both compute and display update automatically.  
+⚠️ `console.warn('[resolveHubId] unrecognised hub label: ...')` fires in dev for any unrecognised string — check these after first upload of a new hub.  
+⚠️ Unknown labels (e.g. "San Rafael Puebla") are silently skipped during compute — expected for drivers from hubs not in the Calii system.
 
 ### KPI Tile Coloring + 4w avg
 - `mean4w` prefers DB `rolling_mean_4w`; falls back to client-side average of prior trend values when null
@@ -302,8 +304,18 @@ Sum-of-all-entities for count (e.g. entregas_erroneas) is ~N× any single hub va
 For pct/rate, keeps the standard weighted-sum formula (Σnum / Σden).  
 ⚠️ Historical weeks recomputed before this change still have the old sum in the DB for count KPIs. `PorKpiTab.allChartData` overrides `__global__` client-side for count/currency so all weeks display correctly without a historical recompute.
 
+### `upload_rows` fetch strategy
+Rows are fetched **one upload at a time** using a simple `eq('upload_id', u.id)` with `limit(10_000)`.
+
+Do NOT restore `ORDER BY id` + range pagination — that triggers a full table sort on a growing `upload_rows` table and causes Supabase statement timeouts on weeks with many uploads (25+).
+
+PostgREST's server-side `max_rows` cap (default 1 000) affects `limit()` calls — even `limit(10_000)` is capped at 1 000 per request. One upload at a time means each upload's rows are fetched in a single capped call; if a single upload has >1 000 rows, only the first 1 000 are processed. This is acceptable for current upload sizes.
+
+### Upsert strategy
+Sequential 200-row batches, tables written one after the other. Running all batches in parallel (the original `Promise.all`) caused DB lock contention → statement timeouts on large weeks.
+
 ### Dedup guard before upsert
-Both `allSnapshots` and `allPeers` are deduplicated on their conflict keys before `parallelUpsert`.  
+Both `allSnapshots` and `allPeers` are deduplicated on their conflict keys before upsert.  
 Prevents "ON CONFLICT DO UPDATE command cannot affect row a second time" from duplicate upload records or same-named drivers in the global scope.
 
 ---
@@ -343,6 +355,9 @@ Resolution waterfall in PorHubTab:
 | `coerceRows` drops extra columns | CSV columns not in `app_columns` are silently dropped. The validator flags them as warnings but still marks status='validated'. |
 | count/currency global = mean not sum | For count and currency KPIs, `kpi_snapshots` global scope should be mean of hub totals. `aggregateAllScopes` now does this for both. `PorKpiTab` recomputes client-side to fix historical weeks. |
 | Duplicate uploads → recompute crash | Multiple upload records for the same slot cause `extractDiscrepanciaValues` (and any driver extractor) to output duplicate entity_keys → duplicate rows in upsert batch → PostgreSQL error. Dedup guard in `computeSnapshotsForWeek` now catches this, but fix the root cause (upload dedup) first. |
+| Recompute statement timeout | Supabase default statement timeout (~8 s) is hit when many uploads are processed. Fixes: (1) `ORDER BY id` removed from upload_rows fetch; (2) sequential 200-row upsert batches. `ALTER ROLE postgres SET statement_timeout = '30s'` helps but doesn't fully fix it alone — PostgREST connection pool needs to cycle for role changes to take effect. |
+| Hub alias map divergence | Previously `kpi-compute.ts` and `page.tsx` had separate copies of the hub alias map. They diverged — compute was missing the `country`/`mh_country` typo alias that page.tsx had, causing Contry MNA totals to be missing. Now unified in `lib/hub-aliases.ts`. Never duplicate the map again. |
+| MNA breakdown works, total blank | MNA breakdown reads `upload_rows` directly in page.tsx (always fresh). MNA tile total reads `kpi_snapshots` (written by recompute). They can be out of sync if recompute hasn't run or failed silently. |
 
 ---
 
@@ -380,7 +395,8 @@ The session name changes each conversation — check the system prompt for the c
 ## 13. Commits
 
 ```
-(next)   PorHub: person filter dropdowns, stable colors, tooltip fix, tile coloring; PorKPI + compute: global mean for count KPIs
+(next)   compute: hub-aliases shared module, upload_rows fetch fix, sequential upserts
+f40bcf0  PorHub: person filter dropdowns, stable colors, tooltip fix, tile coloring; PorKPI + compute: global mean for count KPIs
 91c9a52  feat: Discrepancia KPI; fix upload dedup + currency global mean
 6561a02  PorKPI: trend line, heatmap WoW+baseline color, tab rename; PorHub: full lists, MNA resolveHubId; mobile responsive
 71160f4  mobile: responsive layout, hamburger drawer, tab bar, WoW chart grids

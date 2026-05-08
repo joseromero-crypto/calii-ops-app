@@ -130,6 +130,7 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
         warnings.push(`kpi:${kpi.id} no_entity_values`);
         continue;
       }
+
       const snaps = aggregateAllScopes(kpi, entityValues, weekStart);
       allSnapshots.push(...snaps);
 
