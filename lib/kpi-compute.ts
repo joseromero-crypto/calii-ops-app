@@ -86,28 +86,36 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   const uploadById = new Map<string, UploadRef>();
   uploads.forEach((u) => uploadById.set(u.id, u as UploadRef));
 
-  // Stream rows in pages
+  // Fetch all rows for this week's uploads.
+  //
+  // We deliberately avoid ORDER BY + range pagination here. `ORDER BY id` on a
+  // filtered IN-clause forces PostgreSQL to sort ALL matching rows before
+  // paginating — cost grows with table size and will eventually hit the
+  // statement timeout on a large upload_rows table. Since we load everything
+  // into memory anyway, ordering is irrelevant; a plain unordered SELECT is
+  // a fast index-only scan on upload_rows(upload_id).
+  //
+  // PostgREST caps unranged results at its server max_rows limit (default 1 000).
+  // We chunk by upload_id batches of 5 to stay well under that cap while still
+  // avoiding the ORDER BY sort cost. Each batch of 5 uploads typically has
+  // 200–600 rows — safely under 1 000.
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
-  let from = 0;
-  const CHUNK = 1000;
-  while (true) {
+  const UPLOAD_BATCH = 5;
+  for (let i = 0; i < uploads.length; i += UPLOAD_BATCH) {
+    const batchIds = uploads.slice(i, i + UPLOAD_BATCH).map((u) => u.id);
     const { data: page, error } = await sb
       .from('upload_rows')
       .select('upload_id, data')
-      .in('upload_id', uploads.map((u) => u.id))
+      .in('upload_id', batchIds)
       .eq('is_excluded', false)
-      .order('id', { ascending: true })
-      .range(from, from + CHUNK - 1);
+      .limit(2000);
     if (error) throw error;
-    if (!page || page.length === 0) break;
-    for (const r of page as RawRow[]) {
+    for (const r of (page ?? []) as RawRow[]) {
       const u = uploadById.get(r.upload_id);
       if (!u) continue;
       if (!rowsByApp.has(u.app_id)) rowsByApp.set(u.app_id, []);
       rowsByApp.get(u.app_id)!.push({ upload: u, data: r.data });
     }
-    from += page.length;
-    if (page.length < CHUNK) break;
   }
 
   // Compute per KPI
@@ -858,13 +866,11 @@ function computePeersForKpi(
 // ----------------------------------------------------------------------------
 
 /**
- * Upsert `rows` into `table` in 1 000-row batches with limited concurrency.
+ * Upsert `rows` into `table` in 200-row sequential batches.
  *
- * Running all batches simultaneously via Promise.all can cause lock contention
- * on the target table (especially when both kpi_snapshots and peer_comparisons
- * are written at the same time), triggering a Supabase statement timeout.
- * Capping concurrency at CONCURRENCY batches at a time keeps DB load steady
- * while still being much faster than fully sequential writes.
+ * Fully sequential (one batch at a time, one table at a time) to keep DB load
+ * predictable and avoid statement timeouts caused by concurrent lock contention.
+ * 200-row batches stay comfortably under PostgREST's max_rows cap.
  */
 async function parallelUpsert(
   sb: SB,
@@ -873,21 +879,11 @@ async function parallelUpsert(
   onConflict: string
 ): Promise<number> {
   if (rows.length === 0) return 0;
-  const BATCH = 500;
-  const CONCURRENCY = 3;
-  const batches: any[][] = [];
+  const BATCH = 200;
   for (let i = 0; i < rows.length; i += BATCH) {
-    batches.push(rows.slice(i, i + BATCH));
-  }
-  // Process batches in windows of CONCURRENCY to avoid overwhelming the DB.
-  for (let i = 0; i < batches.length; i += CONCURRENCY) {
-    const window = batches.slice(i, i + CONCURRENCY);
-    await Promise.all(
-      window.map(async (batch) => {
-        const { error } = await sb.from(table).upsert(batch, { onConflict });
-        if (error) throw error;
-      })
-    );
+    const batch = rows.slice(i, i + BATCH);
+    const { error } = await sb.from(table).upsert(batch, { onConflict });
+    if (error) throw error;
   }
   return rows.length;
 }
