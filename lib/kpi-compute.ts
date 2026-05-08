@@ -86,33 +86,32 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   const uploadById = new Map<string, UploadRef>();
   uploads.forEach((u) => uploadById.set(u.id, u as UploadRef));
 
-  // Fetch all rows for this week's uploads.
+  // Fetch all rows for this week's uploads, one upload at a time.
   //
-  // We deliberately avoid ORDER BY + range pagination here. `ORDER BY id` on a
-  // filtered IN-clause forces PostgreSQL to sort ALL matching rows before
-  // paginating — cost grows with table size and will eventually hit the
-  // statement timeout on a large upload_rows table. Since we load everything
-  // into memory anyway, ordering is irrelevant; a plain unordered SELECT is
-  // a fast index-only scan on upload_rows(upload_id).
+  // Why not a single paginated query with ORDER BY id?
+  //   ORDER BY id on rows filtered by IN (N upload_ids) forces PostgreSQL to
+  //   collect and sort ALL matching rows before paginating. This cost grows with
+  //   the total size of upload_rows and eventually hits the statement timeout.
   //
-  // PostgREST caps unranged results at its server max_rows limit (default 1 000).
-  // We chunk by upload_id batches of 5 to stay well under that cap while still
-  // avoiding the ORDER BY sort cost. Each batch of 5 uploads typically has
-  // 200–600 rows — safely under 1 000.
+  // Why not a single unordered query for all uploads?
+  //   PostgREST caps unranged responses at max_rows (default 1 000). Without
+  //   an explicit range we silently get only the first 1 000 rows across all
+  //   uploads — wrong for weeks with many CSVs.
+  //
+  // Solution: one query per upload_id. Each query is a single-value index scan
+  //   on upload_rows(upload_id) — O(rows for that upload), no sort, no cap
+  //   (limit is generous at 10 000 which is far above any realistic single-file
+  //   row count). 25 uploads × ~50–200 ms each stays comfortably within budget.
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
-  const UPLOAD_BATCH = 5;
-  for (let i = 0; i < uploads.length; i += UPLOAD_BATCH) {
-    const batchIds = uploads.slice(i, i + UPLOAD_BATCH).map((u) => u.id);
-    const { data: page, error } = await sb
+  for (const u of uploads) {
+    const { data: rows, error } = await sb
       .from('upload_rows')
       .select('upload_id, data')
-      .in('upload_id', batchIds)
+      .eq('upload_id', u.id)
       .eq('is_excluded', false)
-      .limit(2000);
+      .limit(10_000);
     if (error) throw error;
-    for (const r of (page ?? []) as RawRow[]) {
-      const u = uploadById.get(r.upload_id);
-      if (!u) continue;
+    for (const r of (rows ?? []) as RawRow[]) {
       if (!rowsByApp.has(u.app_id)) rowsByApp.set(u.app_id, []);
       rowsByApp.get(u.app_id)!.push({ upload: u, data: r.data });
     }
