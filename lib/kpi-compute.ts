@@ -179,13 +179,10 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
     (r) => `${r.kpi_id}|${r.week_start}|${r.entity_type}|${r.entity_key}|${r.scope_type}|${r.scope_key ?? '__null__'}`
   );
 
-  // Upsert both tables in parallel — each table's own batches run concurrently,
-  // and the two tables are written simultaneously to maximise throughput and
-  // stay well within the 60 s Netlify maxDuration.
-  const [snapshotsWritten, peersWritten] = await Promise.all([
-    parallelUpsert(sb, 'kpi_snapshots', dedupedSnapshots, 'kpi_id,week_start,scope_level,scope_key'),
-    parallelUpsert(sb, 'peer_comparisons', dedupedPeers, 'kpi_id,week_start,entity_type,entity_key,scope_type,scope_key'),
-  ]);
+  // Upsert tables sequentially to avoid concurrent write pressure that can
+  // trigger Supabase statement timeouts when batch counts are large.
+  const snapshotsWritten = await parallelUpsert(sb, 'kpi_snapshots', dedupedSnapshots, 'kpi_id,week_start,scope_level,scope_key');
+  const peersWritten     = await parallelUpsert(sb, 'peer_comparisons', dedupedPeers, 'kpi_id,week_start,entity_type,entity_key,scope_type,scope_key');
 
   return { week_start: weekStart, snapshots_written: snapshotsWritten, peers_written: peersWritten, kpis_processed: kpisProcessed, warnings };
 }
@@ -861,9 +858,13 @@ function computePeersForKpi(
 // ----------------------------------------------------------------------------
 
 /**
- * Upsert `rows` into `table` in parallel 1 000-row batches.
- * All batches are dispatched at once via Promise.all; if any batch errors
- * the whole call rejects immediately. Returns total rows written.
+ * Upsert `rows` into `table` in 1 000-row batches with limited concurrency.
+ *
+ * Running all batches simultaneously via Promise.all can cause lock contention
+ * on the target table (especially when both kpi_snapshots and peer_comparisons
+ * are written at the same time), triggering a Supabase statement timeout.
+ * Capping concurrency at CONCURRENCY batches at a time keeps DB load steady
+ * while still being much faster than fully sequential writes.
  */
 async function parallelUpsert(
   sb: SB,
@@ -872,17 +873,22 @@ async function parallelUpsert(
   onConflict: string
 ): Promise<number> {
   if (rows.length === 0) return 0;
-  const BATCH = 1000;
+  const BATCH = 500;
+  const CONCURRENCY = 3;
   const batches: any[][] = [];
   for (let i = 0; i < rows.length; i += BATCH) {
     batches.push(rows.slice(i, i + BATCH));
   }
-  await Promise.all(
-    batches.map(async (batch) => {
-      const { error } = await sb.from(table).upsert(batch, { onConflict });
-      if (error) throw error;
-    })
-  );
+  // Process batches in windows of CONCURRENCY to avoid overwhelming the DB.
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const window = batches.slice(i, i + CONCURRENCY);
+    await Promise.all(
+      window.map(async (batch) => {
+        const { error } = await sb.from(table).upsert(batch, { onConflict });
+        if (error) throw error;
+      })
+    );
+  }
   return rows.length;
 }
 
