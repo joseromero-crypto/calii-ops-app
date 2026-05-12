@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-11 (session 6)  
+**Last updated:** 2026-05-12 (session 7)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -26,11 +26,15 @@ The main feature areas:
 | `components/Sidebar.tsx` | Left nav — accepts optional `onClose` prop for mobile drawer mode |
 | `components/MobileHeader.tsx` | Mobile-only sticky top bar + hamburger slide-in drawer |
 | `app/(app)/historicos/page.tsx` | Server component — fetches ALL data from Supabase, passes to client |
-| `app/(app)/historicos/HistoricosClient.tsx` | Client shell — tab routing (Por KPI / Por Hub / Comparativa) |
+| `app/(app)/historicos/HistoricosClient.tsx` | Client shell — owns `activeTab` + `activeKpi` state; tab + KPI switching is instant client-side |
+| `app/(app)/historicos/loading.tsx` | Next.js loading skeleton — shown immediately while page.tsx fetches Supabase data |
 | `app/(app)/historicos/PorHubTab.tsx` | "Por Hub" tab — KPI tiles + WoW charts + "Generar reporte" button |
-| `app/(app)/historicos/PorKpiTab.tsx` | "Por KPI" tab — trend line chart, heatmap, top movers |
-| `app/(app)/historicos/ComparativaTab.tsx` | "Comparativa" tab — not touched in these sessions |
+| `app/(app)/historicos/PorKpiTab.tsx` | "Por KPI" tab — trend line chart, heatmap, top movers; receives `onKpiChange` callback |
+| `app/(app)/historicos/ComparativaTab.tsx` | "Comparativa" tab — hub-vs-hub KPI grid; city filter removed (session 7) |
 | `app/(app)/historicos/_shared.ts` | Shared types, formatting helpers, utility functions |
+| `app/(app)/upload/loading.tsx` | Loading skeleton for /upload |
+| `app/(app)/prioridades/loading.tsx` | Loading skeleton for /prioridades |
+| `app/(app)/config/loading.tsx` | Loading skeleton for /config |
 | `app/api/upload/route.ts` | Upload API — parses CSV, validates, stores upload + rows |
 | `lib/kpi-compute.ts` | Core KPI computation — processes raw upload rows into snapshots + peer comparisons |
 | `lib/hub-aliases.ts` | **Single source of truth** for hub name → hub_id mapping. Both kpi-compute and page.tsx import from here. Add new hubs/aliases here only. |
@@ -98,7 +102,54 @@ page.tsx (server)
   └── Flat arrays → HistoricosClient → PorKpiTab / PorHubTab / ComparativaTab
 ```
 
-Hub switching is **client-side only** — all hubs' data is fetched once and filtered in the browser.
+Hub switching, tab switching, and KPI switching are all **client-side only** — all data is fetched once on page load and filtered/navigated in the browser. See §4a for the navigation architecture.
+
+---
+
+## 4a. Client-Side Navigation Architecture (session 7)
+
+All in-page navigation in `/historicos` uses **client state + `history.pushState`**, never `router.push`. Using `router.push` inside historicos triggers a full Next.js server navigation → all Supabase queries re-run → 4-5 second freeze. This was the root cause of slow tab switching and slow KPI switching before session 7.
+
+### State ownership
+`HistoricosClient` owns two navigation state variables:
+
+```ts
+const [activeTab, setActiveTab] = useState<'kpi' | 'hub' | 'cmp'>(props.tab);
+const [activeKpi, setActiveKpi] = useState<string>(props.selectedKpi ?? defaultKpi);
+```
+
+Both are initialised from server-provided props (which come from URL `searchParams` on first load or direct links). Subsequent changes are pure JS — no server contact.
+
+### URL sync without server re-render
+`syncUrl()` in `HistoricosClient` updates the browser URL so the back button and bookmarks still work:
+
+```ts
+function syncUrl(tab: 'kpi' | 'hub' | 'cmp', kpi: string) {
+  const params = new URLSearchParams();
+  if (tab !== 'kpi') params.set('tab', tab);
+  if (tab === 'kpi' && kpi && kpi !== defaultKpi) params.set('kpi', kpi);
+  window.history.pushState(null, '', url);
+}
+```
+
+⚠️ **Never replace `history.pushState` with `router.push` here** — `router.push` triggers a Next.js navigation which re-runs `page.tsx` and all its Supabase queries.
+
+### Callback pattern for KPI switching
+`PorKpiTab` does not own the selected KPI. It receives `selectedKpi` (read-only) and `onKpiChange` (callback) from `HistoricosClient`. Clicking a top mover card or the KPI selector dropdown calls `onKpiChange(id)` → parent flips `activeKpi` → React re-renders with new KPI data, all from memory.
+
+```ts
+// PorKpiTab — no useRouter, no router.push
+function pickKpi(id: string) {
+  onKpiChange?.(id);
+}
+```
+
+### loading.tsx — immediate page shell
+Every route now has a `loading.tsx` file (`/historicos`, `/upload`, `/prioridades`, `/config`). Next.js shows these instantly on navigation while the server component fetches Supabase data in the background. Without `loading.tsx`, Next.js blocks the navigation until all fetches complete — the old "stuck on the previous page" behavior.
+
+⚠️ `loading.tsx` improves **perceived** speed only. Actual Supabase fetch time is unchanged. If the initial historicos load is too slow, the next step is moving data fetching client-side with SWR (see §19).
+
+---
 
 **Adding a new KPI** that follows the standard driver/operator/hub CSV pattern requires:
 1. `apps` row + `app_columns` rows in Supabase
@@ -162,7 +213,7 @@ Desktop sidebar wrapper: hidden lg:block
 
 ### Top movers strip
 - 5 cards, biggest absolute WoW change across all KPIs × hubs
-- Clicking a card navigates to that KPI via `router.push`
+- Clicking a card calls `onKpiChange(kpiId)` — instant client-side KPI switch, no server round-trip (session 7)
 
 ### Main chart
 - Line per hub + **dashed grey global mean trend line** (`dataKey="__global__"`)
@@ -383,6 +434,8 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | `pedidos_armados` / `retardos_count` are report-only KPIs | These KPIs exist only for the report generator's context — they must NOT appear as dashboard tiles. `REPORT_ONLY_KPI_IDS` in PorHubTab filters them out. They are still fetched in the page query (via peers) so the report bundle can use them. Migration: `20260511000001_count_kpis.sql`. |
 | System prompt section headers for assemblers | The two assembler list headers (`Armadores con % de incidente general elevado:` / `Armadores con % de incidentes particular elevado:`) must be literal output lines in the report — not just instructional context to Claude. The system prompt explicitly says "escribir esta línea exacta". If Claude ever collapses the two lists into one, this wording in the prompt is the fix. |
 | `kpis_weight_check` constraint | The `kpis` table has a check constraint requiring `weight BETWEEN 1 AND 5`. Do not use weight=0 in migrations. |
+| `router.push` inside historicos = full server re-fetch | Any `router.push` call inside `/historicos` triggers a Next.js navigation → `page.tsx` re-runs → all 6 Supabase query batches fire again → 4-5 second freeze. Always use `history.pushState` for URL sync and `useState` for view changes. See §4a. |
+| Comparativa city filter removed (session 7) | `ComparativaTab` previously had city filter buttons that called `router.push` → slow. Filter removed entirely in session 7. Tab now always shows all hubs. Do not re-add router-based filters to this component. |
 
 ---
 
@@ -494,6 +547,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 7) ux: instant tab + KPI switching via client state; remove Comparativa city filter; loading skeletons for all pages
 (session 6) feat: weekly report generator — /api/generar-reporte, GenerarReporte component, two-list assembler breakdown, FyV SKU classifier fix, rolling mean client-side fallback
 (session 5) ops: diagnosed discrepancia inflation — stale CSV upload, not a code bug; re-upload + recompute resolved Contry $40k→$8k
 (session 4) fix: stable 5-col ORDER BY for peer_comparisons pagination; remove dev diagnostic
@@ -513,6 +567,9 @@ f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile co
 ## 17. What's Working ✓
 
 - **Weekly report generator**: "Generar reporte" button in PorHubTab → Claude Haiku Slack message with assembler breakdown, driver flags, incidentes erróneas, MNA/FA sections
+- **Instant tab switching**: Por KPI / Por Hub / Comparativa tabs switch via `useState` — no Supabase re-fetch (session 7)
+- **Instant KPI switching**: Top movers + KPI dropdown use `onKpiChange` callback — no Supabase re-fetch (session 7)
+- **Loading skeletons**: All pages show immediate skeleton on navigation; no more "frozen on previous page" (session 7)
 - All 7 assembler WoW charts + all 4 driver WoW charts (incl. Discrepancia)
 - Mobile layout: hamburger drawer, responsive grids, scrollable tab bar
 - Por KPI: global mean trend line on chart, revised heatmap (value + WoW delta + own-baseline color)
@@ -561,7 +618,9 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 - **Report generator — rolling mean**: The DB `rolling_mean_4w` for the current week is null when the week was first computed before prior data existed. The report bundle now falls back to client-side computation, so the report works regardless. To permanently fix the DB: go to `/upload`, select the affected week, click "Recomputar snapshots". The enrichWithHistory function will find prior data and write the correct value.
 - **Report generator — MNA/FA WoW sentence**: Requires `mna_fyv_pct`, `mna_carnes_pct`, `mna_graneles_pct` (and faltantes equivalents) to be in `kpiSummary` with populated `prevValue`. If those sub-KPIs don't have snapshots, Claude has nothing to compare.
-- **Comparativa tab** — not touched yet; could show hub-vs-hub ranking tables
+- **Comparativa tab** — city filter removed (session 7). Always shows all hubs. Could add hub-vs-hub ranking tables or a best/worst summary row.
+- **True data preloading (SWR)** — `loading.tsx` masks the wait but doesn't shorten the actual Supabase fetch time for the initial historicos load. If that's still too slow, convert `page.tsx` data fetching to a `/api/historicos-data` route + SWR client-side cache. Data would then persist in memory for the whole session — navigating away from and back to historicos would be instant after the first load. This is the Gmail/Instagram preload pattern.
+- **CSS keep-alive tabs** — with the current `useState` conditional rendering, switching to a tab you've already visited still remounts its React component (~0.3-0.8s). For truly instant repeat visits, wrap each tab in `<div className={active ? '' : 'hidden'}>` so components stay mounted. Hold off until/if it feels slow — the initial render of all three tabs at once would make first load heavier.
 - **Home dashboard** — quick summary of current-week KPI status across all hubs
 - **Discrepancia trend** — shows automatically once 2+ weeks of data exist
 - **New hubs** — if a hub is added to `hubs` table, add its alias to `lib/hub-aliases.ts` (shared by both compute and display)
