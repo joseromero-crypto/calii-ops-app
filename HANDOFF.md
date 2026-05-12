@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-08 (session 4)  
+**Last updated:** 2026-05-11 (session 6)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -27,13 +27,15 @@ The main feature areas:
 | `components/MobileHeader.tsx` | Mobile-only sticky top bar + hamburger slide-in drawer |
 | `app/(app)/historicos/page.tsx` | Server component — fetches ALL data from Supabase, passes to client |
 | `app/(app)/historicos/HistoricosClient.tsx` | Client shell — tab routing (Por KPI / Por Hub / Comparativa) |
-| `app/(app)/historicos/PorHubTab.tsx` | "Por Hub" tab — KPI tiles + WoW charts |
+| `app/(app)/historicos/PorHubTab.tsx` | "Por Hub" tab — KPI tiles + WoW charts + "Generar reporte" button |
 | `app/(app)/historicos/PorKpiTab.tsx` | "Por KPI" tab — trend line chart, heatmap, top movers |
 | `app/(app)/historicos/ComparativaTab.tsx` | "Comparativa" tab — not touched in these sessions |
 | `app/(app)/historicos/_shared.ts` | Shared types, formatting helpers, utility functions |
 | `app/api/upload/route.ts` | Upload API — parses CSV, validates, stores upload + rows |
 | `lib/kpi-compute.ts` | Core KPI computation — processes raw upload rows into snapshots + peer comparisons |
 | `lib/hub-aliases.ts` | **Single source of truth** for hub name → hub_id mapping. Both kpi-compute and page.tsx import from here. Add new hubs/aliases here only. |
+| `app/api/generar-reporte/route.ts` | POST endpoint — receives ReportBundle from client, calls Claude Haiku, returns Slack message text |
+| `components/GenerarReporte.tsx` | "Generar reporte" button + modal — builds ReportBundle from page props, fetches incidentes erróneas, calls /api/generar-reporte |
 | `lib/sku-classifier.ts` | Classifies product names into MnaCategory: 'fyv' / 'carnes' / 'abarrotes' |
 | `lib/parse.ts` | CSV parsing + coerceRows (applies app_columns schema to raw CSV strings) |
 | `lib/validate.ts` | Upload validation — header check, type check, distribution check |
@@ -375,10 +377,90 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | Wrong-city operators shown on tile flip | The hubCityKey step 4 fallback returned the sole city-key from allCityKeys without checking it matches hub.city. For single-hub cities (Zapopan, Condesa) this caused avicola operators to appear when only Saltillo had resolved data. Fixed in session 3: added `normalize(allCityKeys[0]) === normCity` guard. |
 | All hubs showing avicola on tile flip (session 4) | Root cause: `allPeers` pagination used `ORDER BY entity_type` only — non-deterministic within the operator group → OFFSET shifted rows between pages → non-avicola hubs' operator rows dropped → fallback to wrong city. Fixed in session 4: 5-column stable ORDER BY. Confirmed via dev diagnostic (all 7 hubs had correct DB data; it was purely a fetch issue). |
 | GDL drivers/operators with null hub_id | geofence column sometimes contains "GDL" (abbreviation) instead of "Guadalajara" or "Zapopan". Added `'gdl': 'mh_zapopan'` to hub-aliases in session 3. Similarly added `'df'`, `'ciudad_de_mexico'`, `'mexico'` → `'mh_condesa'`. |
+| Discrepancia tile shows inflated value | The computation and code are correct. If the hub total looks too high, the most likely cause is a **stale CSV upload** — the `Conciliación manual` values in Retool get updated over time as ops manually reconciles cash. The CSV uploaded early in the week will have less reconciliation than a later export. Fix: re-upload the latest discrepancia CSV and hit Recompute. Confirmed session 5: Contry showed $40,131 (early upload) vs $8,087 (re-uploaded current CSV). |
+| `rolling_mean_4w` null for most-recent week | If a week is first computed before prior weeks exist in the DB, `enrichWithHistory` finds no history and writes null for `prev_week_value` and `rolling_mean_4w`. Re-running "Recomputar snapshots" for that week (single-week button) after prior data is uploaded fixes the DB value. **Code-level fix (session 6):** `buildBundle()` in `GenerarReporte.tsx` now computes `rollingMean4w` client-side from the snapshots array when the DB value is null — same fallback pattern as PorHubTab tiles. The report always has rolling mean data regardless of DB state. |
+| `retardos_count` ≠ late deliveries | `retardos_count` measures times a repartidor arrived **late to work** (`num_tardy` from `desempeno_repartidores`). It does NOT measure late deliveries — that is `pct_tardias_reparto`. Only flag retardos in the report if value ≥ 3 in the week (minValue=3 in DRIVER_KPI_DEFS). |
+| `pedidos_armados` / `retardos_count` are report-only KPIs | These KPIs exist only for the report generator's context — they must NOT appear as dashboard tiles. `REPORT_ONLY_KPI_IDS` in PorHubTab filters them out. They are still fetched in the page query (via peers) so the report bundle can use them. Migration: `20260511000001_count_kpis.sql`. |
+| System prompt section headers for assemblers | The two assembler list headers (`Armadores con % de incidente general elevado:` / `Armadores con % de incidentes particular elevado:`) must be literal output lines in the report — not just instructional context to Claude. The system prompt explicitly says "escribir esta línea exacta". If Claude ever collapses the two lists into one, this wording in the prompt is the fix. |
+| `kpis_weight_check` constraint | The `kpis` table has a check constraint requiring `weight BETWEEN 1 AND 5`. Do not use weight=0 in migrations. |
 
 ---
 
-## 13. Local Development
+## 13. Weekly Report Generator
+
+### Overview
+The "Generar reporte" teal button in the PorHubTab header generates a plain-text Slack message for the hub coordinator. Clicking it:
+1. Builds a `ReportBundle` from the props already loaded in PorHubTab (no extra server fetches except incidentes erróneas)
+2. Fetches incidentes erróneas notes directly from Supabase (browser client, filtered to this hub's drivers)
+3. POSTs to `/api/generar-reporte` → Claude Haiku → returns text
+4. Shows the text in a modal with a copy-to-Slack button
+
+### Types (exported from `app/api/generar-reporte/route.ts`)
+```ts
+KpiSummaryEntry  { id, name, value, prevValue, rollingMean4w, unit, direction }
+PeerEntity       { name, value, flagged, numOrders? }
+KpiPeerGroup     { kpiId, kpiName, unit, direction, hubMean, threshold?, entities }
+IncidenteErroneo { driver, fecha, notas }
+ReportBundle     { hub, week, kpiSummary, armadoresPorKpi, repartidoresPorKpi,
+                   incidentesErroneas, mnaProductos, faltantesSkus }
+```
+
+### KPI definitions in `GenerarReporte.tsx`
+**Assembler KPIs** (`ASSEMBLER_KPI_DEFS`):
+- `incidentes_manuales_pct` — general incidentes, threshold > 6% → LISTA 1
+- `incidentes_calidad_pct` / `incidentes_faltantes_pct` / `_parciales` / `_completos` — sub-metrics, threshold > 4% → LISTA 2
+- `tasa_armado` — higher_is_better, threshold < 90 SKUs/hr
+- `faltantes_armador_pct` — outlier >2× hub mean (no hard threshold)
+
+**Driver KPIs** (`DRIVER_KPI_DEFS`):
+- `retardos_count` — count of times late TO WORK (`num_tardy`), minValue=3, outlier >2× mean. **NOT late deliveries.**
+- `pct_undelivered` — outlier >2× hub mean
+- `discrepancia_mxn` — `showAllPositive: true`, flagged if `value >= 1` MXN
+
+### Report-only KPIs (NOT shown as dashboard tiles)
+These KPIs exist solely to provide context to the report generator:
+```ts
+const REPORT_ONLY_KPI_IDS = new Set(['pedidos_armados', 'retardos_count']);
+// Filtered out of the tiles array in PorHubTab
+```
+- `pedidos_armados` (migration `20260511000001`) — `num_assembled` per assembler, used as `numOrders` context to show "X pedidos" next to flagged assemblers
+- `retardos_count` (migration `20260511000001`) — `num_tardy` per driver, shows in Retardos section
+
+### `buildBundle()` in `GenerarReporte.tsx`
+- Filters `peers` for `within_hub` + `scope_key === hub.id` per KPI
+- `assemblerOrderCount` map built from `pedidos_armados` peer entries, attached to each assembler entity as `numOrders`
+- **`rollingMean4w`**: prefers `snap.rolling_mean_4w` from DB; falls back to client-side average of prior snapshots for the same KPI/hub when the DB value is null. This mirrors the PorHubTab tile fallback.
+
+### `buildTextBundle()` in `app/api/generar-reporte/route.ts`
+Pre-resolves the two assembler lists so Claude just copies them:
+- **LISTA 1** — `incidentes_manuales_pct > 6%`: `- Nombre: X.X% — calidades, faltantes`
+- **LISTA 2** — total ≤ 6% but sub-metric > 4%: `- Nombre: sub-métrica X.X%`
+
+Each KPI line includes:
+- WoW delta: `WoW: +Xpp PEOR/MEJORA`
+- Rolling mean (when available): `promedio_4sem: X.X%  diff_vs_promedio: +Xpp POR ENCIMA (PEOR que promedio)`
+
+### System prompt rules (SYSTEM_PROMPT in route.ts)
+Key constraints — do not loosen these without testing:
+- **REGLA DE COMPARACIÓN**: if `diff_vs_promedio` is absent from a KPI line, omit the comparison entirely. Never write "sin datos de comparación" or similar.
+- **Assembler section headers**: must literally output `Armadores con % de incidente general elevado:` and `Armadores con % de incidentes particular elevado:` before their respective item lists — these are required header lines in the output, not instructional context.
+- **Hub paragraph**: only covers entregas erróneas and entregas fallidas. NEVER mentions dinero, efectivo, retardos, velocidad de armado, faltantes de armado, or MNA. Omit the paragraph if neither occurred.
+- **MNA/FA WoW sentence**: describes category-level movement (subió/bajó/se mantuvo) using mna_fyv_pct, mna_carnes_pct, mna_graneles_pct WoW labels. No product names, no SKU names, no numeric values in this sentence.
+
+### `lib/sku-classifier.ts` — FyV keyword tier (added session 6)
+The classifier previously had no Tier 2 FyV fallback — unknown-supplier produce items were misclassified as Abarrotes. Fixed by adding `FYV_NAME_SIGNALS` (~40 unambiguous produce keywords: guayaba, jitomate, aguacate, brócoli, etc.) and updating Tier 2 logic:
+```ts
+const freshProduce = FYV_NAME_SIGNALS.some((k) => n.includes(norm(k)));
+const dryProcessed = shelfStable || /polvo|deshidratad|molido/.test(n);
+if (freshProduce && !dryProcessed && !coldChain) return 'fyv';
+if (coldChain && !shelfStable) return 'carnes';
+return 'abarrotes'; // default
+```
+Intentionally excluded from FYV_NAME_SIGNALS: cebolla, ajo, papa, maíz, coco — too common in processed/dry forms (salsa, en polvo, aceite).
+
+---
+
+## 15. Local Development
 
 ```bash
 cd ~/Desktop/calii-ops-app
@@ -409,9 +491,11 @@ The session name changes each conversation — check the system prompt for the c
 
 ---
 
-## 14. Commits
+## 16. Commits
 
 ```
+(session 6) feat: weekly report generator — /api/generar-reporte, GenerarReporte component, two-list assembler breakdown, FyV SKU classifier fix, rolling mean client-side fallback
+(session 5) ops: diagnosed discrepancia inflation — stale CSV upload, not a code bug; re-upload + recompute resolved Contry $40k→$8k
 (session 4) fix: stable 5-col ORDER BY for peer_comparisons pagination; remove dev diagnostic
 (session 3) fix: MNA per-upload fetch; hubCityKey step-4 guard; hub-aliases GDL/CDMX variants
 ffdea85     compute: hub-aliases shared module, upload_rows fetch fix, sequential upserts
@@ -426,8 +510,9 @@ f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile co
 
 ---
 
-## 15. What's Working ✓
+## 17. What's Working ✓
 
+- **Weekly report generator**: "Generar reporte" button in PorHubTab → Claude Haiku Slack message with assembler breakdown, driver flags, incidentes erróneas, MNA/FA sections
 - All 7 assembler WoW charts + all 4 driver WoW charts (incl. Discrepancia)
 - Mobile layout: hamburger drawer, responsive grids, scrollable tab bar
 - Por KPI: global mean trend line on chart, revised heatmap (value + WoW delta + own-baseline color)
@@ -443,7 +528,7 @@ f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile co
 
 ---
 
-## 16. Discrepancia KPI — Reference
+## 18. Discrepancia KPI — Reference
 
 **Source app:** `discrepancia` (scope: total, 1 file/week)
 
@@ -468,10 +553,14 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 **Supabase setup:** `supabase_discrepancia_setup.sql` in project root — already applied to production 2026-05-07.
 
+⚠️ **Stale upload pattern:** `Conciliación manual` in Retool is updated throughout the week as cash is manually reconciled. If you upload the CSV on Monday and check the tile on Friday, the numbers will look inflated — not a bug. Always re-upload the latest CSV export and hit Recompute before trusting the discrepancia tile values. Diagnosed session 5: Contry showed $40,131 from an early-week upload; after re-uploading the Friday export the value corrected to $8,087.
+
 ---
 
-## 17. Ideas / Possible Next Tasks
+## 19. Ideas / Possible Next Tasks
 
+- **Report generator — rolling mean**: The DB `rolling_mean_4w` for the current week is null when the week was first computed before prior data existed. The report bundle now falls back to client-side computation, so the report works regardless. To permanently fix the DB: go to `/upload`, select the affected week, click "Recomputar snapshots". The enrichWithHistory function will find prior data and write the correct value.
+- **Report generator — MNA/FA WoW sentence**: Requires `mna_fyv_pct`, `mna_carnes_pct`, `mna_graneles_pct` (and faltantes equivalents) to be in `kpiSummary` with populated `prevValue`. If those sub-KPIs don't have snapshots, Claude has nothing to compare.
 - **Comparativa tab** — not touched yet; could show hub-vs-hub ranking tables
 - **Home dashboard** — quick summary of current-week KPI status across all hubs
 - **Discrepancia trend** — shows automatically once 2+ weeks of data exist
@@ -480,7 +569,7 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 ---
 
-## 18. Environment
+## 20. Environment
 
 ```
 Workspace:   /Users/adrianrodriguez/Desktop/calii-ops-app

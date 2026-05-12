@@ -1,6 +1,5 @@
 'use client';
 import { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   HUB_COLORS, formatValue, weekEndLabel,
@@ -56,49 +55,20 @@ interface Props {
   hubs: Hub[];
   snapshots: Snapshot[];
   currentWeek: string;
-  selectedCity?: string;
 }
 
-export function ComparativaTab({ kpis, hubs, snapshots, currentWeek, selectedCity }: Props) {
-  const router = useRouter();
-
-  function pickCity(c: string | null) {
-    if (c) {
-      router.push(`/historicos?tab=cmp&city=${encodeURIComponent(c)}`);
-    } else {
-      router.push('/historicos?tab=cmp');
-    }
-  }
-
-  const filteredHubs = selectedCity ? hubs.filter((h) => h.city === selectedCity) : hubs;
-  const cities = [...new Set(hubs.map((h) => h.city))];
-
+export function ComparativaTab({ kpis, hubs, snapshots, currentWeek }: Props) {
   return (
     <div className="space-y-3">
       <div className="bg-white border border-[var(--line)] rounded-xl p-3 shadow-soft flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] uppercase tracking-wide text-[var(--muted)] font-bold mr-2">Filtrar por ciudad:</span>
-        <button
-          onClick={() => pickCity(null)}
-          className={`px-3 py-1 rounded-full text-[11.5px] font-medium border ${
-            !selectedCity ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
-          }`}
-        >Todas</button>
-        {cities.map((c) => (
-          <button
-            key={c}
-            onClick={() => pickCity(c)}
-            className={`px-3 py-1 rounded-full text-[11.5px] font-medium border ${
-              selectedCity === c ? 'bg-black text-white border-black' : 'bg-white text-slate-700 border-[var(--line)] hover:border-black'
-            }`}
-          >{c}</button>
-        ))}
-        <span className="ml-auto text-[11.5px] text-[var(--muted)]">
-          {filteredHubs.length} hubs · {kpis.length} KPIs
+        <span className="text-[11px] uppercase tracking-wide text-[var(--muted)] font-bold">Todos los MHs</span>
+        <span className="text-[11.5px] text-[var(--muted)] ml-auto">
+          {hubs.length} hubs · {kpis.length} KPIs
         </span>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {kpis.map((kpi) => (
-          <KpiCompareCard key={kpi.id} kpi={kpi} hubs={filteredHubs} snapshots={snapshots} currentWeek={currentWeek} />
+          <KpiCompareCard key={kpi.id} kpi={kpi} hubs={hubs} snapshots={snapshots} currentWeek={currentWeek} />
         ))}
       </div>
     </div>

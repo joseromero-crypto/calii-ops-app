@@ -1,6 +1,5 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
@@ -52,11 +51,11 @@ interface Props {
   roles: { id: string; name_es: string }[];
   currentWeek: string;
   selectedKpi?: string;
+  /** Called when the user picks a different KPI. Parent owns the state. */
+  onKpiChange?: (id: string) => void;
 }
 
-export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: Props) {
-  const router = useRouter();
-
+export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onKpiChange }: Props) {
   const defaultKpi = kpis.find((k) => k.watched_globally)?.id ?? kpis[0]?.id;
   const kpiId = selectedKpi || defaultKpi;
   const kpi = kpis.find((k) => k.id === kpiId);
@@ -65,8 +64,9 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi }: P
 
   if (!kpi) return <p className="text-[var(--muted)]">No hay KPIs configurados.</p>;
 
+  // Instant client-side KPI switch — no server round-trip.
   function pickKpi(id: string) {
-    router.push(`/historicos?tab=kpi&kpi=${id}`);
+    onKpiChange?.(id);
   }
 
   // ── Top movers ──────────────────────────────────────────────────────────────

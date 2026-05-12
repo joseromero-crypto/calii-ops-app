@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku } from './_shared';
 import { weekEndLabel } from './_shared';
 import { PorKpiTab } from './PorKpiTab';
@@ -23,13 +24,39 @@ interface Props {
   selectedCity?: string;
 }
 export function HistoricosClient(props: Props) {
-  const { kpis, hubs, currentWeek, tab, mnaProducts } = props;
-  const tabHref = (t: string, extras: Record<string, string | undefined> = {}) => {
+  const { currentWeek, mnaProducts } = props;
+
+  // ── Client-side navigation state ─────────────────────────────────────────────
+  // All three state variables are initialised from server-provided props (which
+  // come from URL searchParams on first load / direct links / back-navigation).
+  // Subsequent changes are pure client state + history.pushState — no Supabase
+  // re-fetch, no server round-trip, same mechanism as hub switching in PorHubTab.
+
+  const [activeTab, setActiveTab] = useState<'kpi' | 'hub' | 'cmp'>(props.tab);
+  const defaultKpi = props.kpis.find((k) => k.watched_globally)?.id ?? props.kpis[0]?.id ?? '';
+  const [activeKpi, setActiveKpi] = useState<string>(props.selectedKpi ?? defaultKpi);
+
+  // Build and push URL without triggering a Next.js server navigation.
+  function syncUrl(tab: 'kpi' | 'hub' | 'cmp', kpi: string) {
     const params = new URLSearchParams();
-    if (t !== 'kpi') params.set('tab', t);
-    for (const [k, v] of Object.entries(extras)) if (v) params.set(k, v);
-    return params.toString() ? `/historicos?${params.toString()}` : '/historicos';
+    if (tab !== 'kpi') params.set('tab', tab);
+    if (tab === 'kpi' && kpi && kpi !== defaultKpi) params.set('kpi', kpi);
+    const url = params.toString() ? `/historicos?${params.toString()}` : '/historicos';
+    window.history.pushState(null, '', url);
+  }
+
+  const switchTab = (t: 'kpi' | 'hub' | 'cmp') => {
+    setActiveTab(t);
+    syncUrl(t, activeKpi);
   };
+
+  const switchKpi = (id: string) => {
+    setActiveKpi(id);
+    syncUrl('kpi', id);
+    // If the user is on a different tab, also switch to kpi tab.
+    if (activeTab !== 'kpi') setActiveTab('kpi');
+  };
+
   return (
     <div>
       <div className="flex items-baseline justify-between flex-wrap gap-3 mb-4">
@@ -45,20 +72,20 @@ export function HistoricosClient(props: Props) {
         </span>
       </div>
       <div className="flex gap-1 border-b border-[var(--line)] mb-5 overflow-x-auto">
-        <Tab href={tabHref('kpi')}  active={tab === 'kpi'}>📈 Por KPI</Tab>
-        <Tab href={tabHref('hub')}  active={tab === 'hub'}>🏬 Por hub<span className="hidden sm:inline"> · vista 1:1</span></Tab>
-        <Tab href={tabHref('cmp')}  active={tab === 'cmp'}>⚖️ Comparativa<span className="hidden sm:inline"> entre MHs</span></Tab>
+        <Tab onClick={() => switchTab('kpi')} active={activeTab === 'kpi'}>📈 Por KPI</Tab>
+        <Tab onClick={() => switchTab('hub')} active={activeTab === 'hub'}>🏬 Por hub<span className="hidden sm:inline"> · vista 1:1</span></Tab>
+        <Tab onClick={() => switchTab('cmp')} active={activeTab === 'cmp'}>⚖️ Comparativa<span className="hidden sm:inline"> entre MHs</span></Tab>
       </div>
-      {tab === 'kpi' && <PorKpiTab {...props} />}
-      {tab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} />}
-      {tab === 'cmp' && <ComparativaTab {...props} />}
+      {activeTab === 'kpi' && <PorKpiTab {...props} selectedKpi={activeKpi} onKpiChange={switchKpi} />}
+      {activeTab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} />}
+      {activeTab === 'cmp' && <ComparativaTab {...props} />}
     </div>
   );
 }
-function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+function Tab({ onClick, active, children }: { onClick: () => void; active: boolean; children: React.ReactNode }) {
   return (
-    <a
-      href={href}
+    <button
+      onClick={onClick}
       className={`shrink-0 whitespace-nowrap px-3.5 py-2.5 text-[13px] font-medium border-b-2 -mb-px ${
         active
           ? 'border-teal-400 text-[var(--ink)] font-semibold'
@@ -66,6 +93,6 @@ function Tab({ href, active, children }: { href: string; active: boolean; childr
       }`}
     >
       {children}
-    </a>
+    </button>
   );
 }
