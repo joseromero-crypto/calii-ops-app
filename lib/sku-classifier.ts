@@ -127,6 +127,33 @@ const SHARED_CARNES_DOMINANT = new Set([
 // (Carnes default, overrideable).
 
 /**
+ * Product name tokens that unambiguously indicate fresh produce → FyV.
+ * Used as a fallback when the supplier is not in FYV_SUPPLIERS (e.g. regional
+ * fresh produce vendors not in the main MA catalog).
+ * Excluded intentionally: cebolla, ajo, papa, maíz, coco — too common in
+ * processed/dry forms (salsa, en polvo, aceite) to be safe keywords.
+ */
+const FYV_NAME_SIGNALS = [
+  // Fruits
+  'guayaba', 'manzana', 'pera', 'naranja', 'mandarina',
+  'limon', 'limón', 'toronja', 'platano', 'plátano',
+  'piña', 'pina', 'mango', 'papaya', 'melon', 'melón',
+  'sandia', 'sandía', 'uva', 'fresa', 'kiwi',
+  'durazno', 'chabacano', 'pitahaya', 'granada', 'higo',
+  'mamey', 'zapote', 'tejocote', 'ciruela', 'cereza',
+  // Vegetables
+  'ejote', 'jitomate', 'pepino', 'zanahoria',
+  'brocoli', 'brócoli', 'coliflor', 'espinaca',
+  'lechuga', 'cilantro', 'perejil', 'apio',
+  'nopal', 'nopales', 'chayote', 'calabacita', 'calabaza',
+  'betabel', 'jicama', 'jícama', 'camote', 'elote',
+  'espárrago', 'esparrago', 'acelga', 'berro',
+  'arugula', 'arúgula', 'aguacate',
+  // Fresh herbs (distinct from dried spice equivalents)
+  'hierbabuena', 'epazote',
+];
+
+/**
  * Product name tokens that indicate refrigerated/cold-chain → Carnes.
  * Sourced from actual shared-supplier product names where keywords reliably
  * distinguish the refrigerated item from its shelf-stable counterpart.
@@ -224,12 +251,15 @@ export function classifyMnaProduct(
   }
 
   // ── Tier 2: Unknown supplier — keyword driven ────────────────────────────
-  // Abarrotes is the correct prior for unknown suppliers (79% of catalog).
-  // Only override to Carnes when a refrigerated signal is found AND no
-  // stronger shelf-stable signal contradicts it.
-  const coldChain  = CARNES_NAME_SIGNALS.some((k)    => n.includes(norm(k)));
-  const shelfStable = ABARROTES_NAME_SIGNALS.some((k) => n.includes(norm(k)));
+  // Check all three categories; FyV and Carnes signals override the abarrotes default.
+  // "dryProcessed" (polvo, deshidratado, molido) invalidates a FyV match —
+  // e.g. "ajo molido" or "espinaca en polvo" are abarrotes, not produce.
+  const coldChain    = CARNES_NAME_SIGNALS.some((k)  => n.includes(norm(k)));
+  const shelfStable  = ABARROTES_NAME_SIGNALS.some((k) => n.includes(norm(k)));
+  const freshProduce = FYV_NAME_SIGNALS.some((k)     => n.includes(norm(k)));
+  const dryProcessed = shelfStable || /polvo|deshidratad|molido/.test(n);
 
+  if (freshProduce && !dryProcessed && !coldChain) return 'fyv';
   if (coldChain && !shelfStable) return 'carnes';
   return 'abarrotes';
 }

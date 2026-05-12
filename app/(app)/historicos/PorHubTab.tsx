@@ -9,6 +9,7 @@ import {
   type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku,
 } from './_shared';
 import type { MnaCategory } from '@/lib/sku-classifier';
+import { GenerarReporte } from '@/components/GenerarReporte';
 
 /* ─── Sparkline tooltip ──────────────────────────────────────────────────── */
 function SparkTooltip({
@@ -121,10 +122,13 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
     });
   }
 
+  // KPIs used only by the report generator — not displayed as dashboard tiles.
+  const REPORT_ONLY_KPI_IDS = new Set(['pedidos_armados', 'retardos_count']);
+
   // KPI tiles for this hub — all active KPIs, no parent_kpi_id filter needed
   // now that mna_monto child KPI has been deleted.
   const tiles = useMemo(() => {
-    return kpis.map((k) => {
+    return kpis.filter((k) => !REPORT_ONLY_KPI_IDS.has(k.id)).map((k) => {
       const thisWeek = snapshots.find(
         (s) => s.kpi_id === k.id && s.scope_level === 'hub' && s.scope_key === hubId && s.week_start === currentWeek
       );
@@ -263,13 +267,24 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
 
       {/* Hub overview */}
       <div className="bg-white border border-[var(--line)] rounded-xl p-5 shadow-soft">
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-[19px] font-bold">{hub.display_name}</h2>
             <div className="text-[12px] text-[var(--muted)]">{hub.city} · semana del jue {weekEndLabel(currentWeek)}</div>
           </div>
-          <div className="text-[11.5px] text-[var(--muted)]">
-            {operatorCount} armadores · {driverCount} repartidores con datos esta sem
+          <div className="flex items-center gap-3">
+            <div className="text-[11.5px] text-[var(--muted)]">
+              {operatorCount} armadores · {driverCount} repartidores con datos esta sem
+            </div>
+            <GenerarReporte
+              hub={hub}
+              kpis={kpis}
+              snapshots={snapshots}
+              peers={peers}
+              mnaProducts={mnaProducts}
+              faltantesSkuProducts={faltantesSkuProducts}
+              currentWeek={currentWeek}
+            />
           </div>
         </div>
       </div>
