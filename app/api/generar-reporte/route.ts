@@ -83,9 +83,10 @@ ESTRUCTURA:
 Saludo:
 "Qué tal [Nombre], te paso comentarios de los puntos importantes de la semana."
 
---- SECCIÓN ARMADO (omitir si LISTA 1 y LISTA 2 están ambas vacías) ---
+--- SECCIÓN ARMADO (omitir sección completa si no hay nada que reportar) ---
+Escribir la cabecera: "Armado"
 
-Línea de KPI del hub (siempre que haya algún armador a reportar):
+Línea de KPI del hub:
 Si incidentes_manuales_pct tiene diff_vs_promedio: "Incidentes armado: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
 Si NO tiene diff_vs_promedio: "Incidentes armado: X.X%"
 
@@ -98,34 +99,37 @@ Si LISTA 2 tiene entradas, escribir esta línea exacta antes de los items:
 "Armadores con % de incidentes particular elevado:"
 Luego copiar cada item de LISTA 2 tal cual (formato: "- Nombre: tipo X.X%").
 
+Tasas: (lista ya filtrada — copiar solo los nombres que aparecen en la sección TASAS del bundle, todos son lentos)
+"Tasas: Nombre (XX.X), Nombre (XX.X)"
+Si el bundle dice "(ninguno por debajo del umbral esta semana)", omitir esta línea.
+
+FA: (armadores marcados ⚠️ en faltantes_armador_pct — SOLO el desglose por armador, sin total ni comparación 4 semanas)
+"FA"
+Luego un bullet por armador:
+"- Nombre (X.X%, Xx el promedio)"
+
 --- FIN SECCIÓN ARMADO ---
 
-Tasas: (armadores marcados ⚠️ en tasa_armado)
-Una línea: "Tasas: Nombre (XX.X), Nombre (XX.X)"
+--- SECCIÓN REPARTO (omitir sección completa si no hay nada que reportar) ---
+Escribir la cabecera: "Reparto"
 
-FA: (armadores marcados ⚠️ en faltantes_armador_pct)
-Si faltantes_armador_pct tiene diff_vs_promedio: "FA: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
-Si NO tiene diff_vs_promedio: "FA: X.X%"
-Segunda línea (los armadores): "- Nombre (X.X%, Xx el promedio), Nombre (X.X%)"
-
-Retardos: (repartidores con retardos_count ≥ 3 y > 2× promedio)
-"- Nombre: X retardos"
-
-Entregas fallidas: (repartidores con pct_undelivered > 2× promedio)
+Reparto tardío (repartidores con pct_tardias_reparto > 2× promedio):
+"Reparto tardío"
 "- Nombre: X.X% (promedio: Y.Y%)"
 
-Efectivo: (repartidores con discrepancia_mxn ≥ $1)
-"- Nombre: $X,XXX"
+Entregas fallidas (repartidores con pct_undelivered > 2× promedio):
+"Entregas fallidas"
+"- Nombre: X.X% (promedio: Y.Y%)"
 
-Entregas erróneas: (si las hay)
-"- Nombre — fecha — nota breve"
+Entregas erróneas (si las hay):
+"Entregas erróneas"
+Copiar cada entrada exactamente como viene en el bundle, sin resumir ni parafrasear la nota:
+"- Nombre — fecha — [nota exacta del archivo]"
 
-Párrafo (1-2 oraciones):
-Solo resumir si hubo entregas erróneas o entregas fallidas notables.
-NUNCA mencionar en este párrafo: dinero, efectivo, discrepancias, retardos, velocidad de armado, faltantes de armado, ni MNA.
-Si no hubo entregas erróneas ni entregas fallidas notables, omitir el párrafo por completo.
+--- FIN SECCIÓN REPARTO ---
 
-MNA: (si hay datos)
+MNA: (omitir si no hay datos)
+Escribir la cabecera: "MNA"
 Si mna_pct tiene diff_vs_promedio: "MNA: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
 Si NO tiene diff_vs_promedio: "MNA: X.X%"
 Segunda línea: una oración describiendo el movimiento WoW por categoría usando mna_fyv_pct, mna_carnes_pct, mna_graneles_pct del kpiSummary. Solo indicar cuál subió, cuál bajó, cuál se mantuvo. Sin mencionar productos ni valores numéricos en esta oración.
@@ -133,7 +137,8 @@ Ejemplo: "El porcentaje de MNA se mantuvo estable en Graneles, bajó en Carnes, 
 Luego la lista:
 - Producto — $X,XXX (X.X%) [categoría]
 
-Faltantes armador: (si hay datos)
+Faltantes armador: (omitir si no hay datos)
+Escribir la cabecera: "Faltantes armador"
 Si faltantes_armador_pct tiene diff_vs_promedio: "Faltantes armador: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
 Si NO tiene diff_vs_promedio: "Faltantes armador: X.X%"
 Segunda línea: una oración describiendo el movimiento WoW por categoría usando faltantes_fyv_pct, faltantes_carnes_pct, faltantes_graneles_pct del kpiSummary. Solo indicar cuál subió, cuál bajó, cuál se mantuvo. Sin mencionar SKUs ni valores en esta oración.
@@ -236,10 +241,10 @@ function buildTextBundle(b: ReportBundle): string {
   const list1Entries = (totalGroup?.entities ?? []).filter((e) => e.flagged);
   const list1Names   = new Set(list1Entries.map((e) => e.name));
 
-  // List 2: sub-flagged but NOT in list 1
+  // List 2: ALL assemblers with at least one flagged sub-metric (independent of list 1)
   const list2Names = new Set<string>();
   for (const [name] of subFlagsByName) {
-    if (!list1Names.has(name)) list2Names.add(name);
+    list2Names.add(name);
   }
 
   lines.push('=== ARMADORES — LISTAS PRE-PROCESADAS PARA EL REPORTE ===');
@@ -285,12 +290,21 @@ function buildTextBundle(b: ReportBundle): string {
       header += `  OUTLIER: >${fmtVal(g.hubMean * 2, g.unit)} (>2× promedio)`;
     }
     lines.push(header);
-    for (const e of g.entities) {
-      const val  = fmtVal(e.value, g.unit);
-      const mult = (e.flagged && g.hubMean !== null && e.value !== null)
-        ? ` (${(e.value / g.hubMean).toFixed(1)}× promedio)` : '';
-      const orderCtx = (e.numOrders != null && Number.isFinite(e.numOrders)) ? ` [${e.numOrders} pedidos]` : '';
-      lines.push(`${e.flagged ? '  ⚠️ ' : '    '}${e.name}: ${val}${mult}${orderCtx}`);
+    // For tasa_armado: pre-filter to flagged (slow) assemblers only — avoids
+    // Claude accidentally listing fast ones when reading ⚠️ markers.
+    const entitiesToShow = g.kpiId === 'tasa_armado'
+      ? g.entities.filter((e) => e.flagged)
+      : g.entities;
+    if (g.kpiId === 'tasa_armado' && entitiesToShow.length === 0) {
+      lines.push('(ninguno por debajo del umbral esta semana)');
+    } else {
+      for (const e of entitiesToShow) {
+        const val  = fmtVal(e.value, g.unit);
+        const mult = (e.flagged && g.hubMean !== null && e.value !== null)
+          ? ` (${(e.value / g.hubMean).toFixed(1)}× promedio)` : '';
+        const orderCtx = (e.numOrders != null && Number.isFinite(e.numOrders)) ? ` [${e.numOrders} pedidos]` : '';
+        lines.push(`${e.flagged ? '  ⚠️ ' : '    '}${e.name}: ${val}${mult}${orderCtx}`);
+      }
     }
     lines.push('');
   }

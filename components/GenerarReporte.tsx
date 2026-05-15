@@ -30,14 +30,15 @@ interface Props {
 const ASSEMBLER_KPI_DEFS: {
   id: string;
   name: string;
-  threshold?: number; // hard threshold in stored units (pct as 0-1, rate as raw)
+  threshold?: number;     // hard threshold in stored units (pct as 0-1, rate as raw)
+  higherIsBetter?: boolean; // overrides kpi.direction when the DB value is wrong
 }[] = [
   { id: 'incidentes_manuales_pct',            name: 'Incidentes armado',   threshold: 0.06 },
   { id: 'incidentes_calidad_pct',             name: 'calidades',           threshold: 0.04 },
   { id: 'incidentes_faltantes_pct',           name: 'faltantes',           threshold: 0.04 },
   { id: 'incidentes_faltantes_parciales_pct', name: 'faltantes parciales', threshold: 0.04 },
   { id: 'incidentes_faltantes_completos_pct', name: 'faltantes completos', threshold: 0.04 },
-  { id: 'tasa_armado',                        name: 'Tasas',               threshold: 90   }, // <90 = bad
+  { id: 'tasa_armado',                        name: 'Tasas',               threshold: 90, higherIsBetter: true }, // <90 = bad
   { id: 'faltantes_armador_pct',              name: 'FA' },                 // outlier >2× mean
 ];
 
@@ -48,11 +49,8 @@ const DRIVER_KPI_DEFS: {
   showAllPositive?: boolean; // show all entities with value > 0 (no outlier logic)
   minValue?: number;         // absolute minimum to flag (regardless of outlier logic)
 }[] = [
-  // retardos_count: count of times late to work (num_tardy), outlier >2× mean.
-  // minValue:3 — fewer than 3 in a week is noise, not worth reporting.
-  { id: 'retardos_count',   name: 'Retardos',         minValue: 3 },
-  { id: 'pct_undelivered',  name: 'Entregas fallidas' },
-  { id: 'discrepancia_mxn', name: 'Efectivo', showAllPositive: true },
+  { id: 'pct_tardias_reparto', name: 'Reparto tardío'  },
+  { id: 'pct_undelivered',    name: 'Entregas fallidas' },
 ];
 
 // ─── Regex for identifying delivery-related incident notes ───────────────────
@@ -157,17 +155,22 @@ function buildBundle(
 
       const hubMean = hubPeers[0].peer_mean ?? null;
 
+      // Use def.higherIsBetter override when set; otherwise fall back to DB direction.
+      const effectiveHigherIsBetter = def.higherIsBetter !== undefined
+        ? def.higherIsBetter
+        : kpi.direction === 'higher_is_better';
+
       const entities = hubPeers.map((p) => {
         let flagged = false;
         if (def.threshold !== undefined && p.value !== null) {
+          // higher_is_better (e.g. tasa_armado): flag if below threshold
           // lower_is_better: flag if above threshold
-          // higher_is_better (tasa_armado): flag if below threshold
-          flagged = kpi.direction === 'lower_is_better'
-            ? p.value > def.threshold
-            : p.value < def.threshold;
+          flagged = effectiveHigherIsBetter
+            ? p.value <= def.threshold
+            : p.value >= def.threshold;
         } else if (hubMean !== null && p.value !== null) {
           // outlier: >2× hub mean (lower_is_better KPIs only)
-          if (kpi.direction === 'lower_is_better') {
+          if (!effectiveHigherIsBetter) {
             flagged = p.value > hubMean * 2;
           }
         }
@@ -184,16 +187,19 @@ function buildBundle(
         if (a.flagged !== b.flagged) return a.flagged ? -1 : 1;
         if (a.value === null) return 1;
         if (b.value === null) return -1;
-        return kpi.direction === 'lower_is_better'
-          ? b.value - a.value
-          : a.value - b.value;
+        // For higher_is_better (tasa_armado): worst = lowest value → ascending
+        // For lower_is_better: worst = highest value → descending
+        return effectiveHigherIsBetter
+          ? a.value - b.value
+          : b.value - a.value;
       });
 
       return {
         kpiId:     def.id,
         kpiName:   def.name,
         unit:      kpi.unit,
-        direction: kpi.direction,
+        // Use effective direction so route.ts generates the correct UMBRAL label
+        direction: effectiveHigherIsBetter ? 'higher_is_better' : 'lower_is_better',
         hubMean,
         threshold: def.threshold,
         entities,

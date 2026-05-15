@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-12 (session 7)  
+**Last updated:** 2026-05-15 (session 8)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -430,7 +430,8 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | GDL drivers/operators with null hub_id | geofence column sometimes contains "GDL" (abbreviation) instead of "Guadalajara" or "Zapopan". Added `'gdl': 'mh_zapopan'` to hub-aliases in session 3. Similarly added `'df'`, `'ciudad_de_mexico'`, `'mexico'` → `'mh_condesa'`. |
 | Discrepancia tile shows inflated value | The computation and code are correct. If the hub total looks too high, the most likely cause is a **stale CSV upload** — the `Conciliación manual` values in Retool get updated over time as ops manually reconciles cash. The CSV uploaded early in the week will have less reconciliation than a later export. Fix: re-upload the latest discrepancia CSV and hit Recompute. Confirmed session 5: Contry showed $40,131 (early upload) vs $8,087 (re-uploaded current CSV). |
 | `rolling_mean_4w` null for most-recent week | If a week is first computed before prior weeks exist in the DB, `enrichWithHistory` finds no history and writes null for `prev_week_value` and `rolling_mean_4w`. Re-running "Recomputar snapshots" for that week (single-week button) after prior data is uploaded fixes the DB value. **Code-level fix (session 6):** `buildBundle()` in `GenerarReporte.tsx` now computes `rollingMean4w` client-side from the snapshots array when the DB value is null — same fallback pattern as PorHubTab tiles. The report always has rolling mean data regardless of DB state. |
-| `retardos_count` ≠ late deliveries | `retardos_count` measures times a repartidor arrived **late to work** (`num_tardy` from `desempeno_repartidores`). It does NOT measure late deliveries — that is `pct_tardias_reparto`. Only flag retardos in the report if value ≥ 3 in the week (minValue=3 in DRIVER_KPI_DEFS). |
+| `retardos_count` ≠ late deliveries | `retardos_count` measures times a repartidor arrived **late to work** (`num_tardy`). It is NOT included in the report sent to coordinators (`DRIVER_KPI_DEFS` removed it). Still suppressed from dashboard tiles via `REPORT_ONLY_KPI_IDS`. |
+| `tasa_armado` DB direction may be wrong | The DB `kpis.direction` for `tasa_armado` may be `lower_is_better` even though higher rate = better. `ASSEMBLER_KPI_DEFS` has `higherIsBetter: true` which overrides the DB value throughout: flagging, sort, and the `direction` field in the returned bundle (so `buildTextBundle` prints `UMBRAL: <90` not `>90`). Do not remove this override without verifying the DB direction is corrected. |
 | `pedidos_armados` / `retardos_count` are report-only KPIs | These KPIs exist only for the report generator's context — they must NOT appear as dashboard tiles. `REPORT_ONLY_KPI_IDS` in PorHubTab filters them out. They are still fetched in the page query (via peers) so the report bundle can use them. Migration: `20260511000001_count_kpis.sql`. |
 | System prompt section headers for assemblers | The two assembler list headers (`Armadores con % de incidente general elevado:` / `Armadores con % de incidentes particular elevado:`) must be literal output lines in the report — not just instructional context to Claude. The system prompt explicitly says "escribir esta línea exacta". If Claude ever collapses the two lists into one, this wording in the prompt is the fix. |
 | `kpis_weight_check` constraint | The `kpis` table has a check constraint requiring `weight BETWEEN 1 AND 5`. Do not use weight=0 in migrations. |
@@ -460,15 +461,16 @@ ReportBundle     { hub, week, kpiSummary, armadoresPorKpi, repartidoresPorKpi,
 
 ### KPI definitions in `GenerarReporte.tsx`
 **Assembler KPIs** (`ASSEMBLER_KPI_DEFS`):
-- `incidentes_manuales_pct` — general incidentes, threshold > 6% → LISTA 1
-- `incidentes_calidad_pct` / `incidentes_faltantes_pct` / `_parciales` / `_completos` — sub-metrics, threshold > 4% → LISTA 2
-- `tasa_armado` — higher_is_better, threshold < 90 SKUs/hr
-- `faltantes_armador_pct` — outlier >2× hub mean (no hard threshold)
+- `incidentes_manuales_pct` — general incidentes, threshold **≥ 6%** → LISTA 1
+- `incidentes_calidad_pct` / `incidentes_faltantes_pct` / `_parciales` / `_completos` — sub-metrics, threshold **≥ 4%** → LISTA 2
+- `tasa_armado` — `higherIsBetter: true` override (DB direction may be `lower_is_better`). Threshold **≤ 90 SKUs/hr** = bad. `effectiveHigherIsBetter` is computed from the def override, not `kpi.direction`. The corrected direction is passed in the bundle so `buildTextBundle` generates `UMBRAL: <90` not `>90`. `buildTextBundle` also **pre-filters** tasa_armado entities to flagged-only before sending to Claude — avoids Claude accidentally listing fast assemblers.
+- `faltantes_armador_pct` — outlier ≥ 2× hub mean (no hard threshold)
 
 **Driver KPIs** (`DRIVER_KPI_DEFS`):
-- `retardos_count` — count of times late TO WORK (`num_tardy`), minValue=3, outlier >2× mean. **NOT late deliveries.**
-- `pct_undelivered` — outlier >2× hub mean
-- `discrepancia_mxn` — `showAllPositive: true`, flagged if `value >= 1` MXN
+- `pct_tardias_reparto` — outlier >2× hub mean → "Reparto tardío" in report
+- `pct_undelivered` — outlier >2× hub mean → "Entregas fallidas" in report
+
+(Removed from driver report: `retardos_count`, `discrepancia_mxn` — not shared with coordinators.)
 
 ### Report-only KPIs (NOT shown as dashboard tiles)
 These KPIs exist solely to provide context to the report generator:
@@ -477,17 +479,19 @@ const REPORT_ONLY_KPI_IDS = new Set(['pedidos_armados', 'retardos_count']);
 // Filtered out of the tiles array in PorHubTab
 ```
 - `pedidos_armados` (migration `20260511000001`) — `num_assembled` per assembler, used as `numOrders` context to show "X pedidos" next to flagged assemblers
-- `retardos_count` (migration `20260511000001`) — `num_tardy` per driver, shows in Retardos section
+- `retardos_count` — still in `REPORT_ONLY_KPI_IDS` for tile suppression but no longer included in `DRIVER_KPI_DEFS` and not sent to Claude
 
 ### `buildBundle()` in `GenerarReporte.tsx`
 - Filters `peers` for `within_hub` + `scope_key === hub.id` per KPI
 - `assemblerOrderCount` map built from `pedidos_armados` peer entries, attached to each assembler entity as `numOrders`
 - **`rollingMean4w`**: prefers `snap.rolling_mean_4w` from DB; falls back to client-side average of prior snapshots for the same KPI/hub when the DB value is null. This mirrors the PorHubTab tile fallback.
+- **`effectiveHigherIsBetter`** for assembler KPIs: uses `def.higherIsBetter` override when set, else falls back to `kpi.direction === 'higher_is_better'`. Used for both the flagging check and the sort order. The returned group's `direction` field is set from this effective value (not raw `kpi.direction`) so `buildTextBundle` generates the correct UMBRAL label.
 
 ### `buildTextBundle()` in `app/api/generar-reporte/route.ts`
 Pre-resolves the two assembler lists so Claude just copies them:
-- **LISTA 1** — `incidentes_manuales_pct > 6%`: `- Nombre: X.X% — calidades, faltantes`
-- **LISTA 2** — total ≤ 6% but sub-metric > 4%: `- Nombre: sub-métrica X.X%`
+- **LISTA 1** — `incidentes_manuales_pct ≥ 6%`: `- Nombre: X.X% — calidades, faltantes`
+- **LISTA 2** — any sub-metric ≥ 4% (independent of LISTA 1 — same person can appear in both): `- Nombre: sub-métrica X.X%`
+- **tasa_armado**: entities pre-filtered to flagged-only (slow assemblers) before the text block is written. Claude receives only the slow ones; no ⚠️ parsing needed.
 
 Each KPI line includes:
 - WoW delta: `WoW: +Xpp PEOR/MEJORA`
@@ -496,8 +500,10 @@ Each KPI line includes:
 ### System prompt rules (SYSTEM_PROMPT in route.ts)
 Key constraints — do not loosen these without testing:
 - **REGLA DE COMPARACIÓN**: if `diff_vs_promedio` is absent from a KPI line, omit the comparison entirely. Never write "sin datos de comparación" or similar.
-- **Assembler section headers**: must literally output `Armadores con % de incidente general elevado:` and `Armadores con % de incidentes particular elevado:` before their respective item lists — these are required header lines in the output, not instructional context.
-- **Hub paragraph**: only covers entregas erróneas and entregas fallidas. NEVER mentions dinero, efectivo, retardos, velocidad de armado, faltantes de armado, or MNA. Omit the paragraph if neither occurred.
+- **Section headers**: four main headers only — `Armado`, `Reparto`, `MNA`, `Faltantes armador`. Tasas, FA, Reparto tardío, Entregas fallidas, Entregas erróneas are subsections within their parent — no separate headers.
+- **Assembler sub-list headers**: must literally output `Armadores con % de incidente general elevado:` and `Armadores con % de incidentes particular elevado:` before their respective item lists.
+- **FA in Armado section**: only the per-assembler bullet breakdown. The FA total % and 4-week comparison appear ONLY in the "Faltantes armador" section at the end.
+- **Entregas erróneas**: notes copied verbatim from the bundle — no AI summarization, no paraphrasing. No closing summary paragraph.
 - **MNA/FA WoW sentence**: describes category-level movement (subió/bajó/se mantuvo) using mna_fyv_pct, mna_carnes_pct, mna_graneles_pct WoW labels. No product names, no SKU names, no numeric values in this sentence.
 
 ### `lib/sku-classifier.ts` — FyV keyword tier (added session 6)
@@ -547,6 +553,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 8) fix: report generator — inclusive thresholds, tasa_armado direction override, LISTA 2 independent, driver KPIs trimmed, section headers, FA split, verbatim entregas erróneas
 (session 7) ux: instant tab + KPI switching via client state; remove Comparativa city filter; loading skeletons for all pages
 (session 6) feat: weekly report generator — /api/generar-reporte, GenerarReporte component, two-list assembler breakdown, FyV SKU classifier fix, rolling mean client-side fallback
 (session 5) ops: diagnosed discrepancia inflation — stale CSV upload, not a code bug; re-upload + recompute resolved Contry $40k→$8k
