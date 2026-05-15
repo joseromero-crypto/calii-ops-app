@@ -347,15 +347,19 @@ async function fetchIncidentesErroneas(
       if (!ORDER_CODE_RE.test(notas) && !DELIVERY_RE.test(notas)) continue;
 
       // Format date.
-      // IMPORTANT: date-only strings like "2026-05-08" (10 chars, no time) are
-      // parsed by JS as UTC midnight. In Mexico City (UTC-6/-5) that becomes the
-      // evening of May 7, so toLocaleDateString would show "may 7" instead of
-      // "may 8". Appending T12:00:00 forces local-noon interpretation, matching
-      // the same pattern used in the upload route's Friday validation.
+      // IMPORTANT: coerceRows stores 'datetime' columns as full UTC ISO strings
+      // via new Date(t).toISOString() — e.g. "2026-05-08T00:00:00.000Z".
+      // Parsing that directly gives UTC midnight, which in Mexico City (UTC-6/-5)
+      // is the evening of May 7 → toLocaleDateString shows "may 7" instead of
+      // "may 8". Fix: extract only the YYYY-MM-DD portion with a regex, then
+      // re-parse at local noon (T12:00:00) so the calendar date is always correct
+      // regardless of timezone offset. Works for both 10-char date strings and
+      // full UTC ISO strings — the regex always captures the date prefix.
       let fecha = String(d['Fecha'] ?? '');
       try {
-        const raw    = fecha.trim();
-        const parsed = new Date(raw.length === 10 ? raw + 'T12:00:00' : raw);
+        const raw      = fecha.trim();
+        const datePart = /^(\d{4}-\d{2}-\d{2})/.exec(raw)?.[1];
+        const parsed   = datePart ? new Date(datePart + 'T12:00:00') : new Date(raw);
         if (!isNaN(parsed.getTime())) {
           fecha = parsed.toLocaleDateString('es-MX', {
             weekday: 'short',

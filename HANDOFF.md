@@ -423,7 +423,9 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | `coerceRows` drops extra columns | CSV columns not in `app_columns` are silently dropped. The validator flags them as warnings but still marks status='validated'. |
 | count/currency global = mean not sum | For count and currency KPIs, `kpi_snapshots` global scope should be mean of hub totals. `aggregateAllScopes` now does this for both. `PorKpiTab` recomputes client-side to fix historical weeks. |
 | Duplicate uploads → recompute crash | Multiple upload records for the same slot cause `extractDiscrepanciaValues` (and any driver extractor) to output duplicate entity_keys → duplicate rows in upsert batch → PostgreSQL error. Dedup guard in `computeSnapshotsForWeek` now catches this, but fix the root cause (upload dedup) first. |
-| Discrepancia multi-row drivers | `extractDiscrepanciaValues` previously pushed one `EntityValue` per CSV row — no accumulation. A driver with N cash entries appeared N times → hub total was inflated, tile-flip ranking showed only the first entry's value. Fixed session 9: now uses a `byDriverHub` map keyed on `drvName\|hubId`, accumulating shortfalls like `extractIncidentesValues` does for counts. |
+| Discrepancia multi-row drivers | `extractDiscrepanciaValues` previously pushed one `EntityValue` per CSV row — no accumulation. A driver with N cash entries appeared N times → hub total was inflated, tile-flip ranking showed only the first entry's value. Fixed session 9: now uses a `byDriverHub` map keyed on `drvName\|hubId`, accumulating shortfalls like `extractIncidentesValues` does for counts. (In practice, current CSVs have one row per driver, so this fix is defensive — see stale upload note below.) |
+| Discrepancia Contry / San Nicolás "miscalculations" | Diagnosed session 9 via debug logging: computation was correct, hub names resolved fine, no rows skipped. Root cause was **stale CSV** — `Conciliación manual` values update in Retool throughout the week. Fix: re-upload the latest discrepancia CSV from Retool and hit Recomputar. Same pattern as session 5 (Contry $40K → $8K after re-upload). |
+| Incidente fecha off-by-one (second fix) | First attempt used `raw.length === 10` to detect date-only strings, but `coerceRows` stores `datetime` columns as full UTC ISO strings (`"2026-05-08T00:00:00.000Z"`, 24 chars) via `new Date(t).toISOString()`. Length check was dead code. Real fix: `/^(\d{4}-\d{2}-\d{2})/.exec(raw)?.[1]` extracts the date prefix from any ISO format, then appends `T12:00:00` for local-noon parse. |
 | Recompute statement timeout | Supabase default statement timeout (~8 s) is hit when many uploads are processed. Fixes: (1) `ORDER BY id` removed from upload_rows fetch; (2) sequential 200-row upsert batches. `ALTER ROLE postgres SET statement_timeout = '30s'` helps but doesn't fully fix it alone — PostgREST connection pool needs to cycle for role changes to take effect. |
 | Hub alias map divergence | Previously `kpi-compute.ts` and `page.tsx` had separate copies of the hub alias map. They diverged — compute was missing the `country`/`mh_country` typo alias that page.tsx had, causing Contry MNA totals to be missing. Now unified in `lib/hub-aliases.ts`. Never duplicate the map again. |
 | MNA breakdown works, total blank | MNA breakdown reads `upload_rows` directly in page.tsx (always fresh). MNA tile total reads `kpi_snapshots` (written by recompute). They can be out of sync if recompute hasn't run or failed silently. |
@@ -556,7 +558,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
-(session 9) fix: discrepancia multi-row accumulation + incidente fecha off-by-one timezone; byDriverHub map in extractDiscrepanciaValues; T12:00:00 date parse in GenerarReporte
+(session 9) fix: incidente fecha regex date extract (coerceRows stores datetime as full UTC ISO, length-10 check was dead code); discrepancia byDriverHub accumulation (defensive); Contry/San Nicolás diagnosed as stale CSV — re-upload fix, not code
 (session 8) fix: report generator — inclusive thresholds, tasa_armado direction override, LISTA 2 independent, driver KPIs trimmed, section headers, FA split, verbatim entregas erróneas
 (session 7) ux: instant tab + KPI switching via client state; remove Comparativa city filter; loading skeletons for all pages
 (session 6) feat: weekly report generator — /api/generar-reporte, GenerarReporte component, two-list assembler breakdown, FyV SKU classifier fix, rolling mean client-side fallback
@@ -623,6 +625,8 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 ⚠️ **Stale upload pattern:** `Conciliación manual` in Retool is updated throughout the week as cash is manually reconciled. If you upload the CSV on Monday and check the tile on Friday, the numbers will look inflated — not a bug. Always re-upload the latest CSV export and hit Recompute before trusting the discrepancia tile values. Diagnosed session 5: Contry showed $40,131 from an early-week upload; after re-uploading the Friday export the value corrected to $8,087.
 
+⚠️ **Why Contry and San Nicolás always look wrong first:** These hubs' coordinators reconcile their drivers' cash deposits later in the week than other hubs. On an early upload `Conciliación manual` for those drivers is still $0 → shortfall = full expected amount → inflated tile. Other hubs reconcile earlier so their numbers are already accurate on the first upload. This is a process difference, not a code bug. Confirmed via debug logging in session 9: computation was correct, hub names resolved, no rows skipped — root cause was purely stale `Conciliación manual`. **Operational fix:** upload discrepancia CSV on Friday, not earlier in the week.
+
 ---
 
 ## 19. Ideas / Possible Next Tasks
@@ -634,6 +638,7 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 - **CSS keep-alive tabs** — with the current `useState` conditional rendering, switching to a tab you've already visited still remounts its React component (~0.3-0.8s). For truly instant repeat visits, wrap each tab in `<div className={active ? '' : 'hidden'}>` so components stay mounted. Hold off until/if it feels slow — the initial render of all three tabs at once would make first load heavier.
 - **Home dashboard** — quick summary of current-week KPI status across all hubs
 - **Discrepancia trend** — shows automatically once 2+ weeks of data exist
+- **Discrepancia provisional warning** — show a ⚠️ badge on the discrepancia tile when the upload for that week was created before Thursday (i.e. `uploads.created_at < week_start + 4 days`). Reminds ops the number is provisional and a re-upload on Friday is needed. Contry and San Nicolás are always affected because their coordinators reconcile cash later in the week.
 - **New hubs** — if a hub is added to `hubs` table, add its alias to `lib/hub-aliases.ts` (shared by both compute and display)
 - **San Rafael Puebla** — appears in discrepancia CSV but not in alias map; drivers show 0s and are skipped. Add to alias map if the hub goes live.
 
