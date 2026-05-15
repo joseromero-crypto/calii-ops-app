@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-15 (session 8)  
+**Last updated:** 2026-05-15 (session 9)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -349,7 +349,8 @@ Zero-fill for driver roster: inserts `{ numerator: 0, denominator: 1 }` for any 
 CSV columns: `Repartidor`, `Hub`, `Cálculo digital efectivo` (expected), `Conciliación manual` (deposited).  
 `shortfall = expected − deposited` (positive = driver is short).  
 Accepts both accented and unaccented column name variants.  
-Drivers from unknown hubs (e.g. San Rafael Puebla, CH Guadalupe) are skipped — `hubNameToId` returns null.
+Drivers from unknown hubs (e.g. San Rafael Puebla, CH Guadalupe) are skipped — `hubNameToId` returns null.  
+**Accumulates by `(drvName, hubId)` pair** — uses a `byDriverHub` map so a driver with multiple CSV rows (e.g. multiple cash entries) contributes one `EntityValue` with their total shortfall. Without this, the same driver appears N times → inflated hub totals + wrong z-scores on the tile flip. Fixed session 9 after MH Contry and MH San Nicolás showed miscalculated discrepancia totals.
 
 ### `aggregateAllScopes` — global scope for count + currency
 For `unit === 'currency'` **and** `unit === 'count'` KPIs, global = **mean of hub totals** not sum-of-all-entities.  
@@ -416,11 +417,13 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | WoW tooltip variable size | Recharts `payload` omits entries with null values for the hovered week. Never iterate `payload` to build the tooltip list — always iterate `allEntities` and look up values from a `valueMap` built from `payload`. |
 | `lg:hidden` elements in CSS grid | `display:none` children don't consume a grid column — MobileHeader's `lg:hidden` elements are invisible and don't push `<main>` on desktop. |
 | Friday validation timezone | Upload route uses `T12:00:00` (local noon), NOT `T00:00:00Z` (UTC midnight). UTC midnight = Thursday evening in Mexico City → `weekStartFriday` sees Thursday → validation fails on a valid Friday. |
+| Incidente fecha off-by-one-day | `new Date("2026-05-08")` (date-only ISO string, 10 chars) is parsed as UTC midnight. In Mexico City (UTC-6/-5) that resolves to May 7 evening → `toLocaleDateString` shows "may 7". Fix: `new Date(raw.length === 10 ? raw + 'T12:00:00' : raw)` in `fetchIncidentesErroneas` (`GenerarReporte.tsx`). Same root cause as Friday validation timezone bug. |
 | NULL conflict in upsert | `upsert onConflict(app_id,week_start,city,hub_id)` silently inserts duplicates when city=null AND hub_id=null. Use the current delete-then-insert pattern (select all → delete all → insert) for any re-upload logic. |
 | Empty `app_columns` = empty rows | `coerceRows` only stores columns defined in `app_columns`. Missing `app_columns` = all rows stored as `{}` = KPI computation produces nothing silently. Always add `app_columns` when registering a new app. |
 | `coerceRows` drops extra columns | CSV columns not in `app_columns` are silently dropped. The validator flags them as warnings but still marks status='validated'. |
 | count/currency global = mean not sum | For count and currency KPIs, `kpi_snapshots` global scope should be mean of hub totals. `aggregateAllScopes` now does this for both. `PorKpiTab` recomputes client-side to fix historical weeks. |
 | Duplicate uploads → recompute crash | Multiple upload records for the same slot cause `extractDiscrepanciaValues` (and any driver extractor) to output duplicate entity_keys → duplicate rows in upsert batch → PostgreSQL error. Dedup guard in `computeSnapshotsForWeek` now catches this, but fix the root cause (upload dedup) first. |
+| Discrepancia multi-row drivers | `extractDiscrepanciaValues` previously pushed one `EntityValue` per CSV row — no accumulation. A driver with N cash entries appeared N times → hub total was inflated, tile-flip ranking showed only the first entry's value. Fixed session 9: now uses a `byDriverHub` map keyed on `drvName\|hubId`, accumulating shortfalls like `extractIncidentesValues` does for counts. |
 | Recompute statement timeout | Supabase default statement timeout (~8 s) is hit when many uploads are processed. Fixes: (1) `ORDER BY id` removed from upload_rows fetch; (2) sequential 200-row upsert batches. `ALTER ROLE postgres SET statement_timeout = '30s'` helps but doesn't fully fix it alone — PostgREST connection pool needs to cycle for role changes to take effect. |
 | Hub alias map divergence | Previously `kpi-compute.ts` and `page.tsx` had separate copies of the hub alias map. They diverged — compute was missing the `country`/`mh_country` typo alias that page.tsx had, causing Contry MNA totals to be missing. Now unified in `lib/hub-aliases.ts`. Never duplicate the map again. |
 | MNA breakdown works, total blank | MNA breakdown reads `upload_rows` directly in page.tsx (always fresh). MNA tile total reads `kpi_snapshots` (written by recompute). They can be out of sync if recompute hasn't run or failed silently. |
@@ -553,6 +556,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 9) fix: discrepancia multi-row accumulation + incidente fecha off-by-one timezone; byDriverHub map in extractDiscrepanciaValues; T12:00:00 date parse in GenerarReporte
 (session 8) fix: report generator — inclusive thresholds, tasa_armado direction override, LISTA 2 independent, driver KPIs trimmed, section headers, FA split, verbatim entregas erróneas
 (session 7) ux: instant tab + KPI switching via client state; remove Comparativa city filter; loading skeletons for all pages
 (session 6) feat: weekly report generator — /api/generar-reporte, GenerarReporte component, two-list assembler breakdown, FyV SKU classifier fix, rolling mean client-side fallback

@@ -482,7 +482,15 @@ function extractDiscrepanciaValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
   hubCity: Map<string, City>
 ): EntityValue[] {
-  const out: EntityValue[] = [];
+  // Accumulate one entry per (driver, hub) pair so a driver with multiple CSV
+  // rows (e.g. multiple cash entries in the same hub) contributes a single
+  // EntityValue with numerator = their total shortfall. Without this, the same
+  // driver appears N times in computePeersForKpi and aggregateAllScopes,
+  // producing wrong z-scores and inflated hub totals on the tile flip.
+  // Keying by drvName+hubId also handles the rare cross-hub driver correctly:
+  // their shortfall is accumulated separately per hub, not merged into one entry.
+  const byDriverHub = new Map<string, EntityValue>();
+
   for (const r of rows) {
     const drvName = String(r.data['Repartidor'] ?? '').trim();
     const hubName = String(r.data['Hub']         ?? '').trim();
@@ -504,16 +512,23 @@ function extractDiscrepanciaValues(
     // Positive shortfall = driver deposited less than expected.
     const shortfall = expected - deposited;
 
-    out.push({
-      entity_type: 'driver',
-      entity_key:  drvName,
-      city:        hubCity.get(hubId) ?? null,
-      hub_id:      hubId,
-      numerator:   shortfall,
-      denominator: 1, // currency KPI — ratio() returns numerator directly
-    });
+    const key = `${drvName}|${hubId}`;
+    const existing = byDriverHub.get(key);
+    if (existing) {
+      existing.numerator += shortfall;
+    } else {
+      byDriverHub.set(key, {
+        entity_type: 'driver',
+        entity_key:  drvName,
+        city:        hubCity.get(hubId) ?? null,
+        hub_id:      hubId,
+        numerator:   shortfall,
+        denominator: 1, // currency KPI — ratio() returns numerator directly
+      });
+    }
   }
-  return out;
+
+  return Array.from(byDriverHub.values());
 }
 
 // KPI IDs that read hub % directly from a Retool export file.

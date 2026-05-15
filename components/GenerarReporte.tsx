@@ -346,10 +346,16 @@ async function fetchIncidentesErroneas(
       const notas = String(d['Notas'] ?? '');
       if (!ORDER_CODE_RE.test(notas) && !DELIVERY_RE.test(notas)) continue;
 
-      // Format date
+      // Format date.
+      // IMPORTANT: date-only strings like "2026-05-08" (10 chars, no time) are
+      // parsed by JS as UTC midnight. In Mexico City (UTC-6/-5) that becomes the
+      // evening of May 7, so toLocaleDateString would show "may 7" instead of
+      // "may 8". Appending T12:00:00 forces local-noon interpretation, matching
+      // the same pattern used in the upload route's Friday validation.
       let fecha = String(d['Fecha'] ?? '');
       try {
-        const parsed = new Date(fecha);
+        const raw    = fecha.trim();
+        const parsed = new Date(raw.length === 10 ? raw + 'T12:00:00' : raw);
         if (!isNaN(parsed.getTime())) {
           fecha = parsed.toLocaleDateString('es-MX', {
             weekday: 'short',
