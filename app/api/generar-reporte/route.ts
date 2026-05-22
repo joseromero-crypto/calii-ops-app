@@ -103,7 +103,7 @@ Tasas: (lista ya filtrada — copiar solo los nombres que aparecen en la secció
 "Tasas: Nombre (XX.X), Nombre (XX.X)"
 Si el bundle dice "(ninguno por debajo del umbral esta semana)", omitir esta línea.
 
-FA: (armadores marcados ⚠️ en faltantes_armador_pct — SOLO el desglose por armador, sin total ni comparación 4 semanas)
+FA: (SOLO armadores marcados ⚠️ en faltantes_armador_pct, es decir ≥2× el promedio del hub — omitir cualquier armador por debajo de 2× el promedio)
 "FA"
 Luego un bullet por armador:
 "- Nombre (X.X%, Xx el promedio)"
@@ -269,10 +269,10 @@ function buildTextBundle(b: ReportBundle): string {
   } else {
     for (const name of list2Names) {
       const subs = subFlagsByName.get(name) ?? [];
-      for (const s of subs) {
-        const orderCtx = '';  // numOrders not trivially available here; context is in List 1 logic
-        lines.push(`- ${name}: ${s.label} ${fmtVal(s.value, 'pct')}${orderCtx}`);
-      }
+      // Combine all flagged sub-metrics for this assembler onto a single line
+      // e.g. "- Nombre: faltantes 9.3%, faltantes completos 7.4%"
+      const subsText = subs.map((s) => `${s.label} ${fmtVal(s.value, 'pct')}`).join(', ');
+      lines.push(`- ${name}: ${subsText}`);
     }
   }
   lines.push('');
@@ -290,13 +290,14 @@ function buildTextBundle(b: ReportBundle): string {
       header += `  OUTLIER: >${fmtVal(g.hubMean * 2, g.unit)} (>2× promedio)`;
     }
     lines.push(header);
-    // For tasa_armado: pre-filter to flagged (slow) assemblers only — avoids
-    // Claude accidentally listing fast ones when reading ⚠️ markers.
-    const entitiesToShow = g.kpiId === 'tasa_armado'
+    // Pre-filter to flagged (outlier) assemblers only for tasa_armado and faltantes_armador_pct.
+    // This avoids Claude listing below-average performers in the Tasas and FA sections.
+    const flaggedOnlyKpis = new Set(['tasa_armado', 'faltantes_armador_pct']);
+    const entitiesToShow = flaggedOnlyKpis.has(g.kpiId)
       ? g.entities.filter((e) => e.flagged)
       : g.entities;
-    if (g.kpiId === 'tasa_armado' && entitiesToShow.length === 0) {
-      lines.push('(ninguno por debajo del umbral esta semana)');
+    if (flaggedOnlyKpis.has(g.kpiId) && entitiesToShow.length === 0) {
+      lines.push('(ninguno por encima del umbral esta semana)');
     } else {
       for (const e of entitiesToShow) {
         const val  = fmtVal(e.value, g.unit);
