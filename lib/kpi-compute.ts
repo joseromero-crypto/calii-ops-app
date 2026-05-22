@@ -367,17 +367,51 @@ function extractMnaValues(
   return out;
 }
 
+// ─── Incidentes order-code pattern ────────────────────────────────────────────
+//
+// Order codes are 5-character alphanumeric identifiers in the format:
+//   <1-2 alphanumeric chars> - <1 letter><1 digit> - <1 digit>
+//   Examples: AF-A3-2, WS-C1-3, J5-B8-6, 46-D6-4, U-D9-2
+//
+// The first segment can be 1 or 2 characters (letter, digit, or mixed).
+// Optional leading '#' (some staff prefix codes with #).
+//
+// ⚠️ The old pattern (/\d[\w]*[-–]\w+[-–]\w+/) required the FIRST character to
+// be a digit, silently dropping every code that starts with a letter (e.g.
+// WS-C1-3, JN-D7-2, GM-A2-2, SL-B3-7). In a 3-week sample this missed ~47% of
+// all real incidents. Fixed by using [A-Z0-9]{1,2} as the first segment.
+const INCIDENTES_ORDER_CODE_RE = /#?[A-Z0-9]{1,2}-[A-Z]\d-\d/i;
+
+// Delivery-error keywords used as a secondary signal for non-known responsables.
+const INCIDENTES_DELIVERY_RE = /entrega\s*(err[oó]nea|equivocada|incorrecta)|faltante|pedido\s*(incorrecto|equivocado|erron)|no\s+es\s+su\s+pedido/i;
+
+// Responsables whose records are definitively entrega-errónea when an order code
+// is present. Staff outside this set (e.g. coordinators covering vacations) also
+// count when they have both an order code AND delivery keywords in the note.
+const INCIDENTES_KNOWN_RESPONSABLES = new Set([
+  'dayana.lozano@calii.com',
+  'violeta@calii.com',
+  'oscar.escobedo@calii.com',
+  'marely@calii.com',
+]);
+
 /**
  * Incidentes — DRIVER-LEVEL incident count.
  *
- * Counts delivery-related incidents per driver, excluding entries registered
- * by the ops monitor account (robertott@calii.com). A row is considered
- * delivery-related when its Notas column contains an order-reference code
- * (e.g. "79-E6-2") or the words "entrega" / "entregado".
+ * Counts delivery-related incidents (entregas erróneas) per driver.
  *
- * Because the incidentes CSV has no geofence column, driver hub/city
- * assignments are resolved by cross-referencing the Operador name against
- * the desempeno_repartidores rows already in memory.
+ * Detection rules (applied in order):
+ *   1. Rows by robertott@calii.com are always excluded (attendance/tardiness log).
+ *   2. An order code matching INCIDENTES_ORDER_CODE_RE is required — without it
+ *      the note is not a delivery incident.
+ *   3. Known responsables (INCIDENTES_KNOWN_RESPONSABLES): any row with an order
+ *      code is a confirmed entrega errónea.
+ *   4. All other responsables: require delivery-error keywords in the note as a
+ *      secondary confirmation (handles staff covering vacations, etc.).
+ *
+ * Because the incidentes CSV has no geofence column, driver hub/city assignments
+ * are resolved by cross-referencing the Operador name against the
+ * desempeno_repartidores rows already in memory.
  */
 function extractIncidentesValues(
   rows: { upload: UploadRef; data: Record<string, unknown> }[],
@@ -401,11 +435,6 @@ function extractIncidentesValues(
     }
   }
 
-  // Order-reference codes like "79-E6-2" (at least two hyphen/en-dash separators).
-  const ORDER_CODE_RE = /\d[\w]*[-–]\w+[-–]\w+/;
-  // Words "entrega" or "entregado/a" (whole-word, case-insensitive).
-  const DELIVERY_RE   = /\bentregad?[ao]?\b/i;
-
   // Accumulate one entry per driver (keyed by canonical name) so that a driver
   // with multiple qualifying incidents contributes a single EntityValue with
   // numerator = their total count. Without this, the same driver appears N
@@ -414,13 +443,18 @@ function extractIncidentesValues(
   const byDriver = new Map<string, EntityValue>();
 
   for (const r of rows) {
-    // Exclude entries logged by the ops monitor account.
+    // Rule 1 — Exclude the ops monitor account (logs attendance/tardiness, not delivery issues).
     const responsable = String(r.data['Responsable'] ?? '').trim().toLowerCase();
     if (responsable === 'robertott@calii.com') continue;
 
-    // Only count delivery-related incidents.
+    // Rule 2 — Order code is required as the primary signal.
     const notas = String(r.data['Notas'] ?? '');
-    if (!ORDER_CODE_RE.test(notas) && !DELIVERY_RE.test(notas)) continue;
+    if (!INCIDENTES_ORDER_CODE_RE.test(notas)) continue;
+
+    // Rule 3 — Known responsables: order code alone is sufficient.
+    // Rule 4 — Other responsables: also require delivery-error keywords.
+    const byKnown = INCIDENTES_KNOWN_RESPONSABLES.has(responsable);
+    if (!byKnown && !INCIDENTES_DELIVERY_RE.test(notas)) continue;
 
     const opName = String(r.data['Operador'] ?? '').trim();
     if (!opName) continue;

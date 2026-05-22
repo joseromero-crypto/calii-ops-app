@@ -53,10 +53,26 @@ const DRIVER_KPI_DEFS: {
   { id: 'pct_undelivered',    name: 'Entregas fallidas' },
 ];
 
-// ─── Regex for identifying delivery-related incident notes ───────────────────
-// Same patterns used in lib/kpi-compute.ts extractIncidentesValues.
-const ORDER_CODE_RE = /\d[\w]*[-–]\w+[-–]\w+/;
-const DELIVERY_RE   = /\bentregad?[ao]?\b/i;
+// ─── Incidentes detection — must stay in sync with lib/kpi-compute.ts ────────
+//
+// Order code: 1-2 alphanumeric chars, dash, letter+digit, dash, digit.
+// Examples: AF-A3-2, WS-C1-3, J5-B8-6, 46-D6-4, U-D9-2, #JN-D7-2
+//
+// ⚠️ Old pattern (/\d[\w]*[-–]\w+[-–]\w+/) started with \d — silently dropped
+// all codes that begin with a letter (~47% of real incidents). Fixed in session 10.
+const ORDER_CODE_RE = /#?[A-Z0-9]{1,2}-[A-Z]\d-\d/i;
+
+// Secondary delivery-error keywords — used only for non-known responsables.
+const DELIVERY_RE = /entrega\s*(err[oó]nea|equivocada|incorrecta)|faltante|pedido\s*(incorrecto|equivocado|erron)|no\s+es\s+su\s+pedido/i;
+
+// Responsables whose records are definitively entrega-errónea when an order code
+// is present. Must match the set in lib/kpi-compute.ts INCIDENTES_KNOWN_RESPONSABLES.
+const KNOWN_INCIDENTE_RESPONSABLES = new Set([
+  'dayana.lozano@calii.com',
+  'violeta@calii.com',
+  'oscar.escobedo@calii.com',
+  'marely@calii.com',
+]);
 
 // ─── Bundle builder ───────────────────────────────────────────────────────────
 
@@ -344,7 +360,12 @@ async function fetchIncidentesErroneas(
       if (!operador || !hubDriverNames.has(operador.toLowerCase())) continue;
 
       const notas = String(d['Notas'] ?? '');
-      if (!ORDER_CODE_RE.test(notas) && !DELIVERY_RE.test(notas)) continue;
+      // Order code is required as the primary signal.
+      if (!ORDER_CODE_RE.test(notas)) continue;
+      // Known responsables: order code alone confirms the incident.
+      // Other responsables (e.g. covering staff): also require delivery keywords.
+      const byKnown = KNOWN_INCIDENTE_RESPONSABLES.has(responsable);
+      if (!byKnown && !DELIVERY_RE.test(notas)) continue;
 
       // Format date.
       // IMPORTANT: coerceRows stores 'datetime' columns as full UTC ISO strings
