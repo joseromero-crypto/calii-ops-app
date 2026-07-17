@@ -1,6 +1,6 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-15 (session 9)  
+**Last updated:** 2026-05-22 (session 10)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
@@ -343,7 +343,16 @@ Dispatches to per-source extraction function based on `kpi.source_app_id`:
 | Faltantes hub % KPIs | `extractFaltantesHubPctDirect` | hub |
 
 ### `extractIncidentesValues`
+Detects **entregas erróneas** (wrong/missing deliveries) per driver. Detection rules (session 10):
+
+1. Rows by `robertott@calii.com` are always excluded — he logs attendance/tardiness only.
+2. **Order code is required** as the primary signal. Pattern: `INCIDENTES_ORDER_CODE_RE = /#?[A-Z0-9]{1,2}-[A-Z]\d-\d/i` — e.g. `AF-A3-2`, `WS-C1-3`, `J5-B8-6`, `46-D6-4`, `#JN-D7-2`.
+3. **Known responsables** (`INCIDENTES_KNOWN_RESPONSABLES`): any row with an order code is a confirmed entrega errónea. The four known emails are: `dayana.lozano@calii.com`, `violeta@calii.com`, `oscar.escobedo@calii.com`, `marely@calii.com`.
+4. **Other responsables** (staff covering vacations, coordinators, etc.): require an order code **plus** delivery-error keywords (`INCIDENTES_DELIVERY_RE`: entrega errónea/equivocada/incorrecta, faltante, pedido incorrecto/equivocado, no es su pedido).
+
 Zero-fill for driver roster: inserts `{ numerator: 0, denominator: 1 }` for any driver in `desempeño_repartidores` NOT found in incidents. Ensures zero-incident drivers appear in WoW chart.
+
+⚠️ **`INCIDENTES_ORDER_CODE_RE` and `INCIDENTES_KNOWN_RESPONSABLES` are defined at module level** in `kpi-compute.ts` (above `extractIncidentesValues`). The matching constants `ORDER_CODE_RE`, `DELIVERY_RE`, and `KNOWN_INCIDENTE_RESPONSABLES` in `GenerarReporte.tsx` **must be kept in sync** — they drive the notes shown in the Slack report. If you add a new known responsable, update both files.
 
 ### `extractDiscrepanciaValues`
 CSV columns: `Repartidor`, `Hub`, `Cálculo digital efectivo` (expected), `Conciliación manual` (deposited).  
@@ -442,6 +451,8 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | `kpis_weight_check` constraint | The `kpis` table has a check constraint requiring `weight BETWEEN 1 AND 5`. Do not use weight=0 in migrations. |
 | `router.push` inside historicos = full server re-fetch | Any `router.push` call inside `/historicos` triggers a Next.js navigation → `page.tsx` re-runs → all 6 Supabase query batches fire again → 4-5 second freeze. Always use `history.pushState` for URL sync and `useState` for view changes. See §4a. |
 | Comparativa city filter removed (session 7) | `ComparativaTab` previously had city filter buttons that called `router.push` → slow. Filter removed entirely in session 7. Tab now always shows all hubs. Do not re-add router-based filters to this component. |
+| Incidentes order-code regex missing letter-starting codes (fixed session 10) | Old pattern `/\d[\w]*[-–]\w+[-–]\w+/` required the first character to be a digit — silently dropped every order code starting with a letter (WS-, JN-, GM-, SL-, GP-, JH-, U-). In a 3-week real sample this missed 8 of 17 incidents (47%). Fixed with `/#?[A-Z0-9]{1,2}-[A-Z]\d-\d/i`. Same regex must be in sync between `kpi-compute.ts` and `GenerarReporte.tsx`. |
+| Incidentes detection: delivery keywords alone not enough | Old logic counted a row if it had EITHER an order code OR the word "entrega/entregado". Delivery words without a code are too noisy (e.g. normal service notes). New logic: order code is always required. For unknown responsables, delivery keywords serve as secondary confirmation only. |
 
 ---
 
@@ -558,6 +569,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 10) fix: entregas erróneas detection — order code regex now catches letter-starting codes (WS-, JN-, GM- etc); order code required as primary signal; known responsables list added
 (session 9) fix: incidente fecha regex date extract (coerceRows stores datetime as full UTC ISO, length-10 check was dead code); discrepancia byDriverHub accumulation (defensive); Contry/San Nicolás diagnosed as stale CSV — re-upload fix, not code
 (session 8) fix: report generator — inclusive thresholds, tasa_armado direction override, LISTA 2 independent, driver KPIs trimmed, section headers, FA split, verbatim entregas erróneas
 (session 7) ux: instant tab + KPI switching via client state; remove Comparativa city filter; loading skeletons for all pages
@@ -580,6 +592,7 @@ f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile co
 ## 17. What's Working ✓
 
 - **Weekly report generator**: "Generar reporte" button in PorHubTab → Claude Haiku Slack message with assembler breakdown, driver flags, incidentes erróneas, MNA/FA sections
+- **Entregas erróneas detection fixed (session 10)**: order code regex now catches all formats (letter-starting and digit-starting); known responsables list enforced; order code required as primary signal
 - **Instant tab switching**: Por KPI / Por Hub / Comparativa tabs switch via `useState` — no Supabase re-fetch (session 7)
 - **Instant KPI switching**: Top movers + KPI dropdown use `onKpiChange` callback — no Supabase re-fetch (session 7)
 - **Loading skeletons**: All pages show immediate skeleton on navigation; no more "frozen on previous page" (session 7)
