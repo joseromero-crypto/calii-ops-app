@@ -5,8 +5,8 @@ import {
 } from 'recharts';
 import {
   HUB_COLORS, formatValue, formatDelta, weekEndLabel, weekEndLabelLong,
-  deltaClassForDirection,
-  type Kpi, type Hub, type Snapshot, type Peer,
+  deltaClassForDirection, resolveTarget,
+  type Kpi, type Hub, type Snapshot, type Peer, type KpiTarget,
 } from './_shared';
 
 // ─── Chart tooltip ────────────────────────────────────────────────────────────
@@ -49,13 +49,14 @@ interface Props {
   snapshots: Snapshot[];
   peers: Peer[];
   roles: { id: string; name_es: string }[];
+  targets: KpiTarget[];
   currentWeek: string;
   selectedKpi?: string;
   /** Called when the user picks a different KPI. Parent owns the state. */
   onKpiChange?: (id: string) => void;
 }
 
-export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onKpiChange }: Props) {
+export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onKpiChange, targets = [] }: Props) {
   const defaultKpi = kpis.find((k) => k.watched_globally)?.id ?? kpis[0]?.id;
   const kpiId = selectedKpi || defaultKpi;
   const kpi = kpis.find((k) => k.id === kpiId);
@@ -263,6 +264,19 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
   }, [snapshots, kpi.id, kpi.unit, kpi.direction, hubs]);
 
 
+  // Target reference line — global target only (spec: start with the global
+  // line to keep the chart readable; per-hub overrides get a small note
+  // instead of one line per hub). resolveTarget(kpi.id, null, targets)
+  // skips the hub-lookup branch and returns the global row directly.
+  const globalTarget = useMemo(() => resolveTarget(kpi.id, null, targets), [kpi.id, targets]);
+  const targetDbUnits = globalTarget
+    ? (globalTarget.unit === 'pct' ? globalTarget.target_value / 100 : globalTarget.target_value)
+    : null;
+  const hubOverrideCount = useMemo(
+    () => targets.filter((t) => t.active && t.kpi_id === kpi.id && t.scope_level === 'hub').length,
+    [targets, kpi.id],
+  );
+
   // Hubs sorted by current week value
   const sortedHubsByValue = useMemo(() => {
     return [...hubs].sort((a, b) => {
@@ -367,6 +381,15 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
         </div>
         <p className="text-[12px] text-[var(--muted)] mb-3">
           Línea sólida por hub · línea punteada gris = media global histórica
+          {targetDbUnits != null && (
+            <>
+              {' · '}
+              <span className="text-teal-700">línea punteada verde = meta ({formatValue(targetDbUnits, kpi.unit)})</span>
+              {hubOverrideCount > 0 && (
+                <span className="text-[var(--muted)]"> — {hubOverrideCount} hub{hubOverrideCount > 1 ? 's' : ''} con meta distinta, ver /config</span>
+              )}
+            </>
+          )}
         </p>
         {chartData.length === 0 ? (
           <div className="border border-dashed border-[var(--line)] rounded-md p-10 text-center text-[var(--muted)] text-[13px]">
@@ -396,6 +419,16 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
                 }
                 wrapperStyle={{ fontSize: 11 }}
               />
+              {/* Configured target — global row only, see hubOverrideCount note above */}
+              {targetDbUnits != null && (
+                <ReferenceLine
+                  y={targetDbUnits}
+                  stroke="#0d9488"
+                  strokeDasharray="4 2"
+                  strokeWidth={1.3}
+                  label={{ value: 'meta', position: 'insideTopLeft', fontSize: 10, fill: '#0d9488' }}
+                />
+              )}
               {/* Global mean trend line */}
               <Line
                 key="__global__"

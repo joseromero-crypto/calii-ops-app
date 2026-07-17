@@ -11,7 +11,9 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku } from '@/app/(app)/historicos/_shared';
+import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget } from '@/app/(app)/historicos/_shared';
+import { resolveTarget, meetsTarget } from '@/app/(app)/historicos/_shared';
+import { effectiveDirection } from '@/lib/kpi-direction';
 import type { ReportBundle, IncidenteErroneo } from '@/app/api/generar-reporte/route';
 
 interface Props {
@@ -21,25 +23,35 @@ interface Props {
   peers:                Peer[];
   mnaProducts:          MnaProduct[];
   faltantesSkuProducts: FaltantesSku[];
+  targets:              KpiTarget[];
   currentWeek:          string;
 }
 
 // ─── KPI definitions for the report ──────────────────────────────────────────
 
-/** Assembler KPIs that should appear in the "Armadores" section. */
+/**
+ * Assembler KPIs that should appear in the "Armadores" section.
+ *
+ * defaultThreshold is the CODE DEFAULT — used only when /config has no
+ * configured target (global or hub) for this KPI. A configured kpi_targets
+ * row always wins (see resolveEffectiveTarget below). Direction is no
+ * longer set per-def: it comes from lib/kpi-direction.ts's
+ * effectiveDirection, the single source of truth for the tasa_armado
+ * direction override (HANDOFF §12) — /config's target editor uses the same
+ * helper, so a configured target's comparator always agrees with it.
+ */
 const ASSEMBLER_KPI_DEFS: {
   id: string;
   name: string;
-  threshold?: number;     // hard threshold in stored units (pct as 0-1, rate as raw)
-  higherIsBetter?: boolean; // overrides kpi.direction when the DB value is wrong
+  defaultThreshold?: number;   // fallback, DB-native units (pct as 0-1, rate as raw)
 }[] = [
-  { id: 'incidentes_manuales_pct',            name: 'Incidentes armado',   threshold: 0.06 },
-  { id: 'incidentes_calidad_pct',             name: 'calidades',           threshold: 0.04 },
-  { id: 'incidentes_faltantes_pct',           name: 'faltantes',           threshold: 0.04 },
-  { id: 'incidentes_faltantes_parciales_pct', name: 'faltantes parciales', threshold: 0.04 },
-  { id: 'incidentes_faltantes_completos_pct', name: 'faltantes completos', threshold: 0.04 },
-  { id: 'tasa_armado',                        name: 'Tasas',               threshold: 90, higherIsBetter: true }, // <90 = bad
-  { id: 'faltantes_armador_pct',              name: 'FA' },                 // outlier >2× mean
+  { id: 'incidentes_manuales_pct',            name: 'Incidentes armado',   defaultThreshold: 0.06 },
+  { id: 'incidentes_calidad_pct',             name: 'calidades',           defaultThreshold: 0.04 },
+  { id: 'incidentes_faltantes_pct',           name: 'faltantes',           defaultThreshold: 0.04 },
+  { id: 'incidentes_faltantes_parciales_pct', name: 'faltantes parciales', defaultThreshold: 0.04 },
+  { id: 'incidentes_faltantes_completos_pct', name: 'faltantes completos', defaultThreshold: 0.04 },
+  { id: 'tasa_armado',                        name: 'Tasas',               defaultThreshold: 90 }, // <90 = bad
+  { id: 'faltantes_armador_pct',              name: 'FA' },                 // outlier >2× mean unless a target is configured
 ];
 
 /** Driver KPIs that should appear in the "Repartidores" section. */
@@ -49,9 +61,40 @@ const DRIVER_KPI_DEFS: {
   showAllPositive?: boolean; // show all entities with value > 0 (no outlier logic)
   minValue?: number;         // absolute minimum to flag (regardless of outlier logic)
 }[] = [
-  { id: 'pct_tardias_reparto', name: 'Reparto tardío'  },
-  { id: 'pct_undelivered',    name: 'Entregas fallidas' },
+  { id: 'pct_tardias_reparto', name: 'Reparto tardío'  }, // outlier >2× mean unless a target is configured
+  { id: 'pct_undelivered',    name: 'Entregas fallidas' }, // outlier >2× mean unless a target is configured
 ];
+
+/**
+ * Resolves the effective target for a KPI+hub as a KpiTarget object in
+ * DB-native units (matching how p.value/threshold are compared everywhere
+ * else in this file), falling back to the def's code-default threshold when
+ * /config has no configured row. Returns null when neither exists (pure
+ * outlier/2x-mean KPIs with no override set).
+ */
+function resolveEffectiveTarget(
+  kpiId: string,
+  hubId: string,
+  kpi: Kpi,
+  defaultThreshold: number | undefined,
+  targets: KpiTarget[],
+): KpiTarget | null {
+  const configured = resolveTarget(kpiId, hubId, targets);
+  if (configured) return configured;
+  if (defaultThreshold === undefined) return null;
+  const dir = effectiveDirection(kpiId, kpi.direction);
+  return {
+    kpi_id: kpiId,
+    scope_level: 'global',
+    scope_key: null,
+    // defaultThreshold is DB-native (pct as 0-1); KpiTarget.target_value is
+    // DISPLAY units — convert once here, same as everywhere else.
+    target_value: kpi.unit === 'pct' ? defaultThreshold * 100 : defaultThreshold,
+    comparator: dir === 'higher_is_better' ? 'gte' : 'lte',
+    unit: kpi.unit,
+    active: true,
+  };
+}
 
 // ─── Incidentes detection — must stay in sync with lib/kpi-compute.ts ────────
 //
@@ -83,6 +126,7 @@ function buildBundle(
   peers:                Peer[],
   mnaProducts:          MnaProduct[],
   faltantesSkuProducts: FaltantesSku[],
+  targets:              KpiTarget[],
   currentWeek:          string,
 ): Omit<ReportBundle, 'incidentesErroneas'> {
   // Week label: "vie 2 may — jue 8 may"
@@ -171,19 +215,18 @@ function buildBundle(
 
       const hubMean = hubPeers[0].peer_mean ?? null;
 
-      // Use def.higherIsBetter override when set; otherwise fall back to DB direction.
-      const effectiveHigherIsBetter = def.higherIsBetter !== undefined
-        ? def.higherIsBetter
-        : kpi.direction === 'higher_is_better';
+      const effectiveHigherIsBetter = effectiveDirection(def.id, kpi.direction) === 'higher_is_better';
+
+      // Configured /config target wins; falls back to def.defaultThreshold
+      // (converted to a KpiTarget-shaped object so meetsTarget can be reused
+      // unchanged); null when neither exists (pure outlier KPIs, e.g. FA
+      // with no override set).
+      const effectiveTarget = resolveEffectiveTarget(def.id, hub.id, kpi, def.defaultThreshold, targets);
 
       const entities = hubPeers.map((p) => {
         let flagged = false;
-        if (def.threshold !== undefined && p.value !== null) {
-          // higher_is_better (e.g. tasa_armado): flag if below threshold
-          // lower_is_better: flag if above threshold
-          flagged = effectiveHigherIsBetter
-            ? p.value <= def.threshold
-            : p.value >= def.threshold;
+        if (effectiveTarget && p.value !== null) {
+          flagged = !meetsTarget(p.value, effectiveTarget);
         } else if (hubMean !== null && p.value !== null) {
           // outlier: >2× hub mean (lower_is_better KPIs only)
           if (!effectiveHigherIsBetter) {
@@ -210,6 +253,14 @@ function buildBundle(
           : b.value - a.value;
       });
 
+      // threshold stays in DB-native units (pct as 0-1 fraction) — same units
+      // as every other value in this bundle — so route.ts's existing
+      // fmtVal()-based UMBRAL rendering keeps working unchanged. It now
+      // reflects the resolved /config target instead of a hardcoded constant.
+      const threshold = effectiveTarget
+        ? (effectiveTarget.unit === 'pct' ? effectiveTarget.target_value / 100 : effectiveTarget.target_value)
+        : undefined;
+
       return {
         kpiId:     def.id,
         kpiName:   def.name,
@@ -217,7 +268,7 @@ function buildBundle(
         // Use effective direction so route.ts generates the correct UMBRAL label
         direction: effectiveHigherIsBetter ? 'higher_is_better' : 'lower_is_better',
         hubMean,
-        threshold: def.threshold,
+        threshold,
         entities,
       };
     })
@@ -240,10 +291,17 @@ function buildBundle(
 
       const hubMean = hubPeers[0].peer_mean ?? null;
 
+      // pct_tardias_reparto / pct_undelivered have no code-default threshold
+      // (HANDOFF §13) — they're pure outlier KPIs unless /config sets a
+      // fixed target, which then overrides the 2x-mean rule (spec §2.4).
+      const effectiveTarget = resolveEffectiveTarget(def.id, hub.id, kpi, undefined, targets);
+
       let entities = hubPeers.map((p) => {
         let flagged = false;
         if (def.showAllPositive && p.value !== null) {
           flagged = p.value >= 1;
+        } else if (effectiveTarget && p.value !== null) {
+          flagged = !meetsTarget(p.value, effectiveTarget);
         } else if (hubMean !== null && p.value !== null) {
           flagged = p.value > hubMean * 2;
           // Apply absolute minimum threshold — e.g. retardos needs ≥3 to matter
@@ -268,12 +326,17 @@ function buildBundle(
         if (entities.length === 0) return null;
       }
 
+      const threshold = effectiveTarget
+        ? (effectiveTarget.unit === 'pct' ? effectiveTarget.target_value / 100 : effectiveTarget.target_value)
+        : undefined;
+
       return {
         kpiId:     def.id,
         kpiName:   def.name,
         unit:      kpi.unit,
         direction: kpi.direction,
         hubMean,
+        threshold,
         entities,
       };
     })
@@ -410,6 +473,7 @@ export function GenerarReporte({
   peers,
   mnaProducts,
   faltantesSkuProducts,
+  targets,
   currentWeek,
 }: Props) {
   const [open,    setOpen]    = useState(false);
@@ -427,7 +491,7 @@ export function GenerarReporte({
     try {
       // 1. Build the data bundle from existing props
       const bundle: ReportBundle = {
-        ...buildBundle(hub, kpis, snapshots, peers, mnaProducts, faltantesSkuProducts, currentWeek),
+        ...buildBundle(hub, kpis, snapshots, peers, mnaProducts, faltantesSkuProducts, targets, currentWeek),
         incidentesErroneas: [],
       };
 

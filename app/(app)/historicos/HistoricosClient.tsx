@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku } from './_shared';
+import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget } from './_shared';
 import { weekEndLabel } from './_shared';
 import { PorKpiTab } from './PorKpiTab';
 import { PorHubTab } from './PorHubTab';
@@ -17,6 +17,7 @@ interface Props {
   mnaProducts: MnaProduct[];
   faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
+  targets: KpiTarget[];
   currentWeek: string;
   tab: 'kpi' | 'hub' | 'cmp';
   selectedKpi?: string;

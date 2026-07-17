@@ -87,6 +87,81 @@ export interface Peer {
   rank_total: number | null;
 }
 
+/**
+ * Configurable KPI target row (kpi_targets table). target_value is stored
+ * in DISPLAY units (e.g. 90 for tasa_armado, 6 for a 6% threshold) — not
+ * the 0-1 fraction used in Snapshot/Peer `value`. See resolveTarget /
+ * meetsTarget / isBelowTarget below for the one place that converts.
+ */
+export interface KpiTarget {
+  kpi_id: string;
+  scope_level: 'global' | 'hub';
+  scope_key: string | null;   // hub_id when scope_level='hub', else null
+  target_value: number;
+  comparator: 'gte' | 'lte' | 'gt' | 'lt';  // the "meets target" (good) condition
+  unit: string;                              // snapshot of kpis.unit
+  active: boolean;
+}
+
+/**
+ * Resolves the effective target for a (kpi, hub) pair.
+ * Precedence: hub-specific row > global row > undefined (caller falls back
+ * to its own code default — never hard-fail on a missing target).
+ */
+export function resolveTarget(
+  kpiId: string,
+  hubId: string | null | undefined,
+  targets: KpiTarget[],
+): KpiTarget | undefined {
+  if (hubId) {
+    const hubTarget = targets.find(
+      (t) => t.active && t.kpi_id === kpiId && t.scope_level === 'hub' && t.scope_key === hubId,
+    );
+    if (hubTarget) return hubTarget;
+  }
+  return targets.find((t) => t.active && t.kpi_id === kpiId && t.scope_level === 'global');
+}
+
+/**
+ * Converts a raw DB value (Snapshot/Peer `value`) to the DISPLAY units a
+ * target is stored in. pct is the only unit stored as a 0-1 fraction in the
+ * DB (HANDOFF §3/§12) — rate/count/currency pass through unchanged.
+ * This is the ONLY place this conversion should happen for targets.
+ */
+function toDisplayUnits(dbValue: number, unit: string): number {
+  return unit === 'pct' ? dbValue * 100 : dbValue;
+}
+
+// Landing exactly on the target does not count as meeting it — you have to
+// clear it, not tie it. TARGET_EPS exists only so float noise (e.g. a value
+// that's conceptually 90 but stored as 89.99999999999997) doesn't get
+// treated as "on the line" when it should read as exactly met. gte/lte are
+// therefore effectively strict (same boundary as gt/lt) — the distinction
+// between gte/gt and lte/lt is a hair's width, not a meaningful inclusive
+// threshold.
+const TARGET_EPS = 1e-9;
+
+/** True if the value (converted to display units) satisfies the target's comparator. */
+export function meetsTarget(dbValue: number, t: KpiTarget): boolean {
+  const display = toDisplayUnits(dbValue, t.unit);
+  switch (t.comparator) {
+    case 'gte': return display >= t.target_value + TARGET_EPS;
+    case 'lte': return display <= t.target_value - TARGET_EPS;
+    case 'gt':  return display > t.target_value;
+    case 'lt':  return display < t.target_value;
+  }
+}
+
+/**
+ * True if the value (converted to display units) is numerically below the
+ * target — direction-agnostic, unlike meetsTarget. Used for chart/tile
+ * geometry (e.g. is this point above or below the reference line) where
+ * "below the line" and "good" aren't always the same thing.
+ */
+export function isBelowTarget(dbValue: number, t: KpiTarget): boolean {
+  return toDisplayUnits(dbValue, t.unit) < t.target_value;
+}
+
 export function formatValue(v: number | null | undefined, unit: string): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
   if (unit === 'pct') return `${(v * 100).toFixed(1)}%`;

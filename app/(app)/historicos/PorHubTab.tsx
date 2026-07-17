@@ -5,8 +5,8 @@ import {
   XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import {
-  formatValue, formatDelta, weekEndLabel, deltaClassForDirection,
-  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku,
+  formatValue, formatDelta, weekEndLabel, deltaClassForDirection, resolveTarget, meetsTarget,
+  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku, type KpiTarget,
 } from './_shared';
 import type { MnaCategory } from '@/lib/sku-classifier';
 import { GenerarReporte } from '@/components/GenerarReporte';
@@ -43,6 +43,7 @@ interface Props {
   mnaProducts: MnaProduct[];
   faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
+  targets: KpiTarget[];
   currentWeek: string;
   selectedHub?: string;
 }
@@ -104,8 +105,15 @@ const KPI_META: Record<string, KpiMeta> = {
   discrepancia_mxn:                   { title: 'Discrepancia ($)',         unit: 'currency', direction: 'lower_is_better'  },
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], currentWeek, selectedHub }: Props) {
+export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], targets = [], currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
+
+  // Tile coloring mode — defaults to the existing σ-vs-own-history behavior
+  // so configuring targets doesn't silently change how tiles already look.
+  // "vs meta" only recolors tiles that actually have a resolved target;
+  // tiles without one keep the σ-vs-histórico color regardless of mode,
+  // since there's nothing else to color them by.
+  const [colorMode, setColorMode] = useState<'hist' | 'meta'>('hist');
 
   // Hub selection is client-side state — switching hubs does NOT hit the server.
   // All data is already loaded; we just filter it here.
@@ -283,6 +291,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               peers={peers}
               mnaProducts={mnaProducts}
               faltantesSkuProducts={faltantesSkuProducts}
+              targets={targets}
               currentWeek={currentWeek}
             />
           </div>
@@ -290,9 +299,27 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
       </div>
 
       {/* KPI tiles grid */}
-      <div className="flex items-center gap-2 mb-1">
-        <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">KPIs · 12 semanas</div>
-        <div className="text-[10.5px] text-[var(--muted)] opacity-60">· clic en tile para ver ranking</div>
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="text-[13px] text-[var(--muted)] font-bold uppercase tracking-wide">KPIs · 12 semanas</div>
+          <div className="text-[10.5px] text-[var(--muted)] opacity-60">· clic en tile para ver ranking</div>
+        </div>
+        <div className="flex items-center gap-1 bg-slate-100 rounded-full p-0.5 text-[10.5px]">
+          <button
+            type="button"
+            onClick={() => setColorMode('hist')}
+            className={`px-2.5 py-1 rounded-full font-medium transition-colors ${colorMode === 'hist' ? 'bg-white shadow-sm text-slate-900' : 'text-[var(--muted)]'}`}
+          >
+            vs histórico
+          </button>
+          <button
+            type="button"
+            onClick={() => setColorMode('meta')}
+            className={`px-2.5 py-1 rounded-full font-medium transition-colors ${colorMode === 'meta' ? 'bg-white shadow-sm text-slate-900' : 'text-[var(--muted)]'}`}
+          >
+            vs meta
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {tiles.map(({ kpi, thisWeek, peerThis, trend }) => {
@@ -323,12 +350,28 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               ? priorVals.reduce((a, b) => a + b, 0) / priorVals.length
               : null);
 
-          // ── Tile color: this week vs own 4-week rolling average ──────────────
+          // Resolved target for this KPI+hub (hub override > global > none).
+          // targetDbUnits mirrors trend/value's DB-native units (pct as 0-1
+          // fraction) so it can sit on the same chart y-domain as the
+          // sparkline data without a separate axis.
+          const target = resolveTarget(kpi.id, hubId, targets);
+          const targetDbUnits = target
+            ? (target.unit === 'pct' ? target.target_value / 100 : target.target_value)
+            : null;
+
+          // ── Tile color ─────────────────────────────────────────────────────
           //
+          // "vs meta" (colorMode==='meta'): green/red by meetsTarget, only for
+          // tiles that actually have a resolved target — falls through to the
+          // σ logic below otherwise, same as when colorMode==='hist'.
+          //
+          // "vs histórico" (default): this week vs own 4-week rolling average
           //   • σ-based (0.75σ threshold) when ≥3 prior data points available
           //   • ±5% relative fallback when σ is undefined/0
           let z: 'good' | 'mid' | 'bad' | null = null;
-          if (value !== null && mean4w !== null) {
+          if (colorMode === 'meta' && target && value !== null) {
+            z = meetsTarget(value, target) ? 'good' : 'bad';
+          } else if (value !== null && mean4w !== null) {
             let sigma: number | null = null;
             if (priorVals.length >= 3) {
               const mu  = priorVals.reduce((a, b) => a + b, 0) / priorVals.length;
@@ -459,6 +502,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                           {mean4w != null && (
                             <ReferenceLine y={mean4w} stroke="#94a3b8" strokeDasharray="2 2" />
                           )}
+                          {targetDbUnits != null && (
+                            <ReferenceLine y={targetDbUnits} stroke="#0d9488" strokeDasharray="4 2" strokeWidth={1.3} />
+                          )}
                           <Tooltip
                             content={<SparkTooltip unit={kpi.unit} />}
                             cursor={{ stroke: '#94a3b8', strokeWidth: 1 }}
@@ -481,7 +527,13 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                     <span title="Promedio de las últimas 4 semanas de este hub">
                       4w avg: {formatValue(mean4w, kpi.unit)}
                     </span>
-                    <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
+                    {targetDbUnits != null ? (
+                      <span className="text-teal-700" title={target?.scope_level === 'hub' ? 'Meta configurada para este hub' : 'Meta global'}>
+                        meta: {formatValue(targetDbUnits, kpi.unit)}
+                      </span>
+                    ) : (
+                      <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
+                    )}
                   </div>
                 </div>
 

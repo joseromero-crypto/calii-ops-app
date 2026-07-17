@@ -1,16 +1,21 @@
 import { createServerClient } from '@/lib/supabase-server';
+import { KpiTargetsSection } from './KpiTargetsSection';
+import type { KpiTarget } from '../historicos/_shared';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ConfigPage() {
   const supabase = createServerClient();
-  const [{ data: apps }, { data: kpis }, { data: hubs }, { data: rules }, { data: scope }] = await Promise.all([
+  const [{ data: apps }, { data: kpis }, { data: hubs }, { data: rules }, { data: scope }, { data: targets }] = await Promise.all([
     supabase.from('apps').select('id, name_es, scope, expected_files_per_week, active'),
     supabase.from('kpis').select('id, name_es, unit, direction, category, watched_globally, parent_kpi_id, display_order').order('display_order'),
     supabase.from('hubs').select('id, display_name, city, active'),
     supabase.from('behavior_rules').select('id, rule_text, active, display_order').order('display_order'),
     supabase.from('scope_rules').select('id, trigger_text, target_team_id, flag_label_es, active'),
+    supabase.from('kpi_targets').select('kpi_id, scope_level, scope_key, target_value, comparator, unit, active').eq('active', true),
   ]);
+
+  const activeHubs = (hubs ?? []).filter((h) => h.active);
 
   return (
     <div>
@@ -18,6 +23,12 @@ export default async function ConfigPage() {
       <div className="text-[var(--muted)] text-[13px] mb-6">
         Edita apps, KPIs, contexto AI y reglas sin tocar código. Cambios en reglas/contexto bumpan el prompt_version.
       </div>
+
+      <KpiTargetsSection
+        kpis={kpis ?? []}
+        hubs={activeHubs}
+        initialTargets={(targets ?? []) as KpiTarget[]}
+      />
 
       <Section title="Apps registradas" count={apps?.length ?? 0}>
         <ul className="text-[12.5px]">

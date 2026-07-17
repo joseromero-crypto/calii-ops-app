@@ -103,7 +103,7 @@ Tasas: (lista ya filtrada — copiar solo los nombres que aparecen en la secció
 "Tasas: Nombre (XX.X), Nombre (XX.X)"
 Si el bundle dice "(ninguno por debajo del umbral esta semana)", omitir esta línea.
 
-FA: (SOLO armadores marcados ⚠️ en faltantes_armador_pct, es decir ≥2× el promedio del hub — omitir cualquier armador por debajo de 2× el promedio)
+FA: (SOLO armadores marcados ⚠️ en faltantes_armador_pct — el bundle ya aplicó el umbral configurado o, si no hay ninguno, 2× el promedio del hub)
 "FA"
 Luego un bullet por armador:
 "- Nombre (X.X%, Xx el promedio)"
@@ -113,11 +113,11 @@ Luego un bullet por armador:
 --- SECCIÓN REPARTO (omitir sección completa si no hay nada que reportar) ---
 Escribir la cabecera: "Reparto"
 
-Reparto tardío (repartidores con pct_tardias_reparto > 2× promedio):
+Reparto tardío (repartidores marcados FLAGGEADO en pct_tardias_reparto — el bundle ya aplicó el umbral configurado o, si no hay ninguno, 2× promedio):
 "Reparto tardío"
 "- Nombre: X.X% (promedio: Y.Y%)"
 
-Entregas fallidas (repartidores con pct_undelivered > 2× promedio):
+Entregas fallidas (repartidores marcados FLAGGEADO en pct_undelivered — mismo criterio):
 "Entregas fallidas"
 "- Nombre: X.X% (promedio: Y.Y%)"
 
@@ -315,8 +315,12 @@ function buildTextBundle(b: ReportBundle): string {
   for (const g of b.repartidoresPorKpi) {
     const meanFmt = fmtVal(g.hubMean, g.unit);
     let header = `[${g.kpiId}] ${g.kpiName} | Promedio hub: ${meanFmt}`;
-    // Show outlier threshold for both pct and count driver KPIs
-    if (g.hubMean !== null && (g.unit === 'pct' || g.unit === 'count')) {
+    // A configured /config target (threshold) wins over the outlier default —
+    // same precedence as the assembler section above.
+    if (g.threshold !== undefined) {
+      const tf = fmtVal(g.threshold, g.unit);
+      header += g.direction === 'lower_is_better' ? `  UMBRAL: >${tf}` : `  UMBRAL: <${tf}`;
+    } else if (g.hubMean !== null && (g.unit === 'pct' || g.unit === 'count')) {
       header += `  OUTLIER: >${fmtVal(g.hubMean * 2, g.unit)} (>2× promedio)`;
     }
     lines.push(header);

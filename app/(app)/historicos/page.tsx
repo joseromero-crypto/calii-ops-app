@@ -2,7 +2,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { lastCompletedWeekStart } from '@/lib/types';
 import { classifyMnaProduct } from '@/lib/sku-classifier';
 import type { MnaCategory } from '@/lib/sku-classifier';
-import type { FaltantesSku } from './_shared';
+import type { FaltantesSku, KpiTarget } from './_shared';
 import { HistoricosClient } from './HistoricosClient';
 import { resolveHubId } from '@/lib/hub-aliases';
 
@@ -47,6 +47,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     rolesRes,
     assemblerTrendCountRes,
     driverTrendCountRes,
+    targetsRes,
   ] = await Promise.all([
     sb
       .from('kpi_snapshots')
@@ -91,6 +92,8 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .eq('scope_type', 'within_hub')
       .gte('week_start', sinceIso)
       .lte('week_start', currentWeek),
+    // Configurable KPI targets — tiny table, no pagination needed.
+    sb.from('kpi_targets').select('kpi_id, scope_level, scope_key, target_value, comparator, unit, active').eq('active', true),
   ]);
 
   const snapTotal             = snapCountRes.count ?? 0;
@@ -438,6 +441,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       mnaProducts={mnaProducts}
       faltantesSkuProducts={faltantesSkuProducts}
       roles={rolesRes.data ?? []}
+      targets={(targetsRes.data ?? []) as KpiTarget[]}
       currentWeek={currentWeek}
       tab={(searchParams.tab as 'kpi' | 'hub' | 'cmp' | undefined) ?? 'kpi'}
       selectedKpi={searchParams.kpi}
