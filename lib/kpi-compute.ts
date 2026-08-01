@@ -210,6 +210,9 @@ function computeEntityValues(
   if (FALTANTES_HUB_PCT_KPI_IDS.has(kpi.id)) {
     return extractFaltantesHubPctDirect(kpi.source_app_id ?? '', rowsByApp, hubCity);
   }
+  if (RESUMEN_KPI_IDS.has(kpi.id)) {
+    return extractResumenOperativoValues(kpi, rowsByApp, hubCity);
+  }
   if (!kpi.source_app_id) return [];
   const rows = rowsByApp.get(kpi.source_app_id) ?? [];
   switch (kpi.source_app_id) {
@@ -650,6 +653,82 @@ function computeFaltantesArmadorPeerValues(
       entity_key: opName,
       city: o.upload.city ?? null,
       hub_id: hubId,
+      numerator,
+      denominator,
+    });
+  }
+  return out;
+}
+
+// KPI IDs sourced from the hub-level "Resumen operativo" Retool export — one
+// row per hub per week. category='operacion' on these kpis rows is the
+// signal the frontend uses (isResumenKpi in historicos/_shared.ts) to keep
+// them out of Por Hub tiles / Comparativa / the coordinator report.
+const RESUMEN_KPI_IDS = new Set([
+  'pedidos_hub', 'pedidos_entregados', 'aov_mxn', 'ingresos_hub',
+  'pedidos_por_armador_dia', 'entregas_por_repartidor_dia',
+  'armadores_activos', 'repartidores_activos',
+]);
+
+/**
+ * [numerator, denominator] per KPI. AOV and the two per-head rates store
+ * numerator = value × weight, denominator = weight — NOT numerator = value,
+ * denominator = 1 — so aggregateAllScopes' Σnum/Σden at city/global scope
+ * produces a correctly weighted average instead of silently summing the
+ * per-hub averages (e.g. Monterrey AOV would read $4,350 instead of $1,096;
+ * pedidos_por_armador_dia would read 27.3 instead of 6.76). Weight is
+ * whatever sits on the bottom of the metric: AOV is pesos/order → weight by
+ * orders; the two rates are X/person/día → weight by headcount.
+ */
+const RESUMEN_FIELDS: Record<string, (d: Record<string, unknown>) => [number, number]> = {
+  pedidos_hub:                 d => [toNum(d['Pedidos (#)']), 1],
+  pedidos_entregados:          d => [toNum(d['Pedidos (#)']) - toNum(d['Pendiente armado (#)']), 1],
+  aov_mxn:                     d => [toNum(d['AOV']) * toNum(d['Pedidos (#)']), toNum(d['Pedidos (#)'])],
+  ingresos_hub:                d => [toNum(d['AOV']) * toNum(d['Pedidos (#)']), 1],
+  pedidos_por_armador_dia:     d => [toNum(d['Nro. de pedidos / armador / día']) * toNum(d['Armadores (#)']), toNum(d['Armadores (#)'])],
+  entregas_por_repartidor_dia: d => [toNum(d['Nro. de entregas / repartidor / día']) * toNum(d['Repartidores (#)']), toNum(d['Repartidores (#)'])],
+  armadores_activos:           d => [toNum(d['Armadores (#)']), 1],
+  repartidores_activos:        d => [toNum(d['Repartidores (#)']), 1],
+};
+
+/**
+ * Resumen operativo — HUB-LEVEL snapshot values (direct read, one row per
+ * hub per week from the Retool export). computePeersForKpi already handles
+ * entity_type='hub' (within_city + global peer rows, same as
+ * extractFaltantesHubPctDirect) — no separate peer-values path needed.
+ *
+ * Skips zero-volume hubs: MH San Pedro is in HUB_ALIAS_MAP but not in the
+ * hubs table, and ships an all-zero/NaN row. Without this guard it writes an
+ * orphan snapshot no UI can render and pollutes every weighted KPI with a
+ * phantom 0-order hub. CH Guadalupe general is dropped automatically —
+ * hubNameToId returns null for ch_* prefixes.
+ */
+function extractResumenOperativoValues(
+  kpi: Kpi,
+  rowsByApp: Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>,
+  hubCity: Map<string, City>
+): EntityValue[] {
+  const rows = rowsByApp.get('resumen_operativo') ?? [];
+  const field = RESUMEN_FIELDS[kpi.id];
+  if (!field) return [];
+
+  const out: EntityValue[] = [];
+  for (const r of rows) {
+    const hubId = hubNameToId(String(r.data['Hub'] ?? '').trim());
+    if (!hubId) continue;
+
+    const pedidos = toNum(r.data['Pedidos (#)']);
+    if (!Number.isFinite(pedidos) || pedidos <= 0) continue;
+
+    const [numerator, denominator] = field(r.data);
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) continue;
+    if (denominator === 0) continue; // e.g. Armadores (#) = 0 — rate is undefined, not zero
+
+    out.push({
+      entity_type: 'hub',
+      entity_key:  hubId,
+      city:        hubCity.get(hubId) ?? null,
+      hub_id:      hubId,
       numerator,
       denominator,
     });

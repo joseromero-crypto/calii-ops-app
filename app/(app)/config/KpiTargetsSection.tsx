@@ -47,7 +47,7 @@ function targetKey(kpiId: string, scopeLevel: 'global' | 'hub', scopeKey: string
 
 function unitSuffix(unit: string): string {
   if (unit === 'pct') return '%';
-  if (unit === 'currency') return '$';
+  if (unit === 'currency' || unit === 'currency_avg') return '$';
   return '';
 }
 

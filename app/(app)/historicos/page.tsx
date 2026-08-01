@@ -443,7 +443,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       roles={rolesRes.data ?? []}
       targets={(targetsRes.data ?? []) as KpiTarget[]}
       currentWeek={currentWeek}
-      tab={(searchParams.tab as 'kpi' | 'hub' | 'cmp' | undefined) ?? 'kpi'}
+      tab={(searchParams.tab as 'kpi' | 'hub' | 'cmp' | 'res' | undefined) ?? 'kpi'}
       selectedKpi={searchParams.kpi}
       selectedHub={searchParams.hub}
       selectedCity={searchParams.city}

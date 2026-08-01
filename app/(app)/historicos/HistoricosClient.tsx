@@ -5,6 +5,7 @@ import { weekEndLabel } from './_shared';
 import { PorKpiTab } from './PorKpiTab';
 import { PorHubTab } from './PorHubTab';
 import { ComparativaTab } from './ComparativaTab';
+import { ResumenTab } from './ResumenTab';
 interface Props {
   kpis: Kpi[];
   hubs: Hub[];
@@ -19,7 +20,7 @@ interface Props {
   roles: { id: string; name_es: string }[];
   targets: KpiTarget[];
   currentWeek: string;
-  tab: 'kpi' | 'hub' | 'cmp';
+  tab: 'kpi' | 'hub' | 'cmp' | 'res';
   selectedKpi?: string;
   selectedHub?: string;
   selectedCity?: string;
@@ -33,12 +34,12 @@ export function HistoricosClient(props: Props) {
   // Subsequent changes are pure client state + history.pushState — no Supabase
   // re-fetch, no server round-trip, same mechanism as hub switching in PorHubTab.
 
-  const [activeTab, setActiveTab] = useState<'kpi' | 'hub' | 'cmp'>(props.tab);
+  const [activeTab, setActiveTab] = useState<'kpi' | 'hub' | 'cmp' | 'res'>(props.tab);
   const defaultKpi = props.kpis.find((k) => k.watched_globally)?.id ?? props.kpis[0]?.id ?? '';
   const [activeKpi, setActiveKpi] = useState<string>(props.selectedKpi ?? defaultKpi);
 
   // Build and push URL without triggering a Next.js server navigation.
-  function syncUrl(tab: 'kpi' | 'hub' | 'cmp', kpi: string) {
+  function syncUrl(tab: 'kpi' | 'hub' | 'cmp' | 'res', kpi: string) {
     const params = new URLSearchParams();
     if (tab !== 'kpi') params.set('tab', tab);
     if (tab === 'kpi' && kpi && kpi !== defaultKpi) params.set('kpi', kpi);
@@ -46,7 +47,7 @@ export function HistoricosClient(props: Props) {
     window.history.pushState(null, '', url);
   }
 
-  const switchTab = (t: 'kpi' | 'hub' | 'cmp') => {
+  const switchTab = (t: 'kpi' | 'hub' | 'cmp' | 'res') => {
     setActiveTab(t);
     syncUrl(t, activeKpi);
   };
@@ -76,10 +77,12 @@ export function HistoricosClient(props: Props) {
         <Tab onClick={() => switchTab('kpi')} active={activeTab === 'kpi'}>📈 Por KPI</Tab>
         <Tab onClick={() => switchTab('hub')} active={activeTab === 'hub'}>🏬 Por hub<span className="hidden sm:inline"> · vista 1:1</span></Tab>
         <Tab onClick={() => switchTab('cmp')} active={activeTab === 'cmp'}>⚖️ Comparativa<span className="hidden sm:inline"> entre MHs</span></Tab>
+        <Tab onClick={() => switchTab('res')} active={activeTab === 'res'}>📦 Resumen</Tab>
       </div>
       {activeTab === 'kpi' && <PorKpiTab {...props} selectedKpi={activeKpi} onKpiChange={switchKpi} />}
       {activeTab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} />}
       {activeTab === 'cmp' && <ComparativaTab {...props} />}
+      {activeTab === 'res' && <ResumenTab {...props} />}
     </div>
   );
 }
