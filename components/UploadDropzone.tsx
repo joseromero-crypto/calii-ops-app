@@ -52,6 +52,11 @@ export function UploadDropzone({ appId, weekStart, city, hubId, label, alreadyUp
     }
   }
 
+  function cancelOverride() {
+    setError(null);
+    setPendingOverride(null);
+  }
+
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
@@ -79,13 +84,22 @@ export function UploadDropzone({ appId, weekStart, city, hubId, label, alreadyUp
       </label>
       {error && <div className="mt-1 text-red-600 text-[10.5px]">{error}</div>}
       {pendingOverride && (
-        <button
-          type="button"
-          onClick={(e) => { e.preventDefault(); void send(pendingOverride, true); }}
-          className="mt-1.5 w-full text-center text-[10.5px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-2 py-1 hover:bg-amber-100"
-        >
-          ⚠️ Sé lo que hago, subir de todas formas
-        </button>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); void send(pendingOverride, true); }}
+            className="flex-1 text-center text-[10.5px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-2 py-1 hover:bg-amber-100"
+          >
+            ⚠️ Sé lo que hago, subir de todas formas
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); cancelOverride(); }}
+            className="text-center text-[10.5px] font-semibold text-slate-600 bg-white border border-[var(--line)] rounded px-2 py-1 hover:border-slate-400"
+          >
+            No, cancelar
+          </button>
+        </div>
       )}
       {warning && <div className="mt-1 text-amber-700 text-[10.5px]">{warning}</div>}
     </div>
