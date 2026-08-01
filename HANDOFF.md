@@ -1,8 +1,12 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-05-22 (session 10)  
+**Last updated:** 2026-07-31 (session 12 — Resumen operativo shipped)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
+
+> **Session 12 shipped the "Resumen operativo" tab** — fully built, migrated, verified, and deployed. `PLAN_RESUMEN_OPERATIVO.md` (project root) is now a historical build doc, not a pending task list — see §21 for what actually shipped (it differs slightly from the plan: `ingresos_hub`'s numerator and the two open questions in the plan's §9 were resolved during the build, see §21's "Deviations from the plan"). Don't re-plan or re-build this feature from `PLAN_RESUMEN_OPERATIVO.md` without first checking current code/DB state.
+
+> ⚠️ **This document lags the codebase in places.** Sections §1–§20 were last fully verified at session 11 (2026-07-17), with session 12 additions layered in for the Resumen operativo work. The repo also contains `lib/generate-insights.ts`, `lib/classify-notes.ts`, `app/api/insights/*` and the `/prioridades` page — **none of which are documented below**. Treat §2's file table as incomplete and read the tree before assuming a file doesn't exist.
 
 ---
 
@@ -11,7 +15,7 @@
 Internal ops dashboard for Calii hub operations. Tracks weekly KPIs per hub (MH), including assembler performance, driver performance, MNA (merma / no-apto), faltantes, and cash discrepancy. Data is uploaded weekly via a separate upload flow and computed into two main tables: `kpi_snapshots` and `peer_comparisons`.
 
 The main feature areas:
-- **`/historicos`** — historical analytics page with three tabs: Por KPI, Por Hub, Comparativa
+- **`/historicos`** — historical analytics page with four tabs: Por KPI, Por Hub, Comparativa, Resumen (session 12 — see §21)
 - **`/upload`** — weekly CSV upload flow
 - **`/prioridades`** — priorities view
 - **`/config`** — hub/KPI configuration
@@ -43,6 +47,17 @@ The main feature areas:
 | `lib/sku-classifier.ts` | Classifies product names into MnaCategory: 'fyv' / 'carnes' / 'abarrotes' |
 | `lib/parse.ts` | CSV parsing + coerceRows (applies app_columns schema to raw CSV strings) |
 | `lib/validate.ts` | Upload validation — header check, type check, distribution check |
+| `lib/kpi-direction.ts` | **Session 11.** Single source of truth for the tasa_armado direction override (see §12) — `effectiveDirection()` / `defaultComparator()`. Shared by `/config`'s target editor and the report generator so the override isn't re-derived in two places. |
+| `app/(app)/historicos/_shared.ts` | Shared types/helpers for `/historicos`. **Session 11:** also now home to `KpiTarget` type + `resolveTarget` / `meetsTarget` / `isBelowTarget` — the configurable-KPI-targets resolver (see §14). |
+| `app/(app)/config/KpiTargetsSection.tsx` | **Session 11.** "Metas / Targets" editor on `/config` — global target per KPI + expandable per-hub overrides, auto-save on blur. See §14. |
+| `app/api/kpi-targets/route.ts` | **Session 11.** GET/PUT/DELETE for `kpi_targets`. Delete-then-insert against the partial unique index (not a plain upsert) — see §14. |
+| `supabase/migrations/20260717000001_kpi_targets.sql` | **Session 11.** Creates the real `kpi_targets` table (replacing an old, unused, differently-shaped speculative one from the original registry schema) + seeds it from the constants that were hardcoded pre-session-11. |
+| `CONFIGURABLE_KPI_TARGETS.md` | Feature spec for the configurable KPI targets work (session 11) — design rationale, precedence rules, unit-conversion contract. Read this before touching targets code. |
+| `PLAN_RESUMEN_OPERATIVO.md` | **Session 12 build doc — shipped 2026-07-31.** Original build instructions for the "Resumen operativo" tab. The feature is live; treat this as historical rationale (the weighting math, the footgun table), not a task list. See §21 for what shipped and how it diverged. |
+| `app/(app)/historicos/ResumenTab.tsx` | **Session 12.** "📦 Resumen" tab — Total/city/hub expandable tree over the 8 `resumen_operativo` KPIs, client-side Total-row override for count/currency (§21), upload-completeness banner. |
+| `app/(app)/historicos/ResumenCharts.tsx` | **Session 12.** `ResumenTrendChart` — WoW line chart used 3× on the Resumen tab (Pedidos entregados / AOV / Ingresos estimados), each with an independent Total · Por ciudad · Por hub scope toggle. See §21. |
+| `supabase/migrations/20260731000001_kpi_unit_currency_avg.sql` | **Session 12.** Adds `currency_avg` to the `kpi_unit` enum. Own file — Postgres won't let a transaction use an enum value it just added. |
+| `supabase/migrations/20260731000002_resumen_operativo.sql` | **Session 12.** Registers the `resumen_operativo` app (per_city, 4 files/week), its 20 `app_columns`, and the 8 new KPIs (`category = 'operacion'`). |
 | `supabase_discrepancia_setup.sql` | One-time SQL to register the discrepancia app + app_columns + KPI |
 
 ---
@@ -223,6 +238,7 @@ Desktop sidebar wrapper: hidden lg:block
 - `peerMeanThisWeek` (toolbar badge) uses the same client-side logic for count/currency
 - Both stored as 0–1 fractions for pct; raw MXN for currency; `formatValue` handles display
 - Timeline selector: 5 sem / 3 m / 6 m / 1 a / YTD
+- **Session 11 — target line:** teal dashed `ReferenceLine` + "meta" label when a configured `kpi_targets` global row exists for the selected KPI (`resolveTarget(kpi.id, null, targets)`). Global line only — if per-hub overrides exist, a note appears instead of drawing one line per hub ("start with the global line to keep it readable" per the spec). See §14.
 
 ### Heatmap (revised)
 - Each cell shows **two values**: absolute value (top) + WoW delta in display units (bottom)
@@ -246,6 +262,7 @@ Desktop sidebar wrapper: hidden lg:block
   - Faltantes subcategory KPIs: top SKUs by event count — max 8 items
   - Currency KPIs (e.g. discrepancia): driver ranking by shortfall, worst first
 - **Tile color:** σ-based threshold (0.75σ) vs hub's own 4w rolling mean. Fallback: ±5% relative.
+- **Session 11 — target line + "vs meta" toggle:** teal dashed `ReferenceLine` on the sparkline (alongside the existing grey 4w-avg line) when `resolveTarget(kpi.id, hubId, targets)` finds a row; the "4w avg:" label is replaced by "meta: X" in that case. A "vs histórico / vs meta" toggle above the tile grid (`colorMode` state, defaults to `'hist'`) switches tile coloring to `meetsTarget()`-based green/red — but **only for tiles that actually have a resolved target**; everything else keeps the σ-vs-histórico color regardless of toggle position. See §14.
 
 ### MNA Tile Category Filter Map
 ```ts
@@ -341,6 +358,7 @@ Dispatches to per-source extraction function based on `kpi.source_app_id`:
 | `incidentes` | `extractIncidentesValues` | driver |
 | `discrepancia` | `extractDiscrepanciaValues` | driver |
 | Faltantes hub % KPIs | `extractFaltantesHubPctDirect` | hub |
+| `resumen_operativo` (8 KPI ids, `RESUMEN_KPI_IDS`) | `extractResumenOperativoValues` | hub |
 
 ### `extractIncidentesValues`
 Detects **entregas erróneas** (wrong/missing deliveries) per driver. Detection rules (session 10):
@@ -360,6 +378,16 @@ CSV columns: `Repartidor`, `Hub`, `Cálculo digital efectivo` (expected), `Conci
 Accepts both accented and unaccented column name variants.  
 Drivers from unknown hubs (e.g. San Rafael Puebla, CH Guadalupe) are skipped — `hubNameToId` returns null.  
 **Accumulates by `(drvName, hubId)` pair** — uses a `byDriverHub` map so a driver with multiple CSV rows (e.g. multiple cash entries) contributes one `EntityValue` with their total shortfall. Without this, the same driver appears N times → inflated hub totals + wrong z-scores on the tile flip. Fixed session 9 after MH Contry and MH San Nicolás showed miscalculated discrepancia totals.
+
+### `extractResumenOperativoValues` (session 12)
+
+Hub-level direct-read extractor for the 8 `resumen_operativo` KPIs (`pedidos_hub`, `pedidos_entregados`, `aov_mxn`, `ingresos_hub`, `pedidos_por_armador_dia`, `entregas_por_repartidor_dia`, `armadores_activos`, `repartidores_activos`) — one row per hub per week from the Retool export, same shape as `extractFaltantesHubPctDirect`.
+
+- `RESUMEN_FIELDS: Record<kpiId, (row) => [numerator, denominator]>` — the weighted-average KPIs (`aov_mxn` and the two per-head rates) store `numerator = value × weight, denominator = weight`, **not** `numerator = value, denominator = 1`, so `aggregateAllScopes`' `Σnum/Σden` at city/global scope produces a correctly weighted average instead of silently summing per-hub averages. Weight is whatever sits on the bottom of the metric: AOV is pesos/order → weight by orders; the two rates are X/person/día → weight by headcount.
+- `ingresos_hub` numerator is `AOV × pedidos_entregados` (delivered orders), not `AOV × Pedidos (#)` (placed) — changed post-launch (2026-07-31) because undelivered orders are never actually charged; the placed-orders version overstated revenue by the undelivered rate (~2.5% in the sample week).
+- Skips zero-volume hubs (`Pedidos (#) <= 0`) — MH San Pedro is in `HUB_ALIAS_MAP` but not in the `hubs` table, and ships an all-zero/NaN row.
+- Skips a KPI when its own weight denominator is 0 (e.g. `Armadores (#) = 0` → the per-armador rate is undefined, not zero).
+- `computePeersForKpi` already handles `entity_type === 'hub'` (same as faltantes hub %) — no separate peer-values path needed.
 
 ### `aggregateAllScopes` — global scope for count + currency
 For `unit === 'currency'` **and** `unit === 'count'` KPIs, global = **mean of hub totals** not sum-of-all-entities.  
@@ -453,6 +481,11 @@ Current sort (stable): `entity_type, kpi_id, scope_type, scope_key NULLS LAST, e
 | Comparativa city filter removed (session 7) | `ComparativaTab` previously had city filter buttons that called `router.push` → slow. Filter removed entirely in session 7. Tab now always shows all hubs. Do not re-add router-based filters to this component. |
 | Incidentes order-code regex missing letter-starting codes (fixed session 10) | Old pattern `/\d[\w]*[-–]\w+[-–]\w+/` required the first character to be a digit — silently dropped every order code starting with a letter (WS-, JN-, GM-, SL-, GP-, JH-, U-). In a 3-week real sample this missed 8 of 17 incidents (47%). Fixed with `/#?[A-Z0-9]{1,2}-[A-Z]\d-\d/i`. Same regex must be in sync between `kpi-compute.ts` and `GenerarReporte.tsx`. |
 | Incidentes detection: delivery keywords alone not enough | Old logic counted a row if it had EITHER an order code OR the word "entrega/entregado". Delivery words without a code are too noisy (e.g. normal service notes). New logic: order code is always required. For unknown responsables, delivery keywords serve as secondary confirmation only. |
+| Old unused `kpi_targets` table (session 11) | The original registry schema migration (`20260427000001`) already created a `kpi_targets` table — but with a different shape (`scope`/`scope_value`/`target`, no `comparator`/`unit`/`active`, and the exact NULL-in-UNIQUE bug this class of footgun is named after). It was never wired up anywhere (zero code references, unseeded). Migration `20260717000001` drops and recreates it with the real design. If you ever see a stray reference to columns like `scope_value` or `warn_threshold`, that's the dead old shape — don't resurrect it. |
+| `kpi_targets` NULL-in-UNIQUE (session 11) | Same class as the upload dedup bug above: a plain `unique(kpi_id, scope_level, scope_key)` does NOT stop duplicate global rows because `scope_key` is NULL for all of them. Fixed with two partial unique indexes (`kpi_targets_global_uniq`, `kpi_targets_hub_uniq`). `/api/kpi-targets` PUT does delete-then-insert matching the exact partial index — never a plain `upsert(onConflict: 'kpi_id,scope_level,scope_key')` here. |
+| `meetsTarget` boundary is strict, not inclusive (session 11) | Landing exactly on a target does NOT count as meeting it — you have to clear it, not tie it (explicit product decision). `TARGET_EPS = 1e-9` in `historicos/_shared.ts` guards against float noise (e.g. a value that's conceptually 90 but stored as 89.99999999999997) rather than making the boundary inclusive. This is a deliberate deviation from how the original hardcoded assembler thresholds worked in early drafts of `GenerarReporte.tsx` (`<=`/`>=`) — don't "fix" it back to inclusive without checking with Jose first. |
+| Optional targets = row absence, not `target_value: null` (session 11) | KPIs that flag on "outlier > 2× hub mean" today (`faltantes_armador_pct`, `pct_tardias_reparto`, `pct_undelivered`) stay on that behavior when no `kpi_targets` row exists. A blank `/config` input calls `DELETE`, not `PUT` with a null value — `target_value` is `NOT NULL` in the schema on purpose. Setting *any* number for these three KPIs switches them from 2×-mean to the fixed target immediately. |
+| `npm run build` vs `npm run dev` share `.next` (session 11) | Running a production build while the dev server is running corrupts the dev server's webpack output — `Cannot find module './NNN.js'` errors, then a wave of 404s for `_next/static/chunks/*`. Fix: kill the dev server, `rm -rf .next`, restart `npm run dev`. Don't run `npm run build` as a "quick sanity check" while `npm run dev` is live in another terminal — use `npx tsc --noEmit` for that instead, and save `npm run build` for right before a deploy. |
 
 ---
 
@@ -476,15 +509,17 @@ ReportBundle     { hub, week, kpiSummary, armadoresPorKpi, repartidoresPorKpi,
 ```
 
 ### KPI definitions in `GenerarReporte.tsx`
+⚠️ **Session 11 — thresholds are now config-driven.** `defaultThreshold` on each def below is the CODE DEFAULT, used only when `/config` has no `kpi_targets` row for that KPI+hub (see §14). `resolveEffectiveTarget()` resolves the configured row (hub override > global) or falls back to `defaultThreshold`, returns a `KpiTarget`-shaped object, and `meetsTarget()` (from `historicos/_shared.ts`) does the actual flagging comparison — do not hand-roll a new `<=`/`>=` comparison here, that's exactly the "second source of truth" the target resolver exists to avoid.
+
 **Assembler KPIs** (`ASSEMBLER_KPI_DEFS`):
-- `incidentes_manuales_pct` — general incidentes, threshold **≥ 6%** → LISTA 1
-- `incidentes_calidad_pct` / `incidentes_faltantes_pct` / `_parciales` / `_completos` — sub-metrics, threshold **≥ 4%** → LISTA 2
-- `tasa_armado` — `higherIsBetter: true` override (DB direction may be `lower_is_better`). Threshold **≤ 90 SKUs/hr** = bad. `effectiveHigherIsBetter` is computed from the def override, not `kpi.direction`. The corrected direction is passed in the bundle so `buildTextBundle` generates `UMBRAL: <90` not `>90`. `buildTextBundle` also **pre-filters** tasa_armado entities to flagged-only before sending to Claude — avoids Claude accidentally listing fast assemblers.
-- `faltantes_armador_pct` — outlier ≥ 2× hub mean (no hard threshold)
+- `incidentes_manuales_pct` — general incidentes, default **≥ 6%** → LISTA 1
+- `incidentes_calidad_pct` / `incidentes_faltantes_pct` / `_parciales` / `_completos` — sub-metrics, default **≥ 4%** → LISTA 2
+- `tasa_armado` — direction comes from `lib/kpi-direction.ts`'s `effectiveDirection()` (DB direction may say `lower_is_better`, this is the single source of truth for the override — see §12). Default **≤ 90 SKUs/hr** = bad. The corrected direction is passed in the bundle so `buildTextBundle` generates `UMBRAL: <90` (or whatever the configured target is) not `>90`. `buildTextBundle` also **pre-filters** tasa_armado entities to flagged-only before sending to Claude — avoids Claude accidentally listing fast assemblers.
+- `faltantes_armador_pct` — outlier ≥ 2× hub mean unless a target is configured in `/config` (no code default)
 
 **Driver KPIs** (`DRIVER_KPI_DEFS`):
-- `pct_tardias_reparto` — outlier >2× hub mean → "Reparto tardío" in report
-- `pct_undelivered` — outlier >2× hub mean → "Entregas fallidas" in report
+- `pct_tardias_reparto` — outlier >2× hub mean unless a target is configured → "Reparto tardío" in report
+- `pct_undelivered` — outlier >2× hub mean unless a target is configured → "Entregas fallidas" in report
 
 (Removed from driver report: `retardos_count`, `discrepancia_mxn` — not shared with coordinators.)
 
@@ -501,7 +536,8 @@ const REPORT_ONLY_KPI_IDS = new Set(['pedidos_armados', 'retardos_count']);
 - Filters `peers` for `within_hub` + `scope_key === hub.id` per KPI
 - `assemblerOrderCount` map built from `pedidos_armados` peer entries, attached to each assembler entity as `numOrders`
 - **`rollingMean4w`**: prefers `snap.rolling_mean_4w` from DB; falls back to client-side average of prior snapshots for the same KPI/hub when the DB value is null. This mirrors the PorHubTab tile fallback.
-- **`effectiveHigherIsBetter`** for assembler KPIs: uses `def.higherIsBetter` override when set, else falls back to `kpi.direction === 'higher_is_better'`. Used for both the flagging check and the sort order. The returned group's `direction` field is set from this effective value (not raw `kpi.direction`) so `buildTextBundle` generates the correct UMBRAL label.
+- **`effectiveHigherIsBetter`** for assembler KPIs: session 11 — now computed via `lib/kpi-direction.ts`'s `effectiveDirection(kpi.id, kpi.direction)` instead of a per-def `higherIsBetter` field (that field was removed from `ASSEMBLER_KPI_DEFS`). Used for both the flagging check (via `resolveEffectiveTarget`/`meetsTarget`) and the sort order. The returned group's `direction` field is set from this effective value (not raw `kpi.direction`) so `buildTextBundle` generates the correct UMBRAL label.
+- **Configured targets** (session 11): `resolveEffectiveTarget()` wraps `resolveTarget()` (hub override > global) and falls back to the def's `defaultThreshold` when no row exists — see §14 and the footgun table in §12.
 
 ### `buildTextBundle()` in `app/api/generar-reporte/route.ts`
 Pre-resolves the two assembler lists so Claude just copies them:
@@ -532,6 +568,54 @@ if (coldChain && !shelfStable) return 'carnes';
 return 'abarrotes'; // default
 ```
 Intentionally excluded from FYV_NAME_SIGNALS: cebolla, ajo, papa, maíz, coco — too common in processed/dry forms (salsa, en polvo, aceite).
+
+---
+
+## 14. Configurable KPI Targets (session 11)
+
+Full design doc: `CONFIGURABLE_KPI_TARGETS.md` (project root) — read it before making non-trivial changes here, this section is a summary of what shipped, not the rationale.
+
+### Overview
+Targets (umbrales) that used to be hardcoded constants in `GenerarReporte.tsx` are now editable from `/config` -> "Metas / Targets", globally or per-hub, without a code change or redeploy. They drive both the AI report's flagging/`UMBRAL:` line and the dashboard's target reference line + optional "vs meta" tile coloring.
+
+### Data model — `kpi_targets` table
+Migration: `supabase/migrations/20260717000001_kpi_targets.sql`.
+
+```
+id, kpi_id, scope_level ('global'|'hub'), scope_key (hub_id or null),
+target_value (numeric, NOT NULL), comparator ('gte'|'lte'|'gt'|'lt'),
+unit (snapshot of kpis.unit), active, updated_by, updated_at
+```
+
+- **`target_value` is stored in DISPLAY units** (90 for tasa_armado, 6 for a 6% threshold) — NOT the 0-1 fraction `kpi_snapshots`/`peer_comparisons` use for pct. This was the #1 thing the spec called out to get right; conversion happens in exactly one place (`toDisplayUnits` inside `historicos/_shared.ts`, not exported — go through `meetsTarget`/`isBelowTarget`).
+- **Optionality = row absence**, not `target_value: null` — the column is `NOT NULL` on purpose. A blank `/config` input issues a `DELETE`, never a `PUT` with a null value.
+- Precedence: **hub-specific row > global row > code default** (the def-level constants still in `GenerarReporte.tsx`, renamed `defaultThreshold`). Never hard-fails on a missing target.
+- Replaced an old, unused, differently-shaped `kpi_targets` table from the original registry schema — see §12 footgun table.
+
+### Resolver — `app/(app)/historicos/_shared.ts`
+```ts
+resolveTarget(kpiId, hubId, targets): KpiTarget | undefined   // hub > global > undefined
+meetsTarget(dbValue, target): boolean                          // direction-aware "is this good"
+isBelowTarget(dbValue, target): boolean                        // direction-agnostic, for chart geometry
+```
+`meetsTarget`'s boundary is **strict, not inclusive** — exactly hitting the target does not count as meeting it (see §12 footgun). This is the single place every consumer (report, config UI defaults, dashboard tiles/chart) goes through — do not reimplement the gte/lte switch anywhere else.
+
+### `/config` UI — `KpiTargetsSection.tsx` + `/api/kpi-targets`
+- One row per KPI: global number input + an expandable per-hub override grid (hubs read from the `hubs` table already fetched in `config/page.tsx`, never hardcoded).
+- Comparator is **not user-editable** — always derived from the KPI's effective direction via `lib/kpi-direction.ts` (§12). Sent along with every write so the report's UMBRAL label stays unambiguous.
+- Auto-save on blur, no explicit "Guardar" button. Each input manages its own saving/saved/error state.
+- `/api/kpi-targets`: `GET` (list active), `PUT` (delete-then-insert against the exact partial unique index — see §12 NULL-in-UNIQUE footgun), `DELETE` (clears a row). Auth-checked like `/api/upload`.
+
+### Report wiring — `GenerarReporte.tsx` + `app/api/generar-reporte/route.ts`
+`resolveEffectiveTarget()` (in `GenerarReporte.tsx`) wraps `resolveTarget()` + the def's `defaultThreshold` fallback into a single `KpiTarget`-shaped object so `meetsTarget()` can be reused unchanged for flagging. `threshold` on the returned `KpiPeerGroup` stays in DB-native units (same as before) so `route.ts`'s existing `fmtVal()`-based `UMBRAL:` rendering keeps working without changes — it now just reflects the resolved target instead of a constant. The driver section's header (previously always "OUTLIER: >2x promedio") now prints `UMBRAL:` when a target is configured, same precedence as the assembler section.
+
+### Dashboard wiring — `PorHubTab.tsx` (§8) + `PorKpiTab.tsx` (§7)
+See the "Session 11" bullets already added to §7 and §8 above.
+
+### Verification status
+Live-tested in session 11: seed values match old hardcoded behavior exactly (tasa_armado 90, incidentes 6%/4%); global edit + per-hub override + clear-override all round-trip correctly through the DB; report UMBRAL line and flagging correctly reflect a changed target (tested 90->95 global, then a 120 per-hub override on MH Avicola — flagged count went from 2 to 8 assemblers); dashboard tile target line, "meta:" label, and "vs meta" toggle all confirmed live; PorKpiTab main chart target line confirmed for both a configured and an unconfigured KPI.
+
+**Not yet done** (from the original spec's Step 7 checklist): explicitly testing a 2x-hub-mean KPI (`pct_tardias_reparto`/`pct_undelivered`) — confirm blank stays on the 2x rule and a set value overrides it — and a final grep pass for any other stray consumer of the pre-session-11 hardcoded constants.
 
 ---
 
@@ -569,6 +653,8 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 12) feat: Resumen operativo tab — filter-only commit, migrations (currency_avg unit, resumen_operativo app/columns/8 kpis), extractResumenOperativoValues, ResumenTab tree + Total-row override, tab wiring; follow-up: ingresos_hub switched to delivered orders, 3 WoW trend charts (Total/por ciudad/por hub) — see §21
+(session 11) feat: configurable KPI targets — kpi_targets table + migration/seed, resolveTarget/meetsTarget resolver, /config Metas UI + /api/kpi-targets, report + dashboard wiring, epsilon-strict target boundary
 (session 10) fix: entregas erróneas detection — order code regex now catches letter-starting codes (WS-, JN-, GM- etc); order code required as primary signal; known responsables list added
 (session 9) fix: incidente fecha regex date extract (coerceRows stores datetime as full UTC ISO, length-10 check was dead code); discrepancia byDriverHub accumulation (defensive); Contry/San Nicolás diagnosed as stale CSV — re-upload fix, not code
 (session 8) fix: report generator — inclusive thresholds, tasa_armado direction override, LISTA 2 independent, driver KPIs trimmed, section headers, FA split, verbatim entregas erróneas
@@ -591,6 +677,8 @@ f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile co
 
 ## 17. What's Working ✓
 
+- **Resumen operativo tab (session 12)**: `/historicos` → "📦 Resumen" — Total/city/hub tree over 8 hub-level KPIs (orders, delivered orders, AOV, revenue, headcount, headcount rates) fed by a new per-city weekly Retool export, plus 3 WoW trend charts with Total/por ciudad/por hub scope toggles. Live in production with real data for week 2026-07-24, verified against hand-computed numbers. See §21.
+- **Configurable KPI targets (session 11)**: `/config` → "Metas / Targets" — global + per-hub umbrales, no redeploy needed. Drives the report's flagging/UMBRAL line and a target reference line + "vs meta" tile coloring toggle on the dashboard. See §14.
 - **Weekly report generator**: "Generar reporte" button in PorHubTab → Claude Haiku Slack message with assembler breakdown, driver flags, incidentes erróneas, MNA/FA sections
 - **Entregas erróneas detection fixed (session 10)**: order code regex now catches all formats (letter-starting and digit-starting); known responsables list enforced; order code required as primary signal
 - **Instant tab switching**: Por KPI / Por Hub / Comparativa tabs switch via `useState` — no Supabase re-fetch (session 7)
@@ -644,6 +732,8 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 ## 19. Ideas / Possible Next Tasks
 
+- **Resumen operativo — Phase 2 ideas, parked (not in scope).** See §21 and `PLAN_RESUMEN_OPERATIVO.md` §10: `impacto_incidentes_mxn` (quality KPIs expressed in pesos now that AOV exists), a reconciliation view for the 6 overlap columns vs our entity-derived numbers, timestamp/ventana KPIs (`kpi_unit` already has an unused `'minutes'` value), volume-weighted global means for count/currency KPIs generally (bigger decision, changes historical comparability).
+- **KPI targets — finish Step 7 verification (session 11 leftover)**: explicitly test a 2×-hub-mean KPI (`pct_tardias_reparto` or `pct_undelivered`) — blank should stay on the 2× rule, setting a number should override it. Also do a final grep for any other stray consumer of the pre-session-11 hardcoded thresholds that might have been missed. See §14.
 - **Report generator — rolling mean**: The DB `rolling_mean_4w` for the current week is null when the week was first computed before prior data existed. The report bundle now falls back to client-side computation, so the report works regardless. To permanently fix the DB: go to `/upload`, select the affected week, click "Recomputar snapshots". The enrichWithHistory function will find prior data and write the correct value.
 - **Report generator — MNA/FA WoW sentence**: Requires `mna_fyv_pct`, `mna_carnes_pct`, `mna_graneles_pct` (and faltantes equivalents) to be in `kpiSummary` with populated `prevValue`. If those sub-KPIs don't have snapshots, Claude has nothing to compare.
 - **Comparativa tab** — city filter removed (session 7). Always shows all hubs. Could add hub-vs-hub ranking tables or a best/worst summary row.
@@ -664,3 +754,49 @@ Workspace:   /Users/adrianrodriguez/Desktop/calii-ops-app
 Deploy:      Netlify (git push to main triggers deploy)
 Supabase:    https://nxwpsvvfgygafjnhwccc.supabase.co
 ```
+
+---
+
+## 21. Resumen operativo tab — SHIPPED (session 12, 2026-07-31)
+
+**Original build instructions: `PLAN_RESUMEN_OPERATIVO.md` in the project root.** Feature is live in production. This section documents what actually shipped and where it diverged from that plan — read the plan for full rationale (the weighting math worked examples, the footgun table), but treat this section as the current source of truth on status.
+
+### What it is
+A 4th tab in `/historicos` (`📦 Resumen`) fed by a weekly Retool export — one row per hub, containing order volume, AOV, headcount and productivity rates. Uploaded **per city, 4 files/week**, covering the 7 hubs. Plus 3 WoW trend charts (added post-launch, see below).
+
+### Registry objects (live in production)
+- App: `resumen_operativo` (`scope: per_city`, `expected_files_per_week: 4`), 20 `app_columns`. Migration: `20260731000002_resumen_operativo.sql`.
+- 8 KPIs, all `category = 'operacion'`: `pedidos_hub`, `pedidos_entregados`, `aov_mxn`, `ingresos_hub`, `pedidos_por_armador_dia`, `entregas_por_repartidor_dia`, `armadores_activos`, `repartidores_activos`.
+- `kpi_unit` enum value **`currency_avg`** (AOV is an average, not a total — `currency` would make city scope sum the hub AOVs). Own migration: `20260731000001_kpi_unit_currency_avg.sql` (Postgres won't let a transaction use an enum value it just added).
+
+### The three things that were most likely to be built wrong (all verified correct)
+1. **Total row ≠ DB global row.** `aggregateAllScopes` writes the global scope as the *mean of hub totals* for `count`/`currency` (§9). `ResumenTab`'s Total row uses a client-side **true sum** of the 7 hub rows for count/currency KPIs (same override pattern `PorKpiTab.allChartData` already uses) and reads the DB global directly for `currency_avg`/`rate` (already correctly weighted). City rows are already true sums in the DB and need no override.
+2. **Weighted, never unweighted.** AOV and the two per-person rates roll up as weighted averages — weight by whatever is on the bottom of the metric (AOV by orders, the rates by headcount) — encoded in `RESUMEN_FIELDS`' numerator/denominator choices (§9) so `aggregateAllScopes` does it automatically.
+3. **New KPIs leak into other views.** `PorHubTab` tiles, `ComparativaTab`, and `GenerarReporte.buildBundle`'s `kpiSummary` all excluded via the `isResumenKpi` helper in `_shared.ts` (`category === 'operacion'`). `PorKpiTab`'s selector and heatmap **do** include them (decided); only its `topMovers` block excludes.
+
+Verified live on the 2026-07-24 week against hand-computed numbers: Monterrey `aov_mxn` = $1,096.17 (not $4,350), `pedidos_por_armador_dia` = 6.7642 (not 27.3), Total `pedidos_hub` = 4,247 (sum of 4 cities, not the ~426 the DB global mean would show). Zero leakage confirmed into Por Hub tile count, Comparativa KPI count, or top movers.
+
+### Deviations from the plan
+Two open questions from `PLAN_RESUMEN_OPERATIVO.md` §9 were resolved during/after the build, not left open:
+
+1. **`ingresos_hub` numerator** — plan hedged between `Pedidos (#)` and `pedidos_entregados` as the multiplier. Resolved: **`pedidos_entregados`** (delivered orders) — undelivered orders are never actually charged, so `Pedidos (#) × AOV` overstated revenue by the undelivered rate (~2.5% in the sample week). `aov_mxn`'s weighting still uses `Pedidos (#)` (unchanged — that question was specifically about `ingresos_hub`).
+2. **`Nro. de pedidos / armador / día` — working days vs calendar days** — resolved: Calii operates 7 days/week uniformly across all hubs, so "día" is consistent across hubs and doesn't distort cross-hub comparison. No code change needed.
+
+### WoW trend charts (added post-launch, same session)
+`ResumenCharts.tsx` — `ResumenTrendChart` component, used 3× on the Resumen tab (Pedidos entregados, AOV, Ingresos estimados). Each chart is independent and has:
+- A **Total / Por ciudad / Por hub** scope-mode toggle (not combined — mutually exclusive, unlike Por KPI's single hub-lines-plus-global-mean chart).
+- Per-mode multi-select pills (cities or hubs) when not in Total mode, default all selected.
+- The same 5 sem / 3 m / 6 m / 1 a / YTD range buttons as `PorKpiTab`'s main chart.
+- Total-mode series uses the same sum-vs-weighted rule as the tree's Total row (`chronologicalSeries` + per-week sum for count/currency, DB global series directly for currency_avg/rate).
+
+Not built: a combined dual-axis chart (the plan's §6 Step 5 optional suggestion) — the 3 separate single-axis charts were built instead, per direct request.
+
+### Rollout sequence used (for reference — already executed, don't re-run)
+Per plan §9a, in order: (1) filter-only commit pushed and verified as a no-op on production, (2) both migrations run as separate executions in the Supabase SQL editor (pasted via `pbcopy` to the clipboard — copying long SQL from the chat window truncates long lines and causes syntax errors), (3) localhost testing — uploaded all 4 real city files for week 2026-07-24, recomputed, verified against the plan's worked numbers, (4) `ResumenTab` + tab wiring pushed. A 5th, unplanned round shipped the `ingresos_hub` fix + trend charts together, requiring one more local recompute before pushing (formula changes always need a recompute — code alone doesn't retroactively fix stored `kpi_snapshots` rows).
+
+Rollback at any point: `UPDATE kpis SET active = false WHERE category = 'operacion';` — hides all 8 and stops them computing (`kpi-compute.ts`, `page.tsx`) without touching data or code.
+
+### Footguns from the build (resolved, kept for context)
+- Every metric column is `required: false` — `MH San Pedro` ships the literal string `NaN`, and `validate.ts` hard-fails an upload on >5% type mismatches in *required* numeric columns.
+- `MH San Pedro` is in `HUB_ALIAS_MAP` but **not** in the `hubs` table and **not** in `HUB_COLORS` — the extractor's `Pedidos (#) > 0` guard skips it (San Pedro ships an all-zero row today). Revisit if the hub goes live.
+- `apps` in production has `group_id` / `group_label_es` columns that exist in **no local migration file** — the migration used an explicit column list rather than a bare `INSERT INTO apps VALUES (...)`.
