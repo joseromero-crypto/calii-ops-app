@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import {
-  HUB_COLORS, formatValue, weekEndLabel,
+  HUB_COLORS, formatValue, weekEndLabel, isResumenKpi,
   type Kpi, type Hub, type Snapshot,
 } from './_shared';
 
@@ -58,16 +58,19 @@ interface Props {
 }
 
 export function ComparativaTab({ kpis, hubs, snapshots, currentWeek }: Props) {
+  // Resumen operativo KPIs get their own hub-vs-hub view (the Resumen tab) —
+  // excluded here to avoid duplicating that grid.
+  const visibleKpis = kpis.filter((k) => !isResumenKpi(k));
   return (
     <div className="space-y-3">
       <div className="bg-white border border-[var(--line)] rounded-xl p-3 shadow-soft flex items-center gap-2 flex-wrap">
         <span className="text-[11px] uppercase tracking-wide text-[var(--muted)] font-bold">Todos los MHs</span>
         <span className="text-[11.5px] text-[var(--muted)] ml-auto">
-          {hubs.length} hubs · {kpis.length} KPIs
+          {hubs.length} hubs · {visibleKpis.length} KPIs
         </span>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-        {kpis.map((kpi) => (
+        {visibleKpis.map((kpi) => (
           <KpiCompareCard key={kpi.id} kpi={kpi} hubs={hubs} snapshots={snapshots} currentWeek={currentWeek} />
         ))}
       </div>

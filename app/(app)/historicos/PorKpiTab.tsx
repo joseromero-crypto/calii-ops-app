@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   HUB_COLORS, formatValue, formatDelta, weekEndLabel, weekEndLabelLong,
-  deltaClassForDirection, resolveTarget,
+  deltaClassForDirection, resolveTarget, isResumenKpi,
   type Kpi, type Hub, type Snapshot, type Peer, type KpiTarget,
 } from './_shared';
 
@@ -75,14 +75,19 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
     const thisWeekHub = snapshots.filter(
       (s) => s.week_start === currentWeek && s.scope_level === 'hub' && s.value !== null && s.prev_week_value !== null
     );
-    const enriched = thisWeekHub.map((s) => {
-      const kp = kpis.find((k) => k.id === s.kpi_id)!;
-      const isPct = kp.unit === 'pct';
-      const delta = isPct
-        ? (s.value! - s.prev_week_value!) * 100
-        : ((s.value! - s.prev_week_value!) / Math.abs(s.prev_week_value!)) * 100;
-      return { snap: s, kpi: kp, delta, absDelta: Math.abs(delta) };
-    });
+    const enriched = thisWeekHub
+      .map((s) => {
+        const kp = kpis.find((k) => k.id === s.kpi_id)!;
+        const isPct = kp.unit === 'pct';
+        const delta = isPct
+          ? (s.value! - s.prev_week_value!) * 100
+          : ((s.value! - s.prev_week_value!) / Math.abs(s.prev_week_value!)) * 100;
+        return { snap: s, kpi: kp, delta, absDelta: Math.abs(delta) };
+      })
+      // Volume/headcount KPIs (Resumen operativo) swing far harder in relative
+      // terms than any quality pct — excluded here only, so they still get a
+      // selector entry + heatmap row like every other KPI.
+      .filter((e) => !isResumenKpi(e.kpi));
     enriched.sort((a, b) => b.absDelta - a.absDelta);
     return enriched.slice(0, 5);
   }, [snapshots, kpis, currentWeek]);

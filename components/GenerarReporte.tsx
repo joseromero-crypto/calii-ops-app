@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget } from '@/app/(app)/historicos/_shared';
-import { resolveTarget, meetsTarget } from '@/app/(app)/historicos/_shared';
+import { resolveTarget, meetsTarget, isResumenKpi } from '@/app/(app)/historicos/_shared';
 import { effectiveDirection } from '@/lib/kpi-direction';
 import type { ReportBundle, IncidenteErroneo } from '@/app/api/generar-reporte/route';
 
@@ -137,7 +137,11 @@ function buildBundle(
   const weekLabel = `vie ${fmt.format(startDate)} — jue ${fmt.format(endDate)}`;
 
   // ── Hub-level KPI summary ─────────────────────────────────────────────────
+  // Resumen operativo KPIs (volume/AOV/headcount) are excluded by default —
+  // adding that context to the coordinator report is a separate, deliberate
+  // change with its own prompt work (PLAN_RESUMEN_OPERATIVO.md §5).
   const kpiSummary = kpis
+    .filter((kpi) => !isResumenKpi(kpi))
     .map((kpi) => {
       const snap = snapshots.find(
         (s) =>

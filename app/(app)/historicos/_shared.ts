@@ -60,6 +60,16 @@ export interface FaltantesSku {
 
 export interface Hub { id: string; display_name: string; city: string }
 
+/**
+ * KPIs sourced from the hub-level Retool "Resumen operativo" export —
+ * rendered in the Resumen tab only. Single source of truth for the
+ * exclusion applied everywhere else (PorHubTab tiles, PorKpiTab top movers,
+ * ComparativaTab, GenerarReporte's kpiSummary) — same pattern as
+ * lib/hub-aliases.ts.
+ */
+export const RESUMEN_CATEGORY = 'operacion';
+export const isResumenKpi = (k: { category: string }) => k.category === RESUMEN_CATEGORY;
+
 export interface Snapshot {
   kpi_id: string;
   week_start: string;
@@ -165,7 +175,7 @@ export function isBelowTarget(dbValue: number, t: KpiTarget): boolean {
 export function formatValue(v: number | null | undefined, unit: string): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
   if (unit === 'pct') return `${(v * 100).toFixed(1)}%`;
-  if (unit === 'currency') return `$${v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  if (unit === 'currency' || unit === 'currency_avg') return `$${v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   if (unit === 'rate') return v.toFixed(1);
   if (unit === 'count') return v.toFixed(0);
   return String(v);

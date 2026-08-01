@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import {
-  formatValue, formatDelta, weekEndLabel, deltaClassForDirection, resolveTarget, meetsTarget,
+  formatValue, formatDelta, weekEndLabel, deltaClassForDirection, resolveTarget, meetsTarget, isResumenKpi,
   type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku, type KpiTarget,
 } from './_shared';
 import type { MnaCategory } from '@/lib/sku-classifier';
@@ -78,7 +78,7 @@ const FALTANTES_SKU_CATEGORY_FILTER: Record<string, MnaCategory> = {
  * Per-unit y-axis ceiling when slider is at the very bottom (most zoomed out).
  * pct values are in display units (0–100), not fractions.
  */
-const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20, currency: 50_000 };
+const UNIT_MAX_CEIL: Record<string, number> = { pct: 100, rate: 250, count: 20, currency: 50_000, currency_avg: 5_000 };
 
 /** Distinct color palette for individual assembler lines (up to 14). */
 const ASSEMBLER_PALETTE = [
@@ -136,7 +136,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
   // KPI tiles for this hub — all active KPIs, no parent_kpi_id filter needed
   // now that mna_monto child KPI has been deleted.
   const tiles = useMemo(() => {
-    return kpis.filter((k) => !REPORT_ONLY_KPI_IDS.has(k.id)).map((k) => {
+    return kpis.filter((k) => !REPORT_ONLY_KPI_IDS.has(k.id) && !isResumenKpi(k)).map((k) => {
       const thisWeek = snapshots.find(
         (s) => s.kpi_id === k.id && s.scope_level === 'hub' && s.scope_key === hubId && s.week_start === currentWeek
       );
