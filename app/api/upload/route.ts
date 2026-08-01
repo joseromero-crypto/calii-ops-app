@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createAdminSupabase, createServerClient } from '@/lib/supabase-server';
 import { parseCsv, coerceRows } from '@/lib/parse';
 import { validateUpload } from '@/lib/validate';
+import { computeIdentityChecks } from '@/lib/validate-identity';
 import { classifyIncidentNotes } from '@/lib/classify-notes';
 import { weekStartFriday, type AppColumn } from '@/lib/types';
 
@@ -14,6 +15,10 @@ const FormSchema = z.object({
   week_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),    // ISO date — must be Friday
   city: z.enum(['Monterrey', 'Saltillo', 'Guadalajara', 'CDMX']).optional(),
   hub_id: z.string().optional(),
+  // Set only on a resubmit after the user has seen an identity_* error and
+  // explicitly chose to proceed anyway. Never bypasses header/type errors —
+  // see the split below.
+  force_identity: z.coerce.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -36,11 +41,12 @@ export async function POST(req: Request) {
     week_start: formData.get('week_start'),
     city: formData.get('city') || undefined,
     hub_id: formData.get('hub_id') || undefined,
+    force_identity: formData.get('force_identity') || undefined,
   });
   if (!parsed.success) {
     return NextResponse.json({ error: 'bad_request', issues: parsed.error.issues }, { status: 400 });
   }
-  const { app_id, week_start, city, hub_id } = parsed.data;
+  const { app_id, week_start, city, hub_id, force_identity } = parsed.data;
 
   // Sanity-check that week_start is a Friday.
   // Use local-time noon (T12:00:00) — NOT UTC midnight (T00:00:00Z) — so that
@@ -96,6 +102,39 @@ export async function POST(req: Request) {
 
   if (report.errors.length > 0 || report.schema_match === 'mismatch') {
     return NextResponse.json({ error: 'validation_failed', report }, { status: 422 });
+  }
+
+  // ----- Identity safety net (session 13) -----
+  //
+  // validateUpload() only looks at the CSV in isolation (schema, types).
+  // computeIdentityChecks() looks at content vs. what we already know: does
+  // this file's hub column resolve to the declared city, and does its
+  // roster look like this slot's history or a different city's? See
+  // lib/validate-identity.ts for the full design.
+  //
+  // Every identity_* error is override-able via force_identity=true — the
+  // client resubmits the same file after the user explicitly confirms.
+  // Header/type errors above are NEVER override-able; only identity checks
+  // are, because they're heuristics about content, not facts about whether
+  // the CSV parses.
+  const identity = await computeIdentityChecks({
+    sb: admin,
+    appId: app_id,
+    weekStart: week_start,
+    city: city ?? null,
+    hubId: hub_id ?? null,
+    rows: csv.rows,
+  });
+  report.warnings.push(...identity.warnings);
+
+  if (identity.errors.length > 0 && !force_identity) {
+    report.errors.push(...identity.errors);
+    return NextResponse.json({ error: 'validation_failed', report, overridable: true }, { status: 422 });
+  }
+  if (identity.errors.length > 0 && force_identity) {
+    // Downgrade to warnings so they're still visible in the stored report,
+    // but don't block. The override itself is logged to audit_log below.
+    report.warnings.push(...identity.errors.map((e) => ({ ...e, code: `${e.code}_overridden` })));
   }
 
   // ----- Persist file in Storage -----
@@ -189,6 +228,12 @@ export async function POST(req: Request) {
       app_id, week_start, city, hub_id,
       row_count: csv.rows.length,
       status: report.warnings.length > 0 ? 'pending' : 'validated',
+      // Traceability for the identity safety net (session 13) — every
+      // force-through is logged with exactly what was overridden, per Jose:
+      // "override available ... in case its on purpose or the site is glitching."
+      ...(force_identity && identity.errors.length > 0
+        ? { override_identity: true, overridden_checks: identity.errors.map((e) => e.code) }
+        : {}),
     },
   });
 
