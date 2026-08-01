@@ -684,7 +684,10 @@ const RESUMEN_FIELDS: Record<string, (d: Record<string, unknown>) => [number, nu
   pedidos_hub:                 d => [toNum(d['Pedidos (#)']), 1],
   pedidos_entregados:          d => [toNum(d['Pedidos (#)']) - toNum(d['Pendiente armado (#)']), 1],
   aov_mxn:                     d => [toNum(d['AOV']) * toNum(d['Pedidos (#)']), toNum(d['Pedidos (#)'])],
-  ingresos_hub:                d => [toNum(d['AOV']) * toNum(d['Pedidos (#)']), 1],
+  // Delivered orders, not placed — undelivered orders are never actually
+  // charged, so Pedidos × AOV overstates realised revenue by the undelivered
+  // rate (~2.5% in the sample week). Resolved 2026-07-31 per Jose.
+  ingresos_hub:                d => [toNum(d['AOV']) * (toNum(d['Pedidos (#)']) - toNum(d['Pendiente armado (#)'])), 1],
   pedidos_por_armador_dia:     d => [toNum(d['Nro. de pedidos / armador / día']) * toNum(d['Armadores (#)']), toNum(d['Armadores (#)'])],
   entregas_por_repartidor_dia: d => [toNum(d['Nro. de entregas / repartidor / día']) * toNum(d['Repartidores (#)']), toNum(d['Repartidores (#)'])],
   armadores_activos:           d => [toNum(d['Armadores (#)']), 1],

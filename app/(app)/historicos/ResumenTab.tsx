@@ -4,6 +4,7 @@ import {
   formatValue, formatDelta, deltaClassForDirection, groupBy, isResumenKpi,
   type Kpi, type Hub, type Snapshot, type Peer, type KpiTarget,
 } from './_shared';
+import { ResumenTrendChart } from './ResumenCharts';
 
 interface Props {
   kpis: Kpi[];
@@ -118,6 +119,10 @@ export function ResumenTab({ kpis, hubs, snapshots, currentWeek }: Props) {
     );
   }
 
+  const pedidosEntregadosKpi = resumenKpis.find((k) => k.id === 'pedidos_entregados');
+  const aovKpi = resumenKpis.find((k) => k.id === 'aov_mxn');
+  const ingresosKpi = resumenKpis.find((k) => k.id === 'ingresos_hub');
+
   return (
     <div className="space-y-3">
       {citiesPresent.size < EXPECTED_CITIES && (
@@ -167,6 +172,38 @@ export function ResumenTab({ kpis, hubs, snapshots, currentWeek }: Props) {
           </tbody>
         </table>
       </div>
+
+      {(pedidosEntregadosKpi || aovKpi || ingresosKpi) && (
+        <div className="space-y-3">
+          {pedidosEntregadosKpi && (
+            <ResumenTrendChart
+              title="Pedidos entregados"
+              kpi={pedidosEntregadosKpi}
+              hubs={hubs}
+              snapshots={snapshots}
+              currentWeek={currentWeek}
+            />
+          )}
+          {aovKpi && (
+            <ResumenTrendChart
+              title="AOV"
+              kpi={aovKpi}
+              hubs={hubs}
+              snapshots={snapshots}
+              currentWeek={currentWeek}
+            />
+          )}
+          {ingresosKpi && (
+            <ResumenTrendChart
+              title="Ingresos estimados"
+              kpi={ingresosKpi}
+              hubs={hubs}
+              snapshots={snapshots}
+              currentWeek={currentWeek}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
