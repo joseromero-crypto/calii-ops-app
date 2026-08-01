@@ -1,12 +1,14 @@
 # Calii Ops App — Engineering Handoff
 
-**Last updated:** 2026-07-31 (session 12 — Resumen operativo shipped)  
+**Last updated:** 2026-07-31 (session 13 — upload identity safety net)  
 **Project:** Calii Ops Weekly Dashboard (Next.js 14 + Supabase, deployed on Netlify)  
 **Prepared for:** Jose Romero / next session
 
+> **Session 13 shipped an upload identity safety net** — catches "right file, wrong slot" mistakes (e.g. Saltillo's roster uploaded into the Monterrey slot) that the existing header/type validation can't see. See §22.
+
 > **Session 12 shipped the "Resumen operativo" tab** — fully built, migrated, verified, and deployed. `PLAN_RESUMEN_OPERATIVO.md` (project root) is now a historical build doc, not a pending task list — see §21 for what actually shipped (it differs slightly from the plan: `ingresos_hub`'s numerator and the two open questions in the plan's §9 were resolved during the build, see §21's "Deviations from the plan"). Don't re-plan or re-build this feature from `PLAN_RESUMEN_OPERATIVO.md` without first checking current code/DB state.
 
-> ⚠️ **This document lags the codebase in places.** Sections §1–§20 were last fully verified at session 11 (2026-07-17), with session 12 additions layered in for the Resumen operativo work. The repo also contains `lib/generate-insights.ts`, `lib/classify-notes.ts`, `app/api/insights/*` and the `/prioridades` page — **none of which are documented below**. Treat §2's file table as incomplete and read the tree before assuming a file doesn't exist.
+> ⚠️ **This document lags the codebase in places.** Sections §1–§20 were last fully verified at session 11 (2026-07-17), with session 12/13 additions layered in for the Resumen operativo work and the upload identity safety net. The repo also contains `lib/generate-insights.ts`, `lib/classify-notes.ts`, `app/api/insights/*` and the `/prioridades` page — **none of which are documented below**. Treat §2's file table as incomplete and read the tree before assuming a file doesn't exist.
 
 ---
 
@@ -58,6 +60,7 @@ The main feature areas:
 | `app/(app)/historicos/ResumenCharts.tsx` | **Session 12.** `ResumenTrendChart` — WoW line chart used 3× on the Resumen tab (Pedidos entregados / AOV / Ingresos estimados), each with an independent Total · Por ciudad · Por hub scope toggle. See §21. |
 | `supabase/migrations/20260731000001_kpi_unit_currency_avg.sql` | **Session 12.** Adds `currency_avg` to the `kpi_unit` enum. Own file — Postgres won't let a transaction use an enum value it just added. |
 | `supabase/migrations/20260731000002_resumen_operativo.sql` | **Session 12.** Registers the `resumen_operativo` app (per_city, 4 files/week), its 20 `app_columns`, and the 8 new KPIs (`category = 'operacion'`). |
+| `lib/validate-identity.ts` | **Session 13.** Upload identity safety net — hub-column city check + roster-overlap-vs-history check, per app via `IDENTITY_CONFIG`. See §22. |
 | `supabase_discrepancia_setup.sql` | One-time SQL to register the discrepancia app + app_columns + KPI |
 
 ---
@@ -181,13 +184,14 @@ The tile front/back face, Por KPI chart, and heatmap all appear automatically fo
 ### Route: `POST /api/upload`
 
 1. Auth check
-2. Parse multipart form (`app_id`, `week_start`, `city?`, `hub_id?`, `file`)
+2. Parse multipart form (`app_id`, `week_start`, `city?`, `hub_id?`, `force_identity?`, `file`)
 3. Validate `week_start` is a Friday — uses **local noon** (`T12:00:00`) not UTC midnight (`T00:00:00Z`) to avoid timezone mismatch with `weekStartFriday`'s local-time methods
 4. Look up `apps` + `app_columns` from DB
 5. Parse CSV with PapaParse
-6. Validate headers + types vs `app_columns` schema
-7. **Delete all existing uploads** for this (app, week, city, hub) slot using `select()` + `in()` delete — handles PostgreSQL `NULL != NULL` in unique constraints that caused silent duplicate inserts with plain upsert
-8. Insert fresh upload record + coerced rows
+6. Validate headers + types vs `app_columns` schema (hard fail, never override-able)
+7. **Session 13 — identity safety net.** `computeIdentityChecks()` (`lib/validate-identity.ts`): does the file's hub column resolve to the declared city, and does its roster look like this slot's history or a different city's? `identity_*` errors are override-able via `force_identity=true`; see §22 for the full design.
+8. **Delete all existing uploads** for this (app, week, city, hub) slot using `select()` + `in()` delete — handles PostgreSQL `NULL != NULL` in unique constraints that caused silent duplicate inserts with plain upsert
+9. Insert fresh upload record + coerced rows
 
 ⚠️ **`coerceRows` only stores columns defined in `app_columns`.** If `app_columns` is empty for an app, every row is stored as `{}`. This is the silent failure mode when you add a new app but forget to add its columns.
 
@@ -653,6 +657,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 13) feat: upload identity safety net — hub-column city check + roster-overlap-vs-history check (lib/validate-identity.ts), override via force_identity=true logged to audit_log, UploadDropzone override/cancel UI — see §22
 (session 12) feat: Resumen operativo tab — filter-only commit, migrations (currency_avg unit, resumen_operativo app/columns/8 kpis), extractResumenOperativoValues, ResumenTab tree + Total-row override, tab wiring; follow-up: ingresos_hub switched to delivered orders, 3 WoW trend charts (Total/por ciudad/por hub) — see §21
 (session 11) feat: configurable KPI targets — kpi_targets table + migration/seed, resolveTarget/meetsTarget resolver, /config Metas UI + /api/kpi-targets, report + dashboard wiring, epsilon-strict target boundary
 (session 10) fix: entregas erróneas detection — order code regex now catches letter-starting codes (WS-, JN-, GM- etc); order code required as primary signal; known responsables list added
@@ -677,6 +682,7 @@ f40bcf0     PorHub: person filter dropdowns, stable colors, tooltip fix, tile co
 
 ## 17. What's Working ✓
 
+- **Upload identity safety net (session 13)**: `/api/upload` now catches "right file, wrong slot" uploads — hub-column city mismatches (deterministic) and roster-overlap mismatches vs. history (fuzzy) — for `desempeno_operadores`, `desempeno_repartidores`, `resumen_operativo`, `incidentes`, `discrepancia`. Hard-blocks by default with an override path (`force_identity=true`, logged to `audit_log`). Verified against real production data with zero false positives on a correctly-labeled file. See §22.
 - **Resumen operativo tab (session 12)**: `/historicos` → "📦 Resumen" — Total/city/hub tree over 8 hub-level KPIs (orders, delivered orders, AOV, revenue, headcount, headcount rates) fed by a new per-city weekly Retool export, plus 3 WoW trend charts with Total/por ciudad/por hub scope toggles. Live in production with real data for week 2026-07-24, verified against hand-computed numbers. See §21.
 - **Configurable KPI targets (session 11)**: `/config` → "Metas / Targets" — global + per-hub umbrales, no redeploy needed. Drives the report's flagging/UMBRAL line and a target reference line + "vs meta" tile coloring toggle on the dashboard. See §14.
 - **Weekly report generator**: "Generar reporte" button in PorHubTab → Claude Haiku Slack message with assembler breakdown, driver flags, incidentes erróneas, MNA/FA sections
@@ -800,3 +806,41 @@ Rollback at any point: `UPDATE kpis SET active = false WHERE category = 'operaci
 - Every metric column is `required: false` — `MH San Pedro` ships the literal string `NaN`, and `validate.ts` hard-fails an upload on >5% type mismatches in *required* numeric columns.
 - `MH San Pedro` is in `HUB_ALIAS_MAP` but **not** in the `hubs` table and **not** in `HUB_COLORS` — the extractor's `Pedidos (#) > 0` guard skips it (San Pedro ships an all-zero row today). Revisit if the hub goes live.
 - `apps` in production has `group_id` / `group_label_es` columns that exist in **no local migration file** — the migration used an explicit column list rather than a bare `INSERT INTO apps VALUES (...)`.
+
+---
+
+## 22. Upload identity safety net (session 13, 2026-07-31)
+
+### The gap it closes
+`lib/validate.ts`'s 3-layer check (header / type / distribution) only looks at a CSV in isolation — it can't tell that a file is the *wrong* file, just that it's a *malformed* one. The highest-blast-radius upload mistake is content-level, not shape-level: dropping the right kind of file into the wrong city/hub slot (Saltillo's operators CSV into the Monterrey slot). Jose's framing: "if it notices I'm uploading a file with a bunch of [wrong-location] names, it shouldn't let me."
+
+### What it checks, and why some apps are excluded
+`lib/validate-identity.ts` exports `computeIdentityChecks()`, gated per app by an `IDENTITY_CONFIG` map:
+
+| App | `hubField` | `nameFields` |
+|---|---|---|
+| `desempeno_operadores` | `geofence` | `assembler` |
+| `desempeno_repartidores` | `hub` | `driver_name`, `driver_nickname` |
+| `resumen_operativo` | `Hub` | — |
+| `incidentes` | — | `Operador` |
+| `discrepancia` | `Hub` | `Repartidor` |
+
+**Deliberately excluded:** `mna` (uploaded per-hub, but the product/SKU catalog is shared across every hub — the same SKU names appear everywhere, so name-overlap can't discriminate one hub from another) and the `faltantes_hub_*_pct` apps (`scope: total` — a single file already covers every hub in one upload, so there's no per-slot swap possible in the first place). Both exclusions were Jose's own reasoning, confirmed correct.
+
+Two checks run per upload, both only for apps present in the config above:
+
+1. **Hub-column check (deterministic).** For any row with a `hubField` value, resolve it via the existing `resolveHubId` (`lib/hub-aliases.ts`) and look up that hub's real `city` from the `hubs` table. Bucket rows by resolved city. If a city *other than* the declared upload city has more matching rows than the declared city does, that's `identity_hub_city_mismatch` — a hard error. Fewer than `MIN_ROWS_FOR_HUB_ERROR` (3) resolvable rows downgrades to a warning — not enough signal to block on a tiny file. A handful of stray out-of-city rows that don't out-number the declared city produces `identity_hub_stray_rows`, a non-blocking warning.
+2. **Roster-overlap check (fuzzy, vs. history).** Normalizes names (NFD-strip accents, lowercase, trim) and computes *retention*: what fraction of last week's names for a slot are still present this week. Same-slot retention below `ROSTER_WARN_RETENTION` (0.30) → warning only (`identity_roster_low_retention`) — real turnover happens, this is a nudge not proof. For per-city apps, also computes retention against every *other* city's most recent upload; if some other city's retention both clears `ROSTER_CROSS_MATCH_FLOOR` (0.50) and beats the declared city's own retention, that's `identity_roster_mismatch` — a hard error. `discrepancia` is `scope: total` (one slot, no siblings) so only the same-slot warning applies to it, never the cross-slot error.
+
+Both checks run read-only queries against `uploads`/`upload_rows`/`hubs` — no writes happen until after both pass (or are overridden), so a blocked upload leaves zero trace.
+
+### Override model
+`identity_*` errors (not header/type errors — those are never override-able) return `422` with `overridable: true` in the JSON body. The client (`UploadDropzone.tsx`) resubmits the same `File` with `force_identity=true` in the form data; the route downgrades those specific errors to warnings (suffixed `_overridden`) and proceeds. Every override is logged to `audit_log` with `override_identity: true` and `overridden_checks: [...codes]` — Jose's own reasoning for keeping an override at all: "in case its on purpose or the site is glitching," i.e. don't make a heuristic un-overridable, but make the override traceable.
+
+`UploadDropzone.tsx` shows two buttons on an overridable failure: "⚠️ Sé lo que hago, subir de todas formas" (resubmits with the override) and "No, cancelar" (just clears the error state — added after the first pass shipped without it, since the only way to dismiss an override prompt was to drop a different file).
+
+### Verification
+Read-only script (no writes) run against real production data for week 2026-07-24: `desempeno_operadores` Saltillo's actual 13 rows, declared correctly as Saltillo → zero errors, zero warnings. The same 13 rows re-declared as Monterrey → both checks fired correctly: `identity_hub_city_mismatch` (13/13 rows resolve to Saltillo hubs, 0/13 to Monterrey) and `identity_roster_mismatch` (87% retention vs. Saltillo's history, 0% vs. Monterrey's). Confirms zero false positives on the legitimate case and a correct catch on the deliberately-wrong case.
+
+### Extending this
+If a future app is added with a per-city or per-hub upload slot and either a resolvable hub/geofence column or a person-name column, add it to `IDENTITY_CONFIG` in `lib/validate-identity.ts` — that's the only wiring needed; the route and UI are already generic.
