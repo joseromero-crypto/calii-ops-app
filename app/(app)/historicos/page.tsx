@@ -2,9 +2,10 @@ import { createServerClient } from '@/lib/supabase-server';
 import { lastCompletedWeekStart } from '@/lib/types';
 import { classifyMnaProduct } from '@/lib/sku-classifier';
 import type { MnaCategory } from '@/lib/sku-classifier';
-import type { FaltantesSku, KpiTarget } from './_shared';
+import type { FaltantesSku, KpiTarget, RampTarget } from './_shared';
 import { HistoricosClient } from './HistoricosClient';
 import { resolveHubId } from '@/lib/hub-aliases';
+import { hydrateTenureRow, type PersonTenureDbRow, type Role as TenureRole } from '@/lib/tenure';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,9 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     assemblerTrendCountRes,
     driverTrendCountRes,
     targetsRes,
+    tenureRes,
+    rampsRes,
+    rosterWeeksRes,
   ] = await Promise.all([
     sb
       .from('kpi_snapshots')
@@ -94,6 +98,14 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       .lte('week_start', currentWeek),
     // Configurable KPI targets — tiny table, no pagination needed.
     sb.from('kpi_targets').select('kpi_id, scope_level, scope_key, target_value, comparator, unit, active').eq('active', true),
+    // Modo Entrenamiento (session 14) — tenure ledger + ramp targets. Both
+    // tiny (hundreds / tens of rows), no pagination needed.
+    sb.from('person_tenure').select('*'),
+    sb.from('kpi_ramp_targets').select('kpi_id, role, week_number, target_value, stretch_value, comparator, unit, active').eq('active', true),
+    // Validated-upload weeks for the two roster apps — needed to recompute
+    // each tenure row's reentry_weeks (not a person_tenure column, see
+    // lib/tenure.ts's hydrateTenureRow doc comment).
+    sb.from('uploads').select('app_id, week_start').eq('status', 'validated').in('app_id', ['desempeno_operadores', 'desempeno_repartidores']),
   ]);
 
   const snapTotal             = snapCountRes.count ?? 0;
@@ -429,6 +441,24 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
 
   const faltantesSkuProducts: FaltantesSku[] = Array.from(faltantesSkuAgg.values());
 
+  // ── Step 7: hydrate the tenure ledger (Modo Entrenamiento, session 14) ──────
+  //
+  // weeksWithData is per-app (armador -> desempeno_operadores, repartidor ->
+  // desempeno_repartidores) — required to recompute each row's reentry_weeks,
+  // which is not a person_tenure column (see lib/tenure.ts).
+  const ROSTER_APP_BY_ROLE: Record<TenureRole, string> = {
+    armador: 'desempeno_operadores',
+    repartidor: 'desempeno_repartidores',
+  };
+  const rosterWeeks = rosterWeeksRes.data ?? [];
+  const weeksWithDataByRole: Record<TenureRole, Set<string>> = {
+    armador: new Set(rosterWeeks.filter((u) => u.app_id === ROSTER_APP_BY_ROLE.armador).map((u) => u.week_start)),
+    repartidor: new Set(rosterWeeks.filter((u) => u.app_id === ROSTER_APP_BY_ROLE.repartidor).map((u) => u.week_start)),
+  };
+  const tenureRows = ((tenureRes.data ?? []) as PersonTenureDbRow[]).map((row) =>
+    hydrateTenureRow(row, weeksWithDataByRole[row.role])
+  );
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <HistoricosClient
@@ -442,6 +472,8 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       faltantesSkuProducts={faltantesSkuProducts}
       roles={rolesRes.data ?? []}
       targets={(targetsRes.data ?? []) as KpiTarget[]}
+      tenureRows={tenureRows}
+      ramps={(rampsRes.data ?? []) as RampTarget[]}
       currentWeek={currentWeek}
       tab={(searchParams.tab as 'kpi' | 'hub' | 'cmp' | 'res' | undefined) ?? 'kpi'}
       selectedKpi={searchParams.kpi}

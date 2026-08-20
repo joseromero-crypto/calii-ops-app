@@ -5,6 +5,7 @@ import { parseCsv, coerceRows } from '@/lib/parse';
 import { validateUpload } from '@/lib/validate';
 import { computeIdentityChecks } from '@/lib/validate-identity';
 import { classifyIncidentNotes } from '@/lib/classify-notes';
+import { refreshTenureLedger, type Role as TenureRole } from '@/lib/tenure';
 import { weekStartFriday, type AppColumn } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -249,6 +250,20 @@ export async function POST(req: Request) {
       // Don't fail the upload on classifier errors — log and move on.
       console.error('classify_incidents failed', e?.message);
     }
+  }
+
+  // A roster upload changes tenure — refresh the ledger for that role.
+  // Fire-and-forget: a failure here must never fail the upload itself
+  // (PLAN_MODO_ENTRENAMIENTO.md §4).
+  const TENURE_ROLE_BY_APP: Record<string, TenureRole> = {
+    desempeno_operadores: 'armador',
+    desempeno_repartidores: 'repartidor',
+  };
+  const tenureRole = TENURE_ROLE_BY_APP[app_id];
+  if (tenureRole) {
+    refreshTenureLedger(admin, { role: tenureRole }).catch((e: any) => {
+      console.error('refreshTenureLedger failed', tenureRole, e?.message);
+    });
   }
 
   return NextResponse.json({

@@ -11,20 +11,25 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget } from '@/app/(app)/historicos/_shared';
-import { resolveTarget, meetsTarget, isResumenKpi } from '@/app/(app)/historicos/_shared';
+import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget, RampTarget } from '@/app/(app)/historicos/_shared';
+import { resolveTarget, meetsTarget, isResumenKpi, resolvePersonTarget } from '@/app/(app)/historicos/_shared';
 import { effectiveDirection } from '@/lib/kpi-direction';
+import { tenureStatus, tenureCode, type TenureRow, type TenureStatus } from '@/lib/tenure';
+import { normalizeName } from '@/lib/normalize';
 import type { ReportBundle, IncidenteErroneo } from '@/app/api/generar-reporte/route';
 
 interface Props {
-  hub:                  Hub;
-  kpis:                 Kpi[];
-  snapshots:            Snapshot[];
-  peers:                Peer[];
-  mnaProducts:          MnaProduct[];
-  faltantesSkuProducts: FaltantesSku[];
-  targets:              KpiTarget[];
-  currentWeek:          string;
+  hub:                     Hub;
+  kpis:                    Kpi[];
+  snapshots:               Snapshot[];
+  peers:                   Peer[];
+  mnaProducts:             MnaProduct[];
+  faltantesSkuProducts:    FaltantesSku[];
+  targets:                 KpiTarget[];
+  ramps:                   RampTarget[];
+  tenureByNameArmador:     Map<string, TenureRow>;
+  tenureByNameRepartidor:  Map<string, TenureRow>;
+  currentWeek:             string;
 }
 
 // ─── KPI definitions for the report ──────────────────────────────────────────
@@ -120,14 +125,17 @@ const KNOWN_INCIDENTE_RESPONSABLES = new Set([
 // ─── Bundle builder ───────────────────────────────────────────────────────────
 
 function buildBundle(
-  hub:                  Hub,
-  kpis:                 Kpi[],
-  snapshots:            Snapshot[],
-  peers:                Peer[],
-  mnaProducts:          MnaProduct[],
-  faltantesSkuProducts: FaltantesSku[],
-  targets:              KpiTarget[],
-  currentWeek:          string,
+  hub:                     Hub,
+  kpis:                    Kpi[],
+  snapshots:               Snapshot[],
+  peers:                   Peer[],
+  mnaProducts:             MnaProduct[],
+  faltantesSkuProducts:    FaltantesSku[],
+  targets:                 KpiTarget[],
+  ramps:                   RampTarget[],
+  tenureByNameArmador:     Map<string, TenureRow>,
+  tenureByNameRepartidor:  Map<string, TenureRow>,
+  currentWeek:             string,
 ): Omit<ReportBundle, 'incidentesErroneas'> {
   // Week label: "vie 2 may — jue 8 may"
   const startDate = new Date(currentWeek + 'T00:00:00');
@@ -227,10 +235,31 @@ function buildBundle(
       // with no override set).
       const effectiveTarget = resolveEffectiveTarget(def.id, hub.id, kpi, def.defaultThreshold, targets);
 
+      // Modo Entrenamiento (session 14) — tasa_armado only. A trainee flags
+      // against their own ramp mínimo instead of the group's veteran target;
+      // (RI) rides along as a badge but never changes the target (PLAN §5.2).
+      const isTasaArmado = def.id === 'tasa_armado';
+
       const entities = hubPeers.map((p) => {
+        const tenureRow = isTasaArmado ? tenureByNameArmador.get(normalizeName(p.entity_key)) : undefined;
+        const status: TenureStatus = isTasaArmado ? tenureStatus(tenureRow, currentWeek) : { kind: 'veteran' };
+        const tenureBadge = isTasaArmado ? tenureCode(status) : undefined;
+
+        let entityTarget = effectiveTarget;
+        let personalTarget: number | undefined;
+        let personalStretch: number | undefined;
+        if (isTasaArmado && status.kind === 'trainee') {
+          const resolved = resolvePersonTarget(def.id, hub.id, status, 'armador', targets, ramps);
+          if (resolved.target) {
+            entityTarget = resolved.target;
+            personalTarget = resolved.target.target_value;
+            personalStretch = resolved.stretch ?? undefined;
+          }
+        }
+
         let flagged = false;
-        if (effectiveTarget && p.value !== null) {
-          flagged = !meetsTarget(p.value, effectiveTarget);
+        if (entityTarget && p.value !== null) {
+          flagged = !meetsTarget(p.value, entityTarget);
         } else if (hubMean !== null && p.value !== null) {
           // outlier: >2× hub mean (lower_is_better KPIs only)
           if (!effectiveHigherIsBetter) {
@@ -242,6 +271,9 @@ function buildBundle(
           value:     p.value,
           flagged,
           numOrders: assemblerOrderCount.get(p.entity_key) ?? null,
+          tenureBadge,
+          personalTarget,
+          personalStretch,
         };
       });
 
@@ -300,6 +332,8 @@ function buildBundle(
       // fixed target, which then overrides the 2x-mean rule (spec §2.4).
       const effectiveTarget = resolveEffectiveTarget(def.id, hub.id, kpi, undefined, targets);
 
+      // Repartidores are label-only in Modo Entrenamiento — badge rides along,
+      // no ramp rows exist for this role, so targets/flagging are unchanged.
       let entities = hubPeers.map((p) => {
         let flagged = false;
         if (def.showAllPositive && p.value !== null) {
@@ -313,7 +347,9 @@ function buildBundle(
             flagged = p.value >= def.minValue;
           }
         }
-        return { name: p.entity_key, value: p.value, flagged };
+        const tenureRow = tenureByNameRepartidor.get(normalizeName(p.entity_key));
+        const tenureBadge = tenureCode(tenureStatus(tenureRow, currentWeek));
+        return { name: p.entity_key, value: p.value, flagged, tenureBadge };
       });
 
       // Sort: flagged first, then worst → best
@@ -478,6 +514,9 @@ export function GenerarReporte({
   mnaProducts,
   faltantesSkuProducts,
   targets,
+  ramps,
+  tenureByNameArmador,
+  tenureByNameRepartidor,
   currentWeek,
 }: Props) {
   const [open,    setOpen]    = useState(false);
@@ -495,7 +534,7 @@ export function GenerarReporte({
     try {
       // 1. Build the data bundle from existing props
       const bundle: ReportBundle = {
-        ...buildBundle(hub, kpis, snapshots, peers, mnaProducts, faltantesSkuProducts, targets, currentWeek),
+        ...buildBundle(hub, kpis, snapshots, peers, mnaProducts, faltantesSkuProducts, targets, ramps, tenureByNameArmador, tenureByNameRepartidor, currentWeek),
         incidentesErroneas: [],
       };
 

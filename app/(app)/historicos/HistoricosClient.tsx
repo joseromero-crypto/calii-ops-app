@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
-import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget } from './_shared';
+import { useMemo, useState } from 'react';
+import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget, RampTarget } from './_shared';
 import { weekEndLabel } from './_shared';
+import { buildTenureNameIndex, type TenureRow } from '@/lib/tenure';
 import { PorKpiTab } from './PorKpiTab';
 import { PorHubTab } from './PorHubTab';
 import { ComparativaTab } from './ComparativaTab';
@@ -19,6 +20,9 @@ interface Props {
   faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
   targets: KpiTarget[];
+  /** Derived tenure ledger, both roles combined — see lib/tenure.ts. */
+  tenureRows: TenureRow[];
+  ramps: RampTarget[];
   currentWeek: string;
   tab: 'kpi' | 'hub' | 'cmp' | 'res';
   selectedKpi?: string;
@@ -26,7 +30,20 @@ interface Props {
   selectedCity?: string;
 }
 export function HistoricosClient(props: Props) {
-  const { currentWeek, mnaProducts } = props;
+  const { currentWeek, mnaProducts, tenureRows } = props;
+
+  // Built once here (not per tile/dropdown/tooltip) and passed down as Maps —
+  // every consumer does name lookups, rebuilding this per render is wasteful.
+  // Two separate indexes: an armador and a repartidor could share a normalized
+  // name and collide in a single shared map.
+  const tenureByNameArmador = useMemo(
+    () => buildTenureNameIndex(tenureRows.filter((r) => r.role === 'armador')),
+    [tenureRows],
+  );
+  const tenureByNameRepartidor = useMemo(
+    () => buildTenureNameIndex(tenureRows.filter((r) => r.role === 'repartidor')),
+    [tenureRows],
+  );
 
   // ── Client-side navigation state ─────────────────────────────────────────────
   // All three state variables are initialised from server-provided props (which
@@ -80,7 +97,7 @@ export function HistoricosClient(props: Props) {
         <Tab onClick={() => switchTab('res')} active={activeTab === 'res'}>📦 Resumen</Tab>
       </div>
       {activeTab === 'kpi' && <PorKpiTab {...props} selectedKpi={activeKpi} onKpiChange={switchKpi} />}
-      {activeTab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} />}
+      {activeTab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} tenureByNameArmador={tenureByNameArmador} tenureByNameRepartidor={tenureByNameRepartidor} />}
       {activeTab === 'cmp' && <ComparativaTab {...props} />}
       {activeTab === 'res' && <ResumenTab {...props} />}
     </div>

@@ -1,5 +1,7 @@
 'use client';
 
+import type { TenureStatus } from '@/lib/tenure';
+
 export const HUB_COLORS: Record<string, string> = {
   mh_contry:      '#0ea5e9',
   mh_cumbres:     '#22c55e',
@@ -170,6 +172,69 @@ export function meetsTarget(dbValue: number, t: KpiTarget): boolean {
  */
 export function isBelowTarget(dbValue: number, t: KpiTarget): boolean {
   return toDisplayUnits(dbValue, t.unit) < t.target_value;
+}
+
+/**
+ * Ramp target row (kpi_ramp_targets table) — per-week mínimo/esperado for a
+ * trainee. See PLAN_MODO_ENTRENAMIENTO.md §2.2/§5.3. target_value and
+ * stretch_value are DISPLAY units, same convention as KpiTarget above.
+ */
+export interface RampTarget {
+  kpi_id: string;
+  role: 'armador' | 'repartidor';
+  week_number: number;
+  target_value: number;          // mínimo — DISPLAY units — the flagging threshold
+  stretch_value: number | null;  // esperado — DISPLAY units — display only, never flags
+  comparator: 'gte' | 'lte' | 'gt' | 'lt';
+  unit: string;
+  active: boolean;
+}
+
+/**
+ * Effective target for ONE PERSON. Precedence: ramp row (only when
+ * status.kind === 'trainee') > hub target > global target > undefined.
+ *
+ * ⚠️ Entity-level comparisons ONLY. Hub tiles, the PorKpiTab main chart's
+ * `meta` reference line, and every kpi_snapshots-derived number must keep
+ * calling plain resolveTarget — a hub's target is the veteran target
+ * regardless of who works there. Leaking a ramp value into a hub-scope
+ * calculation would silently lower the hub goal whenever a trainee is
+ * hired (PLAN_MODO_ENTRENAMIENTO.md §5.3).
+ *
+ * `stretch` is returned alongside the target, never folded into it —
+ * `meetsTarget` must never see stretch_value (PLAN §2.2's ⚠️: esperado is
+ * display-only context, wiring it into flagging reintroduces the exact
+ * false-alarm problem the ramp feature exists to remove).
+ */
+export function resolvePersonTarget(
+  kpiId: string,
+  hubId: string | null,
+  status: TenureStatus,
+  role: 'armador' | 'repartidor',
+  targets: KpiTarget[],
+  ramps: RampTarget[],
+): { target: KpiTarget | undefined; stretch: number | null } {
+  if (status.kind === 'trainee') {
+    const rampRow = ramps.find(
+      (r) => r.active && r.kpi_id === kpiId && r.role === role && r.week_number === status.week,
+    );
+    if (rampRow) {
+      const target: KpiTarget = {
+        kpi_id: rampRow.kpi_id,
+        scope_level: 'global',   // ramp targets are never hub-scoped — entity-level only
+        scope_key: null,
+        target_value: rampRow.target_value,
+        comparator: rampRow.comparator,
+        unit: rampRow.unit,
+        active: rampRow.active,
+      };
+      return { target, stretch: rampRow.stretch_value };
+    }
+    // No ramp row for this (kpi, role, week) — e.g. repartidor, which has no
+    // ramp rows by design. Normal, expected path; fall through below.
+  }
+  // Veteran, reentry, or no ramp row → hub/global target, no stretch.
+  return { target: resolveTarget(kpiId, hubId, targets), stretch: null };
 }
 
 export function formatValue(v: number | null | undefined, unit: string): string {

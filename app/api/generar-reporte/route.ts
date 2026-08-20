@@ -34,6 +34,12 @@ export interface PeerEntity {
   value: number | null;
   flagged: boolean;
   numOrders?: number | null; // pedidos armados — context for assemblers, null if not yet computed
+  // Modo Entrenamiento (session 14) — optional so every other KPI group is
+  // unaffected. Set on tasa_armado (armador) entities and on all driver KPI
+  // group entities; left undefined everywhere else.
+  tenureBadge?: string;       // 'S3' | 'RI'
+  personalTarget?: number;    // mínimo, display units — tasa_armado trainees only
+  personalStretch?: number;   // esperado, display units — tasa_armado trainees only
 }
 
 export interface KpiPeerGroup {
@@ -103,6 +109,8 @@ Tasas: (lista ya filtrada — copiar solo los nombres que aparecen en la secció
 "Tasas: Nombre (XX.X), Nombre (XX.X)"
 Si el bundle dice "(ninguno por debajo del umbral esta semana)", omitir esta línea.
 
+"Armadores en entrenamiento por debajo de su mínimo:" es un encabezado literal — viene marcado en el bundle como "ARMADORES EN ENTRENAMIENTO POR DEBAJO DE SU MÍNIMO". Si esa sección del bundle tiene entradas, escribir esa línea exacta y luego copiar cada item tal cual, con el (Sx), el mínimo y el esperado. No mezcles esta lista con la de Tasas — son personas distintas o el mismo umbral no aplica. Si el bloque del bundle dice "(ninguno esta semana)", omite el encabezado por completo. (RI) significa reingreso — cuando aparezca junto a un nombre (en Tasas o en cualquier otra lista), cópialo tal cual, no lo expliques ni lo traduzcas.
+
 FA: (SOLO armadores marcados ⚠️ en faltantes_armador_pct — el bundle ya aplicó el umbral configurado o, si no hay ninguno, 2× el promedio del hub)
 "FA"
 Luego un bullet por armador:
@@ -159,6 +167,11 @@ function fmtVal(value: number | null, unit: string): string {
   if (unit === 'currency') return `$${value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   if (unit === 'rate')     return `${value.toFixed(1)} SKUs/hr`;
   return value.toFixed(0);
+}
+
+/** Bare number for ramp mínimo/esperado — e.g. "65", not "65.0 SKUs/hr". */
+function fmtBare(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function fmtDelta(curr: number | null, prev: number | null, unit: string): string {
@@ -293,9 +306,16 @@ function buildTextBundle(b: ReportBundle): string {
     // Pre-filter to flagged (outlier) assemblers only for tasa_armado and faltantes_armador_pct.
     // This avoids Claude listing below-average performers in the Tasas and FA sections.
     const flaggedOnlyKpis = new Set(['tasa_armado', 'faltantes_armador_pct']);
-    const entitiesToShow = flaggedOnlyKpis.has(g.kpiId)
+    const isTasaArmado = g.kpiId === 'tasa_armado';
+    const flaggedEntities = flaggedOnlyKpis.has(g.kpiId)
       ? g.entities.filter((e) => e.flagged)
       : g.entities;
+    // Modo Entrenamiento (session 14) — a trainee below their personal
+    // mínimo never appears in Tasas; they get their own block below instead
+    // (PLAN_MODO_ENTRENAMIENTO.md §7: never mix the two lists).
+    const entitiesToShow = isTasaArmado
+      ? flaggedEntities.filter((e) => e.personalTarget === undefined)
+      : flaggedEntities;
     if (flaggedOnlyKpis.has(g.kpiId) && entitiesToShow.length === 0) {
       lines.push('(ninguno por encima del umbral esta semana)');
     } else {
@@ -304,10 +324,29 @@ function buildTextBundle(b: ReportBundle): string {
         const mult = (e.flagged && g.hubMean !== null && e.value !== null)
           ? ` (${(e.value / g.hubMean).toFixed(1)}× promedio)` : '';
         const orderCtx = (e.numOrders != null && Number.isFinite(e.numOrders)) ? ` [${e.numOrders} pedidos]` : '';
-        lines.push(`${e.flagged ? '  ⚠️ ' : '    '}${e.name}: ${val}${mult}${orderCtx}`);
+        const badge = e.tenureBadge ? ` (${e.tenureBadge})` : '';
+        lines.push(`${e.flagged ? '  ⚠️ ' : '    '}${e.name}${badge}: ${val}${mult}${orderCtx}`);
       }
     }
     lines.push('');
+
+    // Modo Entrenamiento — trainees below their personal mínimo, own block.
+    // Never emitted for any KPI besides tasa_armado (the feature's only scope).
+    if (isTasaArmado) {
+      const trainees = flaggedEntities.filter((e) => e.personalTarget !== undefined);
+      lines.push('ARMADORES EN ENTRENAMIENTO POR DEBAJO DE SU MÍNIMO:');
+      if (trainees.length === 0) {
+        lines.push('(ninguno esta semana)');
+      } else {
+        for (const e of trainees) {
+          const val = fmtVal(e.value, g.unit);
+          const minimo = fmtBare(e.personalTarget!);
+          const esperado = e.personalStretch !== undefined ? ` (esperado ${fmtBare(e.personalStretch)})` : '';
+          lines.push(`- ${e.name} (${e.tenureBadge}): ${val} — mínimo ${e.tenureBadge}: ${minimo}${esperado}`);
+        }
+      }
+      lines.push('');
+    }
   }
 
   // ── Driver data ──────────────────────────────────────────────────────────
@@ -332,8 +371,9 @@ function buildTextBundle(b: ReportBundle): string {
         const mult = (e.value / g.hubMean).toFixed(1);
         extra = ` (${mult}× promedio)`;
       }
+      const badge = e.tenureBadge ? ` (${e.tenureBadge})` : '';
       const prefix = e.flagged ? '  ⚠️ FLAGGEADO: ' : '    ';
-      lines.push(`${prefix}${e.name}: ${val}${extra}`);
+      lines.push(`${prefix}${e.name}${badge}: ${val}${extra}`);
     }
     lines.push('');
   }

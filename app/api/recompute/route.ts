@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerClient, createAdminSupabase } from '@/lib/supabase-server';
 import { computeSnapshotsForWeek } from '@/lib/kpi-compute';
+import { refreshTenureLedger } from '@/lib/tenure';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
       }, 10_000);
 
       try {
+        // Refresh the tenure ledger before computing snapshots — a recompute
+        // always refreshes tenure, so badges/ramp targets stay in sync with
+        // the latest upload history. See PLAN_MODO_ENTRENAMIENTO.md §4.
+        await refreshTenureLedger(createAdminSupabase());
         const result = await computeSnapshotsForWeek(weekStart);
         clearInterval(keepalive);
         controller.enqueue(encoder.encode(JSON.stringify({ ok: true, ...result })));

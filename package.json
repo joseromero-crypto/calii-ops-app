@@ -11,7 +11,8 @@
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",
     "db:push": "supabase db push",
-    "seed:samples": "tsx scripts/seed-sample-uploads.ts"
+    "seed:samples": "tsx scripts/seed-sample-uploads.ts",
+    "test:tenure": "tsx scripts/test-tenure.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

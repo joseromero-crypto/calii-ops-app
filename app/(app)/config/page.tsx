@@ -1,21 +1,91 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { KpiTargetsSection } from './KpiTargetsSection';
+import { RampTargetsSection, type RampTargetRow, type BadgedPersonRow } from './RampTargetsSection';
 import type { KpiTarget } from '../historicos/_shared';
+import { defaultComparator } from '@/lib/kpi-direction';
+import { lastCompletedWeekStart } from '@/lib/types';
+import {
+  hydrateTenureRow, tenureStatus, tenureCode,
+  type PersonTenureDbRow, type Role as TenureRole,
+} from '@/lib/tenure';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ConfigPage() {
   const supabase = createServerClient();
-  const [{ data: apps }, { data: kpis }, { data: hubs }, { data: rules }, { data: scope }, { data: targets }] = await Promise.all([
+
+  // Same resolution as /historicos (page.tsx) — needed to know which week's
+  // badge to compute for the "En entrenamiento" supervision list below.
+  const { data: cw } = await supabase.from('current_week').select('week_start').single();
+  let currentWeek = cw?.week_start as string | undefined;
+  if (!currentWeek) {
+    const { data: latestSnap } = await supabase
+      .from('kpi_snapshots')
+      .select('week_start')
+      .order('week_start', { ascending: false })
+      .limit(1)
+      .single();
+    currentWeek =
+      (latestSnap?.week_start as string | undefined) ??
+      lastCompletedWeekStart(new Date()).toISOString().slice(0, 10);
+  }
+
+  const [
+    { data: apps }, { data: kpis }, { data: hubs }, { data: rules }, { data: scope },
+    { data: targets }, { data: ramps }, { data: tenureRowsRaw }, { data: rosterUploads },
+  ] = await Promise.all([
     supabase.from('apps').select('id, name_es, scope, expected_files_per_week, active'),
     supabase.from('kpis').select('id, name_es, unit, direction, category, watched_globally, parent_kpi_id, display_order').order('display_order'),
     supabase.from('hubs').select('id, display_name, city, active'),
     supabase.from('behavior_rules').select('id, rule_text, active, display_order').order('display_order'),
     supabase.from('scope_rules').select('id, trigger_text, target_team_id, flag_label_es, active'),
     supabase.from('kpi_targets').select('kpi_id, scope_level, scope_key, target_value, comparator, unit, active').eq('active', true),
+    supabase.from('kpi_ramp_targets').select('kpi_id, role, week_number, target_value, stretch_value, comparator, unit, active').eq('active', true),
+    // Modo Entrenamiento (session 14, slice 7) — supervision list source data.
+    supabase.from('person_tenure').select('*'),
+    supabase.from('uploads').select('app_id, week_start').eq('status', 'validated').in('app_id', ['desempeno_operadores', 'desempeno_repartidores']),
   ]);
 
   const activeHubs = (hubs ?? []).filter((h) => h.active);
+  const hubNameById = new Map((hubs ?? []).map((h) => [h.id, h.display_name]));
+
+  const tasaArmadoKpi = (kpis ?? []).find((k) => k.id === 'tasa_armado');
+
+  // ── "En entrenamiento" supervision list — everyone badged this week ────────
+  const ROSTER_APP_BY_ROLE: Record<TenureRole, string> = {
+    armador: 'desempeno_operadores',
+    repartidor: 'desempeno_repartidores',
+  };
+  const weeksWithDataByRole: Record<TenureRole, Set<string>> = {
+    armador: new Set((rosterUploads ?? []).filter((u) => u.app_id === ROSTER_APP_BY_ROLE.armador).map((u) => u.week_start)),
+    repartidor: new Set((rosterUploads ?? []).filter((u) => u.app_id === ROSTER_APP_BY_ROLE.repartidor).map((u) => u.week_start)),
+  };
+  const hydratedRows = ((tenureRowsRaw ?? []) as PersonTenureDbRow[]).map((row) => {
+    const hydrated = hydrateTenureRow(row, weeksWithDataByRole[row.role]);
+    const status = tenureStatus(hydrated, currentWeek!);
+    return {
+      person_key: hydrated.person_key,
+      role: hydrated.role,
+      name: hydrated.display_names[0] ?? hydrated.person_key,
+      hub: (hydrated.hub_id_last && hubNameById.get(hydrated.hub_id_last)) || hydrated.hub_id_last || '—',
+      badge: tenureCode(status) ?? '',
+      first_seen_week: hydrated.first_seen_week,
+      confidence: hydrated.confidence,
+      source: hydrated.source,
+    } satisfies BadgedPersonRow;
+  });
+
+  const badged = hydratedRows
+    .filter((r) => r.badge !== '') // veteran — not badged, not shown here
+    .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
+
+  // A "Graduar" override takes someone OFF the badged list above — without a
+  // separate place to find them, there'd be no way to click "Revertir" on a
+  // graduated person ever again. Manual overrides are rare (an escape hatch,
+  // not a workflow), so a flat list regardless of current badge is enough.
+  const manualOverrides = hydratedRows
+    .filter((r) => r.source === 'manual')
+    .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
 
   return (
     <div>
@@ -29,6 +99,17 @@ export default async function ConfigPage() {
         hubs={activeHubs}
         initialTargets={(targets ?? []) as KpiTarget[]}
       />
+
+      {tasaArmadoKpi && (
+        <RampTargetsSection
+          initialRamps={(ramps ?? []) as RampTargetRow[]}
+          targets={(targets ?? []) as KpiTarget[]}
+          comparator={defaultComparator(tasaArmadoKpi.id, tasaArmadoKpi.direction)}
+          unit={tasaArmadoKpi.unit}
+          badged={badged}
+          manualOverrides={manualOverrides}
+        />
+      )}
 
       <Section title="Apps registradas" count={apps?.length ?? 0}>
         <ul className="text-[12.5px]">

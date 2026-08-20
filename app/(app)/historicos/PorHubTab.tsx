@@ -6,10 +6,23 @@ import {
 } from 'recharts';
 import {
   formatValue, formatDelta, weekEndLabel, deltaClassForDirection, resolveTarget, meetsTarget, isResumenKpi,
-  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku, type KpiTarget,
+  type Kpi, type Hub, type Snapshot, type Peer, type MnaProduct, type FaltantesSku, type KpiTarget, type RampTarget,
 } from './_shared';
 import type { MnaCategory } from '@/lib/sku-classifier';
+import { tenureStatus, tenureLabel, type TenureRow } from '@/lib/tenure';
+import { normalizeName } from '@/lib/normalize';
 import { GenerarReporte } from '@/components/GenerarReporte';
+
+/**
+ * ' (S4)' | ' (RI)' | '' for a person's name in a given week. THE single
+ * helper every badge call site uses — never an inline tenureStatus/
+ * tenureLabel pair, never a template string. See
+ * PLAN_MODO_ENTRENAMIENTO.md §6: the badge must be computed for the week
+ * being DISPLAYED, never `new Date()` or "today".
+ */
+function tenureBadge(name: string, weekStart: string, tenureByName: Map<string, TenureRow>): string {
+  return tenureLabel(tenureStatus(tenureByName.get(normalizeName(name)), weekStart));
+}
 
 /* ─── Sparkline tooltip ──────────────────────────────────────────────────── */
 function SparkTooltip({
@@ -44,6 +57,9 @@ interface Props {
   faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
   targets: KpiTarget[];
+  ramps: RampTarget[];
+  tenureByNameArmador: Map<string, TenureRow>;
+  tenureByNameRepartidor: Map<string, TenureRow>;
   currentWeek: string;
   selectedHub?: string;
 }
@@ -105,7 +121,7 @@ const KPI_META: Record<string, KpiMeta> = {
   discrepancia_mxn:                   { title: 'Discrepancia ($)',         unit: 'currency', direction: 'lower_is_better'  },
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], targets = [], currentWeek, selectedHub }: Props) {
+export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], targets = [], ramps = [], tenureByNameArmador, tenureByNameRepartidor, currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   // Tile coloring mode — defaults to the existing σ-vs-own-history behavior
@@ -292,6 +308,9 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               mnaProducts={mnaProducts}
               faltantesSkuProducts={faltantesSkuProducts}
               targets={targets}
+              ramps={ramps}
+              tenureByNameArmador={tenureByNameArmador}
+              tenureByNameRepartidor={tenureByNameRepartidor}
               currentWeek={currentWeek}
             />
           </div>
@@ -580,15 +599,15 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                     </div>
                   ) : hasOps && !hasDrvs ? (
                     /* ── Single column: only assembler data ── */
-                    <BackFaceList label="Armadores" items={sortedOps} unit={kpi.unit} />
+                    <BackFaceList label="Armadores" items={sortedOps} unit={kpi.unit} role="armador" weekStart={currentWeek} tenureByName={tenureByNameArmador} />
                   ) : !hasOps && hasDrvs ? (
                     /* ── Single column: only driver data ── */
-                    <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} />
+                    <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} role="repartidor" weekStart={currentWeek} tenureByName={tenureByNameRepartidor} />
                   ) : (
                     /* ── Two columns: both operator and driver data ── */
                     <div className="grid grid-cols-2 gap-x-3">
-                      <BackFaceList label="Armadores"    items={sortedOps}  unit={kpi.unit} />
-                      <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} />
+                      <BackFaceList label="Armadores"    items={sortedOps}  unit={kpi.unit} role="armador" weekStart={currentWeek} tenureByName={tenureByNameArmador} />
+                      <BackFaceList label="Repartidores" items={sortedDrvs} unit={kpi.unit} role="repartidor" weekStart={currentWeek} tenureByName={tenureByNameRepartidor} />
                     </div>
                   )}
                 </div>
@@ -599,16 +618,24 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
       </div>
 
       {/* ── Assembler WoW trends ─────────────────────────────────────────────── */}
-      <AssemblerWowSection assemblerTrend={assemblerTrend} hubId={hubId} hubName={hub.display_name} />
+      <AssemblerWowSection assemblerTrend={assemblerTrend} hubId={hubId} hubName={hub.display_name} tenureByName={tenureByNameArmador} currentWeek={currentWeek} />
 
       {/* ── Driver WoW trends ────────────────────────────────────────────────── */}
-      <DriverWowSection driverTrend={driverTrend} hubId={hubId} hubName={hub.display_name} />
+      <DriverWowSection driverTrend={driverTrend} hubId={hubId} hubName={hub.display_name} tenureByName={tenureByNameRepartidor} currentWeek={currentWeek} />
     </div>
   );
 }
 
 /* ─── Back-face ranked list (worst → best, #1 = red, last shown = green) ─── */
-function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[]; unit: string; max?: number }) {
+function BackFaceList({ label, items, unit, max, role, weekStart, tenureByName }: {
+  label: string;
+  items: Peer[];
+  unit: string;
+  max?: number;
+  role: 'armador' | 'repartidor';
+  weekStart: string;
+  tenureByName: Map<string, TenureRow>;
+}) {
   const shown = max !== undefined ? items.slice(0, max) : items;
   return (
     <div>
@@ -626,7 +653,10 @@ function BackFaceList({ label, items, unit, max }: { label: string; items: Peer[
                   <span className={`text-[9px] font-bold w-4 shrink-0 ${isWorst ? 'text-red-500' : isBest ? 'text-emerald-600' : 'text-slate-400'}`}>
                     {i + 1}
                   </span>
-                  <span className="text-[10px] truncate">{p.entity_key}</span>
+                  <span className="text-[10px] truncate">
+                    {p.entity_key}
+                    <span className="text-[var(--muted)]">{tenureBadge(p.entity_key, weekStart, tenureByName)}</span>
+                  </span>
                 </div>
                 <span className="text-[10px] font-semibold shrink-0">{formatValue(p.value, unit)}</span>
               </div>
@@ -712,11 +742,15 @@ function MultiSelectDropdown({
   options,
   selected,
   onChange,
+  weekStart,
+  tenureByName,
 }: {
   label: string;
   options: string[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
+  weekStart: string;
+  tenureByName: Map<string, TenureRow>;
 }) {
   const [open, setOpen] = useState(false);
   const allSelected = selected.size === options.length;
@@ -776,7 +810,10 @@ function MultiSelectDropdown({
                   onChange={() => toggle(name)}
                   className="w-3 h-3 accent-slate-700 shrink-0"
                 />
-                <span className="text-[11px] truncate max-w-[160px]">{name}</span>
+                <span className="flex items-baseline min-w-0 max-w-[160px]">
+                  <span className="text-[11px] truncate">{name}</span>
+                  <span className="text-[11px] text-[var(--muted)] shrink-0">{tenureBadge(name, weekStart, tenureByName)}</span>
+                </span>
               </label>
             ))}
           </div>
@@ -802,6 +839,8 @@ function WowTooltip({
   colorMap,
   unit,
   allEntities,
+  weekLabelToIso,
+  tenureByName,
 }: {
   active?: boolean;
   payload?: Array<{ name: string; value: number | null }>;
@@ -810,8 +849,14 @@ function WowTooltip({
   unit: string;
   /** Full ordered list of selected entities — tooltip always shows all of them. */
   allEntities: string[];
+  /** Reverse lookup: XAxis display label (e.g. "vie 24 jul") -> ISO week_start.
+   *  The badge must reflect the week being HOVERED, not currentWeek — a
+   *  picker who is S9 today was S4 five weeks ago (PLAN §6). */
+  weekLabelToIso: Map<string, string>;
+  tenureByName: Map<string, TenureRow>;
 }) {
   if (!active) return null;
+  const weekIso = label ? weekLabelToIso.get(label) : undefined;
   const fmt = (v: number | null | undefined) => {
     if (v === null || v === undefined) return '—';
     if (unit === 'pct')      return `${v.toFixed(1)}%`;
@@ -839,6 +884,7 @@ function WowTooltip({
           <div className="flex items-center gap-1.5 min-w-0">
             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorMap.get(name) }} />
             <span className="opacity-90 truncate max-w-[110px]">{name}</span>
+            {weekIso && <span className="opacity-70 shrink-0">{tenureBadge(name, weekIso, tenureByName)}</span>}
           </div>
           <span className="font-bold tabular-nums">{fmt(valueMap.get(name))}</span>
         </div>
@@ -905,6 +951,7 @@ function WowChart({
   displayWeeks,
   filterEntities,
   sectionColorMap,
+  tenureByName,
 }: {
   rows: Peer[];
   title: string;
@@ -916,6 +963,7 @@ function WowChart({
   filterEntities?: Set<string>;
   /** Stable color map from the parent section — keeps the same color per person across all charts. */
   sectionColorMap?: Map<string, string>;
+  tenureByName: Map<string, TenureRow>;
 }) {
   // ── Derive all chart values BEFORE hooks (hooks must be unconditional) ────
   const rowWeeks       = [...new Set(rows.map((r) => r.week_start))].sort();
@@ -962,6 +1010,10 @@ function WowChart({
     }
     return point;
   });
+
+  // Reverse lookup for WowTooltip: display label (XAxis dataKey value) -> ISO
+  // week_start, so the badge shown reflects the HOVERED week, not currentWeek.
+  const weekLabelToIso = new Map(displayWeeks.map((w) => [weekEndLabel(w), w]));
 
   const allDisplayVals = data.flatMap((pt) => entityOrder.map((e) => pt[e] as number | null));
   const smartYMax      = computeYMax(allDisplayVals);
@@ -1043,7 +1095,7 @@ function WowChart({
                 allowDataOverflow
               />
               <Tooltip
-                content={<WowTooltip colorMap={colorMap} unit={unit} allEntities={entityOrder} />}
+                content={<WowTooltip colorMap={colorMap} unit={unit} allEntities={entityOrder} weekLabelToIso={weekLabelToIso} tenureByName={tenureByName} />}
                 cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
                 isAnimationActive={false}
                 wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
@@ -1083,10 +1135,14 @@ function AssemblerWowSection({
   assemblerTrend,
   hubId,
   hubName,
+  tenureByName,
+  currentWeek,
 }: {
   assemblerTrend: Peer[];
   hubId: string;
   hubName: string;
+  tenureByName: Map<string, TenureRow>;
+  currentWeek: string;
 }) {
   const hubRows = assemblerTrend.filter((p) => p.scope_key === hubId);
   const rows    = (id: string) => hubRows.filter((r) => r.kpi_id === id);
@@ -1146,6 +1202,8 @@ function AssemblerWowSection({
             options={entityNames}
             selected={selectedAssemblers}
             onChange={setSelectedAssemblers}
+            weekStart={currentWeek}
+            tenureByName={tenureByName}
           />
         </div>
       )}
@@ -1155,13 +1213,13 @@ function AssemblerWowSection({
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct}              displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
-          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct}            displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
-          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct}             displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
-          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct}           displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
-          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
-          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} />
-          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado}                        displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} wide />
+          <WowChart rows={rows('faltantes_armador_pct')}              {...KPI_META.faltantes_armador_pct}              displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('incidentes_manuales_pct')}            {...KPI_META.incidentes_manuales_pct}            displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('incidentes_calidad_pct')}             {...KPI_META.incidentes_calidad_pct}             displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('incidentes_faltantes_pct')}           {...KPI_META.incidentes_faltantes_pct}           displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('incidentes_faltantes_completos_pct')} {...KPI_META.incidentes_faltantes_completos_pct} displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('incidentes_faltantes_parciales_pct')} {...KPI_META.incidentes_faltantes_parciales_pct} displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('tasa_armado')}                        {...KPI_META.tasa_armado}                        displayWeeks={displayWeeks} filterEntities={selectedAssemblers} sectionColorMap={assemblerColorMap} tenureByName={tenureByName} wide />
         </div>
       )}
     </div>
@@ -1181,10 +1239,14 @@ function DriverWowSection({
   driverTrend,
   hubId,
   hubName,
+  tenureByName,
+  currentWeek,
 }: {
   driverTrend: Peer[];
   hubId: string;
   hubName: string;
+  tenureByName: Map<string, TenureRow>;
+  currentWeek: string;
 }) {
   const hubRows = driverTrend.filter((p) => p.scope_key === hubId);
   const rows    = (id: string) => hubRows.filter((r) => r.kpi_id === id);
@@ -1237,6 +1299,8 @@ function DriverWowSection({
             options={entityNames}
             selected={selectedDrivers}
             onChange={setSelectedDrivers}
+            weekStart={currentWeek}
+            tenureByName={tenureByName}
           />
         </div>
       )}
@@ -1246,10 +1310,10 @@ function DriverWowSection({
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} />
-          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} />
-          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} wide />
-          <WowChart rows={rows('discrepancia_mxn')}    {...KPI_META.discrepancia_mxn}    displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} wide />
+          <WowChart rows={rows('pct_tardias_reparto')} {...KPI_META.pct_tardias_reparto} displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('pct_undelivered')}     {...KPI_META.pct_undelivered}     displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} tenureByName={tenureByName} />
+          <WowChart rows={rows('entregas_erroneas')}   {...KPI_META.entregas_erroneas}   displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} tenureByName={tenureByName} wide />
+          <WowChart rows={rows('discrepancia_mxn')}    {...KPI_META.discrepancia_mxn}    displayWeeks={displayWeeks} filterEntities={selectedDrivers} sectionColorMap={driverColorMap} tenureByName={tenureByName} wide />
         </div>
       )}
     </div>

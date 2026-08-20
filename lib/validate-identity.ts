@@ -32,6 +32,7 @@
  */
 import type { ValidationIssue } from './types';
 import { resolveHubId } from './hub-aliases';
+import { normalizeName } from './normalize';
 
 type SB = ReturnType<typeof import('./supabase-server').createAdminSupabase>;
 
@@ -63,15 +64,6 @@ const ROSTER_WARN_RETENTION = 0.30;
 // A sibling slot's overlap must clear this floor AND beat the intended
 // slot's own retention before we escalate to a hard, denied error.
 const ROSTER_CROSS_MATCH_FLOOR = 0.50;
-
-function normalizeName(raw: string): string {
-  return raw
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, ' ');
-}
 
 function firstNonEmpty(row: Record<string, unknown>, fields: string[]): string {
   for (const f of fields) {
