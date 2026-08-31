@@ -1,0 +1,104 @@
+Loading incidentes for the cross-file test…
+  14440 incidentes rows · tipos seen: Inasistencia, Otro, Llegada tardía
+
+==============================================================================
+TARGET:  desempeno_operadores.num_idle_days
+==============================================================================
+  rows: 2477   num_idle_days non-null: 2477
+  distinct values: 6   range: 0 … 5
+  numeric columns available to test against: 25
+  weeks covered: 20
+
+  cross-file join to incidentes: 0/2477 person-weeks matched a name
+
+  ❌ NO DERIVATION at ≥98%. num_idle_days stays OPEN.
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r=-0.865   total_num_min_of_assembly
+     r=-0.853   total_idle_time_min
+     r=-0.797   num_assembled
+     r=-0.709   num_skus_assembled
+     r= 0.682   num_absences_including_justified
+     r=-0.640   normalized_num_assembly_minutes
+     r= 0.625   num_absences
+     r=-0.594   num_orders_with_incidents
+
+==============================================================================
+TARGET:  desempeno_operadores.order_total_multiplier
+==============================================================================
+  rows: 2477   order_total_multiplier non-null: 1963
+  distinct values: 26   range: 0.43 … 1.21
+  numeric columns available to test against: 25
+  weeks covered: 20
+
+  cross-file join to incidentes: 0/2477 person-weeks matched a name
+
+  ❌ NO DERIVATION at ≥98%. order_total_multiplier stays OPEN.
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r=-0.094   num_orders_with_faltante_armador
+     r=-0.063   normalized_num_assembly_minutes
+     r= 0.045   operator_id
+     r=-0.044   num_assembled_late
+     r=-0.036   num_tardy_including_justified
+     r=-0.032   num_orders_with_missing_barcode
+     r=-0.030   num_orders_with_incidents
+     r= 0.030   total_idle_time_min
+
+==============================================================================
+TARGET:  desempeno_operadores.normalized_num_assembly_minutes
+==============================================================================
+  rows: 2477   normalized_num_assembly_minutes non-null: 1898
+  distinct values: 1876   range: 0.43 … 2276.35
+  numeric columns available to test against: 25
+  weeks covered: 20
+
+  cross-file join to incidentes: 0/2477 person-weeks matched a name
+
+  ❌ NO DERIVATION at ≥98%. normalized_num_assembly_minutes stays OPEN.
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.926   num_skus_assembled
+     r= 0.902   num_assembled
+     r= 0.822   total_num_min_of_assembly
+     r= 0.699   total_idle_time_min
+     r= 0.695   num_orders_with_incidents
+     r= 0.658   num_orders_with_faltante_armador
+     r=-0.640   num_idle_days
+     r= 0.636   num_orders_with_bad_quality
+
+==============================================================================
+TARGET:  desempeno_repartidores.num_admin_incidents
+==============================================================================
+  rows: 1587   num_admin_incidents non-null: 1587
+  distinct values: 4   range: 0 … 3
+  numeric columns available to test against: 17
+  weeks covered: 20
+
+  cross-file join to incidentes: 973/1587 person-weeks matched a name
+
+  ✅ DERIVATION FOUND (≥98% match)
+     99.37%  (n=1587)   num_admin_incidents = count of incidentes rows [Otro] for this person-week
+
+  Below threshold — leads only, NOT answers:
+     88.91%  (n=1587)   num_admin_incidents = 0 (constant)
+     88.91%  (n=1587)   num_admin_incidents = num_orders − num_assigned_orders
+     88.91%  (n=1587)   num_admin_incidents = num_assigned_orders − num_orders
+     88.72%  (n=1587)   num_admin_incidents = num_early_orders
+     81.29%  (n=1587)   num_admin_incidents = num_orders_with_three_or_more_wrong
+     81.22%  (n=1587)   num_admin_incidents = num_orders_with_three_or_more_wrong − num_early_orders
+     81.16%  (n=1587)   num_admin_incidents = num_early_orders + num_orders_with_three_or_more_wrong
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.266   num_orders_with_three_or_more_wrong
+     r= 0.214   total_num_missing_items
+     r= 0.179   num_orders
+     r= 0.179   num_assigned_orders
+     r= 0.158   num_orders_with_incidents
+     r= 0.154   num_orders_with_missing_items
+     r= 0.145   num_orders_with_full_missing
+     r= 0.129   num_driver_orders_with_eggs

@@ -11,6 +11,7 @@ import {
 import type { MnaCategory } from '@/lib/sku-classifier';
 import { tenureStatus, tenureLabel, type TenureRow } from '@/lib/tenure';
 import { normalizeName } from '@/lib/normalize';
+import { effectiveDirection } from '@/lib/kpi-direction';
 import { GenerarReporte } from '@/components/GenerarReporte';
 
 /**
@@ -348,7 +349,11 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
           const value = (rawValue === null && kpi.unit === 'count') ? 0 : rawValue;
           const prev  = thisWeek?.prev_week_value ?? null;
           const delta = formatDelta(value, prev, kpi.unit);
-          const deltaCls = deltaClassForDirection(delta.isUp, kpi.direction);
+          // Effective, never raw: the DB direction for tasa_armado may say
+          // lower_is_better (HANDOFF §12), which would paint a faster week red
+          // and a slower one green on both the delta and the tile itself.
+          const dir = effectiveDirection(kpi.id, kpi.direction);
+          const deltaCls = deltaClassForDirection(delta.isUp, dir);
           const peerVal = peerThis?.value ?? null;
 
           // ── 4-week rolling mean — DB value preferred, trend fallback ────────
@@ -398,7 +403,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               sigma = Math.sqrt(variance);
             }
 
-            const wantsLow = kpi.direction === 'lower_is_better';
+            const wantsLow = dir === 'lower_is_better';
             const diff     = value - mean4w;  // positive = higher than baseline
 
             if (sigma !== null && sigma > 0) {
@@ -427,7 +432,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
           const { ops, drvs } = tilePeerData.get(kpi.id) ?? { ops: [], drvs: [] };
           const worstFirst = (a: Peer, b: Peer) => {
             const av = a.value ?? 0, bv = b.value ?? 0;
-            return kpi.direction === 'higher_is_better' ? av - bv : bv - av;
+            return dir === 'higher_is_better' ? av - bv : bv - av;
           };
           const sortedOps  = [...ops].sort(worstFirst);
           const sortedDrvs = [...drvs].sort(worstFirst);
@@ -551,7 +556,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                         meta: {formatValue(targetDbUnits, kpi.unit)}
                       </span>
                     ) : (
-                      <span>{kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
+                      <span>{dir === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'}</span>
                     )}
                   </div>
                 </div>

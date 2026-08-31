@@ -15,6 +15,52 @@
 import { anthropic, MODELS, estimateCost } from './anthropic';
 import { createAdminSupabase } from './supabase-server';
 import { assembleSystemPrompt } from './prompts/system-context';
+import {
+  hydrateTenureRow, tenureStatus, tenureCode, buildTenureNameIndex,
+  type PersonTenureDbRow, type TenureRow, type Role as TenureRole,
+} from './tenure';
+import { normalizeName } from './normalize';
+
+/**
+ * Name -> week badge ('S3' | 'RI' | undefined) for the week being generated.
+ *
+ * Every surface that prints a person's name owes the reader their week label:
+ * an insight that names a picker without "(S3)" reads as a veteran problem
+ * when it is a ramp-up one. Same ledger and hydration path the dashboard and
+ * the coordinator report use — reentry_weeks is not a person_tenure column,
+ * so hydrateTenureRow must run before tenureStatus (lib/tenure.ts §2.1).
+ */
+async function buildTenureBadgeLookup(
+  sb: any,
+  weekStart: string,
+): Promise<(entityType: string, name: string) => string | undefined> {
+  const [{ data: tenureRows }, { data: rosterUploads }] = await Promise.all([
+    sb.from('person_tenure').select('*'),
+    sb.from('uploads').select('app_id, week_start').eq('status', 'validated')
+      .in('app_id', ['desempeno_operadores', 'desempeno_repartidores']),
+  ]);
+
+  const weeksByRole: Record<TenureRole, Set<string>> = { armador: new Set(), repartidor: new Set() };
+  for (const u of (rosterUploads ?? []) as { app_id: string; week_start: string }[]) {
+    if (u.app_id === 'desempeno_operadores') weeksByRole.armador.add(u.week_start);
+    else weeksByRole.repartidor.add(u.week_start);
+  }
+
+  const hydrated: TenureRow[] = ((tenureRows ?? []) as PersonTenureDbRow[])
+    .map((r) => hydrateTenureRow(r, weeksByRole[r.role] ?? new Set<string>()));
+
+  const byRole: Record<TenureRole, Map<string, TenureRow>> = {
+    armador:    buildTenureNameIndex(hydrated.filter((r) => r.role === 'armador')),
+    repartidor: buildTenureNameIndex(hydrated.filter((r) => r.role === 'repartidor')),
+  };
+
+  return (entityType: string, name: string) => {
+    const role: TenureRole | null =
+      entityType === 'operator' ? 'armador' : entityType === 'driver' ? 'repartidor' : null;
+    if (!role || !name) return undefined;
+    return tenureCode(tenureStatus(byRole[role].get(normalizeName(name)), weekStart));
+  };
+}
 
 interface GenerateOpts {
   weekStart: string;
@@ -235,9 +281,17 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
     entityOutliers = entityOutliers.filter((p: any) => catKpiIds.has(p.kpi_id));
   }
 
+  const badgeFor = await buildTenureBadgeLookup(sb, weekStart);
+
   entityOutliers = entityOutliers
     .sort((a: any, b: any) => Math.abs(b.z_score) - Math.abs(a.z_score))
-    .slice(0, 15);
+    .slice(0, 15)
+    // `tenure` rides along on the JSON the model sees, so a named picker or
+    // repartidor always carries their week label into the insight.
+    .map((p: any) => {
+      const badge = badgeFor(p.entity_type, p.entity_key);
+      return badge ? { ...p, tenure: badge } : p;
+    });
 
   // performance_alerts text from this week's operator rows
   const { data: uploads } = await sb
@@ -270,14 +324,21 @@ async function buildDataBundle(sb: any, weekStart: string, opts: GenerateOpts): 
       }
       const alert = (r.data as any).performance_alerts;
       if (alertsText.length < 10 && alert && typeof alert === 'string' && alert.trim() !== '') {
-        const who = (r.data as any).assembler ?? (r.data as any).operator_id;
-        alertsText.push(`${who} (${hubName}): ${alert}`);
+        const who = String((r.data as any).assembler ?? (r.data as any).operator_id ?? '');
+        const whoBadge = badgeFor('operator', who);
+        alertsText.push(`${who}${whoBadge ? ` (${whoBadge})` : ''} (${hubName}): ${alert}`);
       }
       const issues = (r.data as any).issues_comments;
       if (Array.isArray(issues) && freeTextSamples.length < 10) {
         const it = issues[0];
         if (typeof it === 'string' && it.length > 5) {
-          freeTextSamples.push({ source: 'desempeno_operadores', entity: String((r.data as any).assembler ?? ''), text: it });
+          const who = String((r.data as any).assembler ?? '');
+          const whoBadge = badgeFor('operator', who);
+          freeTextSamples.push({
+            source: 'desempeno_operadores',
+            entity: `${who}${whoBadge ? ` (${whoBadge})` : ''}`,
+            text: it,
+          });
         }
       }
     }
@@ -359,6 +420,7 @@ REGLAS DURAS:
 - Cada insight debe citar valores reales del bundle: número actual, peer mean, z-score si está, WoW si está.
 - Evidencia y acciones máximo 150 chars cada uno. Headlines máximo 120 chars.
 - No inventes hubs/operadores que no estén en los datos.
+- ETIQUETA DE SEMANA: si una entidad trae el campo "tenure" (ej "S3" = semana 3 de entrenamiento, "RI" = reingreso), escribe SIEMPRE su nombre como "Nombre (S3)" — en headline_es, evidence_md, recommended_actions_md y linked_entities. Nunca omitas la etiqueta ni la expliques. Un nombre sin "tenure" se escribe sin etiqueta.
 
 Devuelve SÓLO el array JSON, sin texto antes o después.
 [

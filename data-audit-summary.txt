@@ -1,0 +1,30 @@
+CALII OPS — DATA AUDIT  2026-08-21T16:58:39.816Z
+
+Weeks of history: 20  (2026-03-27 → 2026-08-07)
+Uploads: 560   upload_rows: 700444   kpi_snapshots: 36247   peer_comparisons: 195579
+
+PER APP
+  desempeno_operadores           2477 rows   20 wk  cols seen 41/41
+  faltantes_armador             11434 rows   20 wk  cols seen 11/11
+  desempeno_repartidores         1587 rows   20 wk  cols seen 30/30
+  incidentes                    14440 rows   20 wk  cols seen 5/5
+  mna                          670430 rows   20 wk  cols seen 22/22
+  faltantes_hub_general_pct       140 rows   20 wk  cols seen 4/4
+  faltantes_hub_fyv_pct           140 rows   20 wk  cols seen 4/4
+  faltantes_hub_carnes_pct        140 rows   20 wk  cols seen 4/4
+  faltantes_hub_graneles_pct      140 rows   20 wk  cols seen 4/4
+  discrepancia                   1718 rows   20 wk  cols seen 15/15
+  resumen_operativo               210 rows   15 wk  cols seen 20/20
+
+KPIs with no snapshots: (none)
+
+FREE TEXT
+  desempeno_operadores.issues_comments          fill  48.9%  avg 4.346 
+  desempeno_operadores.performance_alerts       fill  63.1%  avg 28.3105 
+  faltantes_armador.Notas armador            fill  95.3%  avg 17.9223 
+  incidentes.Notas                    fill   3.8%  avg 65.8174 
+  desempeno_repartidores.client_issues_for_driver fill   2.3%  avg 1.1429 
+  desempeno_repartidores.issues_comments          fill  80.1%  avg 4.0372 
+  discrepancia.Apodo                    fill   100%  avg 6.3273 
+
+ai_insights=27  feedback=0  annotations=0

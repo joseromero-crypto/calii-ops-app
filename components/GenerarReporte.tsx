@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase';
 import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget, RampTarget } from '@/app/(app)/historicos/_shared';
 import { resolveTarget, meetsTarget, isResumenKpi, resolvePersonTarget } from '@/app/(app)/historicos/_shared';
 import { effectiveDirection } from '@/lib/kpi-direction';
+import { reportKpiLabel } from '@/lib/kpi-labels';
 import { tenureStatus, tenureCode, type TenureRow, type TenureStatus } from '@/lib/tenure';
 import { normalizeName } from '@/lib/normalize';
 import type { ReportBundle, IncidenteErroneo } from '@/app/api/generar-reporte/route';
@@ -160,36 +161,56 @@ function buildBundle(
       );
       if (!snap || snap.value === null) return null;
 
-      // Compute rolling 4-week mean from snapshot history when the DB value is
-      // null (e.g. current week was first computed before prior data existed).
-      // This mirrors the same client-side fallback used in PorHubTab.
-      let rollingMean4w: number | null = snap.rolling_mean_4w ?? null;
-      if (rollingMean4w === null) {
-        const priorVals = snapshots
-          .filter(
-            (s) =>
-              s.kpi_id      === kpi.id &&
-              s.scope_level === 'hub'  &&
-              s.scope_key   === hub.id &&
-              s.week_start  <  currentWeek,
-          )
-          .sort((a, b) => (a.week_start > b.week_start ? -1 : 1)) // newest first
-          .slice(0, 4)
-          .map((s) => s.value)
-          .filter((v): v is number => typeof v === 'number');
-        if (priorVals.length > 0) {
-          rollingMean4w = priorVals.reduce((a, b) => a + b, 0) / priorVals.length;
-        }
-      }
+      // ── Rolling mean + the number of weeks behind it ────────────────────
+      //
+      // Computed client-side over the SAME window kpi-compute.ts's
+      // enrichWithHistory uses (weeks with data in the 5 calendar weeks before
+      // this one, at most the 4 most recent) even when the DB column is
+      // populated. Two reasons: rolling_mean_4w is null for any week first
+      // computed before its history existed (HANDOFF §12), and the report needs
+      // `rollingWeeks` — how many weeks actually went into the mean. It used to
+      // say "promedio de las últimas 4 semanas" for a mean that, early in a
+      // KPI's life, was a single prior week. The DB column is the fallback when
+      // no prior snapshot is loaded at all.
+      const windowStart = new Date(currentWeek + 'T12:00:00');
+      windowStart.setDate(windowStart.getDate() - 7 * 5);
+      const windowStartIso = windowStart.toISOString().slice(0, 10);
+
+      const priorVals = snapshots
+        .filter(
+          (s) =>
+            s.kpi_id      === kpi.id         &&
+            s.scope_level === 'hub'          &&
+            s.scope_key   === hub.id         &&
+            s.week_start  <  currentWeek     &&
+            s.week_start  >= windowStartIso,
+        )
+        .sort((a, b) => (a.week_start > b.week_start ? -1 : 1)) // newest first
+        .slice(0, 4)
+        .map((s) => s.value)
+        .filter((v): v is number => typeof v === 'number');
+
+      const rollingMean4w: number | null =
+        priorVals.length > 0
+          ? priorVals.reduce((a, b) => a + b, 0) / priorVals.length
+          : (snap.rolling_mean_4w ?? null);
+      // null = mean came from the DB column, whose window size we can't know.
+      const rollingWeeks: number | null = priorVals.length > 0 ? priorVals.length : null;
 
       return {
         id:            kpi.id,
-        name:          kpi.name_es,
+        // Never the raw name_es — see lib/kpi-labels.ts for why "Incidentes
+        // manuales (%)" must not reach the prompt.
+        name:          reportKpiLabel(kpi.id, kpi.name_es),
         value:         snap.value,
         prevValue:     snap.prev_week_value   ?? null,
         rollingMean4w,
+        rollingWeeks,
         unit:          kpi.unit,
-        direction:     kpi.direction,
+        // Effective, not raw: the DB direction for tasa_armado may say
+        // lower_is_better (HANDOFF §12), which would invert every PEOR/MEJORA
+        // label the report prints for it.
+        direction:     effectiveDirection(kpi.id, kpi.direction),
       };
     })
     .filter((k): k is NonNullable<typeof k> => k !== null);
@@ -241,9 +262,13 @@ function buildBundle(
       const isTasaArmado = def.id === 'tasa_armado';
 
       const entities = hubPeers.map((p) => {
-        const tenureRow = isTasaArmado ? tenureByNameArmador.get(normalizeName(p.entity_key)) : undefined;
-        const status: TenureStatus = isTasaArmado ? tenureStatus(tenureRow, currentWeek) : { kind: 'veteran' };
-        const tenureBadge = isTasaArmado ? tenureCode(status) : undefined;
+        // The badge rides along on EVERY assembler KPI group — a name printed
+        // in the incidentes or FA lists needs its week label just as much as
+        // one in Tasas. Only the personal ramp *target* below stays
+        // tasa_armado-only (PLAN_MODO_ENTRENAMIENTO.md §5.3).
+        const tenureRow = tenureByNameArmador.get(normalizeName(p.entity_key));
+        const status: TenureStatus = tenureStatus(tenureRow, currentWeek);
+        const tenureBadge = tenureCode(status);
 
         let entityTarget = effectiveTarget;
         let personalTarget: number | undefined;

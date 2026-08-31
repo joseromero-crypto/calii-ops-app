@@ -1,0 +1,170 @@
+==============================================================================
+FALTANTES ARMADOR — RAW EVENT ANALYSIS
+Weeks: 2026-06-19 → 2026-08-07  (8 weeks)
+Source: upload_rows for faltantes_armador + desempeno_operadores
+==============================================================================
+
+Events loaded: 4700  (2 rows dropped — hub name did not resolve)
+Pedidos armados in the same window: 34,335
+
+
+──────────────────────────────────────────────────────────────────────────────
+1 · HOW BAD, PER HUB
+──────────────────────────────────────────────────────────────────────────────
+Faltante events per 1,000 pedidos armados. Raw counts favour big hubs;
+this does not.
+
+  hub                events   armados   per 1k
+  mh_contry            1194      7160    166.8  ██████████████████████
+  mh_avicola            502      3162    158.8  █████████████████████·
+  mh_guadalupe          814      5145    158.2  █████████████████████·
+  mh_san_nicolas        723      5206    138.9  ██████████████████····
+  mh_cumbres            881      6501    135.5  ██████████████████····
+  mh_condesa            301      3248     92.7  ████████████··········
+  mh_zapopan            285      3913     72.8  ██████████············
+
+
+──────────────────────────────────────────────────────────────────────────────
+2 · WAS THERE STOCK WHEN THE ARMADOR REPORTED IT MISSING?
+──────────────────────────────────────────────────────────────────────────────
+`Inventario disponible` at the moment of the faltante.
+  = 0  → nothing to pick. Supply problem, not the armador.
+  > 0  → system said stock existed. Pick failure, location, or bad inventory.
+  < 0  → negative available inventory. Data question — see section 6.
+
+  hub                  n     =0 (sin stock)   >0 (había stock)    <0     null
+  mh_contry           1194    33.1% ███·······    63.1%     42      4
+  mh_avicola           502    31.3% ███·······    66.3%      1     11
+  mh_guadalupe         814    29.6% ███·······    67.8%     18      3
+  mh_san_nicolas       723    31.5% ███·······    65.6%     11     10
+  mh_cumbres           881    31.8% ███·······    65.8%     14      7
+  mh_condesa           301    17.9% ██········    72.1%      5     25
+  mh_zapopan           285    24.6% ██········    68.4%      0     20
+
+  ALL HUBS            4700    30.3%
+
+
+──────────────────────────────────────────────────────────────────────────────
+3 · WHY — CAUSE MIX PER HUB
+──────────────────────────────────────────────────────────────────────────────
+Buckets come from CAUSE_RULES at the top of this file. They are a guess.
+Compare columns across hubs — the differences are the interesting part.
+
+  hub                      otro   sin_stock       merma no_localiza  (sin nota) error_inven dato_captur error_recep
+  mh_contry              26.2%       25.2%       16.3%       10.4%        9.0%       12.1%        0.3%        0.4%
+  mh_avicola             29.3%       39.6%       12.2%       17.9%        0.6%        0.0%        0.0%        0.4%
+  mh_guadalupe           44.6%       23.6%       13.5%        4.9%       10.8%        2.1%        0.5%        0.0%
+  mh_san_nicolas         31.7%       42.2%       17.2%        8.7%        0.0%        0.0%        0.3%        0.0%
+  mh_cumbres             44.8%       49.1%        1.5%        1.6%        2.6%        0.1%        0.2%        0.0%
+  mh_condesa             36.9%       60.8%        0.7%        0.0%        1.7%        0.0%        0.0%        0.0%
+  mh_zapopan             86.0%        0.4%        5.6%        0.0%        1.4%        6.7%        0.0%        0.0%
+  ALL                    38.4%       34.3%       11.1%        7.0%        4.9%        3.9%        0.3%        0.1%
+
+  Biggest deviations from the all-hub average:
+    mh_zapopan        otro                86.0%  (+47.6 pts vs avg, n=245)
+    mh_zapopan        sin_stock            0.4%  (−34.0 pts vs avg, n=1)
+    mh_condesa        sin_stock           60.8%  (+26.5 pts vs avg, n=183)
+    mh_cumbres        sin_stock           49.1%  (+14.8 pts vs avg, n=433)
+    mh_contry         otro                26.2%  (−12.1 pts vs avg, n=313)
+    mh_avicola        no_localizado       17.9%  (+10.9 pts vs avg, n=90)
+    mh_guadalupe      sin_stock           23.6%  (−10.8 pts vs avg, n=192)
+    mh_condesa        merma                0.7%  (−10.4 pts vs avg, n=2)
+    mh_cumbres        merma                1.5%  (−9.6 pts vs avg, n=13)
+    mh_contry         sin_stock           25.2%  (−9.1 pts vs avg, n=301)
+
+
+──────────────────────────────────────────────────────────────────────────────
+4 · CONCENTRATION — PRODUCTS AND PEOPLE
+──────────────────────────────────────────────────────────────────────────────
+
+  1275 distinct products. Top 20 account for 19.1% of all faltantes.
+
+  product                                    n     sin stock   worst hub
+  Papaya                                     102    53.9%     mh_san_nicolas (45)
+  Ejotes                                      83    79.5%     mh_guadalupe (24)
+  Guayaba                                     66    83.3%     mh_contry (28)
+  Fresas caja 454g                            64    31.3%     mh_cumbres (34)
+  Piña miel cortada Calii Fresh 500g          56    50.0%     mh_contry (20)
+  Mango ataúlfo                               53    58.5%     mh_san_nicolas (19)
+  Manzana golden importada                    50    26.0%     mh_contry (15)
+  Epazote                                     48    16.7%     mh_cumbres (13)
+  Jícama                                      40    37.5%     mh_guadalupe (11)
+  Mango ataúlfo cortado Calii Fresh 400g      39    41.0%     mh_cumbres (13)
+  Perejil liso                                36    33.3%     mh_san_nicolas (14)
+  Hierbabuena                                 35    25.7%     mh_san_nicolas (9)
+
+  Armadores with the most events (raw count — not normalised by volume):
+    Mayra Mayela Viramontes Yañez ("Mayra")         145    26.9% sin stock   mh_guadalupe
+    Alejandra Medellin Aguilar ("Alejandra")        141    40.4% sin stock   mh_cumbres
+    Samuel Abinadi Sustaita Martinez ("Abi")        138    31.2% sin stock   mh_guadalupe
+    Mayela Berenice Figon Mendoza ("Mayela")        135    21.5% sin stock   mh_guadalupe
+    Heidy Leilany Gutierrez Martinez ("Heidy")      125    46.4% sin stock   mh_contry
+    Dulce Anahi Garza Hernandez ("Dulce")           109    21.1% sin stock   mh_san_nicolas
+    Perla Deyanira Elizondo Adame ("Perla")         108    38.0% sin stock   mh_guadalupe
+    Vianney Ximena Viera Diaz ("Ximena")            106    26.4% sin stock   mh_contry
+
+
+──────────────────────────────────────────────────────────────────────────────
+5 · IS IT MOVING? — per-week rate by hub
+──────────────────────────────────────────────────────────────────────────────
+
+  hub                 06-19   06-26   07-03   07-10   07-17   07-24   07-31   08-07
+  mh_contry              0      64      98      32     147     286     404     163
+  mh_avicola             0      24      54      21      90     140     128      45
+  mh_guadalupe           0      58      99      23     146     196     204      88
+  mh_san_nicolas         0      51      77      10      80     180     228      97
+  mh_cumbres             0      59     107      19     101     272     210     113
+  mh_condesa             0      21      28       3      53      62      76      58
+  mh_zapopan             0      19      34      14      40      56      76      46
+
+  (raw event counts per week — divide by that week's volume for a fair read)
+
+
+──────────────────────────────────────────────────────────────────────────────
+6 · THINGS I CANNOT INTERPRET WITHOUT YOU
+──────────────────────────────────────────────────────────────────────────────
+
+  a) 91 events have NEGATIVE Inventario disponible (min -8).
+     Examples:
+       mh_contry  Fresas caja 454g                     inv=-2  "Merma"
+       mh_condesa  Bebida ponche de frutas Arizona 57   inv=-3  "Producto agotado sin stock"
+       mh_contry  Melón chino                          inv=-4  ""
+       mh_contry  Papaya                               inv=-8  "Producto agotado"
+       mh_contry  Manzana golden importada             inv=-2  "Faltaten"
+
+  b) 80 events have no Inventario disponible at all.
+
+  c) 1803 notes (38.4%) did not match any CAUSE_RULE.
+     These are what the taxonomy is missing — the top 30 distinct:
+        131  mala calidad
+         80  se envia producto en existencia
+         71  mna
+         49  solo 1 en stock
+         32  faltante completo
+         27  se manda existencia
+         25  solo 2 en stock
+         23  se envia existencia
+         23  nop hay
+         22  solo uno en existencia
+         22  solo 3 en stock
+         20  0 en stoke
+         17  0 en stok
+         17  no se localizo el producto
+         17  solo habia 1 pza en stock
+         14  mando existencia
+         14  se manda 1 de existencia
+         13  solo 1 disponible
+         12  solo hay uno
+         10  faltante completo por inventario
+         10  se envia producto existente
+         10  se mando 1pieza disponible en inventario
+         10  se mandaron 2 piezas disponibles en inventario
+         10  cliente solicita 2, se envia existencia 1
+         10  producto en existencia
+         10  0
+         10  se envia 1 pieza
+          9  solo dos en existencia
+          9  fecha corta
+          9  no se localizo
+
+  d) 231 events have no note at all (4.9%).

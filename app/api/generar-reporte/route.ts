@@ -25,6 +25,8 @@ export interface KpiSummaryEntry {
   value: number | null;
   prevValue: number | null;
   rollingMean4w: number | null;
+  /** How many weeks actually went into rollingMean4w (null = unknown, from DB). */
+  rollingWeeks?: number | null;
   unit: string;        // 'pct' | 'rate' | 'count' | 'currency'
   direction: string;   // 'lower_is_better' | 'higher_is_better'
 }
@@ -80,9 +82,16 @@ REGLAS ABSOLUTAS:
 - No inventar datos — solo lo que viene en el bundle.
 
 REGLA DE COMPARACIÓN CON PROMEDIO:
-Cada línea de KPI en el bundle puede traer "diff_vs_promedio: Xpp POR ENCIMA/POR DEBAJO".
-Si esa parte NO aparece en la línea del KPI, omitir completamente la comparación con el promedio — no escribir nada sobre el promedio para ese KPI.
+Cada línea de KPI en el bundle puede traer FRASE_PROMEDIO: "…".
+Esa frase YA ESTÁ CALCULADA. Cópiala LITERALMENTE, palabra por palabra: el número, la unidad, "por encima"/"por debajo" y el número de semanas. Nunca la recalcules, nunca la reformules, nunca cambies "3 semanas" por "4 semanas".
+El dato WoW de la misma línea compara contra la SEMANA ANTERIOR, no contra el promedio: viene sin número a propósito y jamás debe usarse para escribir la frase del promedio.
+Si la línea NO trae FRASE_PROMEDIO, omitir completamente la comparación con el promedio — no escribir nada sobre el promedio para ese KPI.
 Nunca escribir "sin datos de comparación" ni frases similares.
+
+REGLA DE ETIQUETA DE SEMANA:
+Los nombres en el bundle pueden traer una etiqueta entre paréntesis: (S3) = semana 3 de entrenamiento, (RI) = reingreso.
+Cópiala SIEMPRE pegada al nombre, cada vez que menciones a esa persona, en CUALQUIER sección del reporte: incidentes, Tasas, FA, reparto, entregas erróneas. Nunca la omitas, nunca la expliques, nunca la traduzcas.
+Un nombre que viene sin etiqueta en el bundle se escribe sin etiqueta — no inventes una.
 
 ESTRUCTURA:
 
@@ -92,29 +101,32 @@ Saludo:
 --- SECCIÓN ARMADO (omitir sección completa si no hay nada que reportar) ---
 Escribir la cabecera: "Armado"
 
-Línea de KPI del hub:
-Si incidentes_manuales_pct tiene diff_vs_promedio: "Incidentes armado: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
-Si NO tiene diff_vs_promedio: "Incidentes armado: X.X%"
+Línea de KPI del hub (usar la línea "Incidentes armado" de KPIs DEL HUB):
+Si trae FRASE_PROMEDIO: "Incidentes armado: X.X% — " seguido del texto de FRASE_PROMEDIO copiado literalmente.
+Si NO trae FRASE_PROMEDIO: "Incidentes armado: X.X%"
 
 Luego las dos sublistas. Omitir SOLO la sublista cuya LISTA diga "(ninguno esta semana)".
 Si LISTA 1 tiene entradas, escribir esta línea exacta antes de los items:
 "Armadores con % de incidente general elevado:"
-Luego copiar cada item de LISTA 1 tal cual (formato: "- Nombre: X.X% — tipo").
+Luego copiar cada item de LISTA 1 tal cual, incluyendo la etiqueta de semana si la trae.
+Si un item NO trae " — tipo" después del porcentaje, déjalo así: "- Nombre: X.X%". No inventes un tipo de incidente, no rellenes con el nombre del KPI.
 
 Si LISTA 2 tiene entradas, escribir esta línea exacta antes de los items:
 "Armadores con % de incidentes particular elevado:"
-Luego copiar cada item de LISTA 2 tal cual (formato: "- Nombre: tipo X.X%").
+Luego copiar cada item de LISTA 2 tal cual, incluyendo la etiqueta de semana si la trae (formato: "- Nombre: tipo X.X%").
 
 Tasas: (lista ya filtrada — copiar solo los nombres que aparecen en la sección TASAS del bundle, todos son lentos)
 "Tasas: Nombre (XX.X), Nombre (XX.X)"
+Si el nombre trae etiqueta de semana, va antes del valor: "Tasas: Nombre (S4) (XX.X), Nombre (XX.X)"
 Si el bundle dice "(ninguno por debajo del umbral esta semana)", omitir esta línea.
 
-"Armadores en entrenamiento por debajo de su mínimo:" es un encabezado literal — viene marcado en el bundle como "ARMADORES EN ENTRENAMIENTO POR DEBAJO DE SU MÍNIMO". Si esa sección del bundle tiene entradas, escribir esa línea exacta y luego copiar cada item tal cual, con el (Sx), el mínimo y el esperado. No mezcles esta lista con la de Tasas — son personas distintas o el mismo umbral no aplica. Si el bloque del bundle dice "(ninguno esta semana)", omite el encabezado por completo. (RI) significa reingreso — cuando aparezca junto a un nombre (en Tasas o en cualquier otra lista), cópialo tal cual, no lo expliques ni lo traduzcas.
+"Armadores en entrenamiento por debajo de su mínimo:" es un encabezado literal — viene marcado en el bundle como "ARMADORES EN ENTRENAMIENTO POR DEBAJO DE SU MÍNIMO". Si esa sección del bundle tiene entradas, escribir esa línea exacta y luego copiar cada item tal cual, con el (Sx), el mínimo y el esperado. No mezcles esta lista con la de Tasas — son personas distintas o el mismo umbral no aplica. Si el bloque del bundle dice "(ninguno esta semana)", omite el encabezado por completo.
 
 FA: (SOLO armadores marcados ⚠️ en faltantes_armador_pct — el bundle ya aplicó el umbral configurado o, si no hay ninguno, 2× el promedio del hub)
 "FA"
-Luego un bullet por armador:
+Luego un bullet por armador (la etiqueta de semana, si la trae, va antes del paréntesis del valor):
 "- Nombre (X.X%, Xx el promedio)"
+"- Nombre (S4) (X.X%, Xx el promedio)"
 
 --- FIN SECCIÓN ARMADO ---
 
@@ -138,8 +150,8 @@ Copiar cada entrada exactamente como viene en el bundle, sin resumir ni parafras
 
 MNA: (omitir si no hay datos)
 Escribir la cabecera: "MNA"
-Si mna_pct tiene diff_vs_promedio: "MNA: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
-Si NO tiene diff_vs_promedio: "MNA: X.X%"
+Si la línea de MNA trae FRASE_PROMEDIO: "MNA: X.X% — " seguido del texto de FRASE_PROMEDIO copiado literalmente.
+Si NO trae FRASE_PROMEDIO: "MNA: X.X%"
 Segunda línea: una oración describiendo el movimiento WoW por categoría usando mna_fyv_pct, mna_carnes_pct, mna_graneles_pct del kpiSummary. Solo indicar cuál subió, cuál bajó, cuál se mantuvo. Sin mencionar productos ni valores numéricos en esta oración.
 Ejemplo: "El porcentaje de MNA se mantuvo estable en Graneles, bajó en Carnes, sin embargo FyV vio un incremento."
 Luego la lista:
@@ -147,8 +159,8 @@ Luego la lista:
 
 Faltantes armador: (omitir si no hay datos)
 Escribir la cabecera: "Faltantes armador"
-Si faltantes_armador_pct tiene diff_vs_promedio: "Faltantes armador: X.X% — Xpp por encima/debajo del promedio de las últimas 4 semanas"
-Si NO tiene diff_vs_promedio: "Faltantes armador: X.X%"
+Si la línea de Faltantes armador trae FRASE_PROMEDIO: "Faltantes armador: X.X% — " seguido del texto de FRASE_PROMEDIO copiado literalmente.
+Si NO trae FRASE_PROMEDIO: "Faltantes armador: X.X%"
 Segunda línea: una oración describiendo el movimiento WoW por categoría usando faltantes_fyv_pct, faltantes_carnes_pct, faltantes_graneles_pct del kpiSummary. Solo indicar cuál subió, cuál bajó, cuál se mantuvo. Sin mencionar SKUs ni valores en esta oración.
 Ejemplo: "Los faltantes en abarrotes y carnes disminuyeron, sin embargo FyV vio un incremento considerable."
 Luego la lista:
@@ -156,6 +168,7 @@ Luego la lista:
 
 VOCABULARIO:
 - repartidores (no "drivers"), faltante (no "shortfall"), armador, hub, FA, MNA, FyV, Graneles, Carnes
+- NUNCA escribas "manual" ni "manuales". Ese KPI se llama "Incidentes armado" a nivel hub y "% de incidente general" a nivel armador. "manuales" no es un tipo de incidente y no existe en este reporte.
 - Para múltiplos: "3.1x el promedio" (no "×")
 - Output: solo el mensaje, sin texto antes ni después.`;
 
@@ -174,14 +187,13 @@ function fmtBare(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function fmtDelta(curr: number | null, prev: number | null, unit: string): string {
-  if (curr === null || prev === null || !Number.isFinite(curr) || !Number.isFinite(prev)) return '';
-  const delta = curr - prev;
-  const sign  = delta >= 0 ? '+' : '';
-  if (unit === 'pct')      return `${sign}${(delta * 100).toFixed(1)}pp`;
-  if (unit === 'currency') return `${sign}$${delta.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-  if (unit === 'rate')     return `${sign}${delta.toFixed(1)} SKUs/hr`;
-  return `${sign}${delta.toFixed(0)}`;
+/** Size of a gap, no sign — the "por encima/debajo" wording carries direction. */
+function fmtMagnitude(diff: number, unit: string): string {
+  const d = Math.abs(diff);
+  if (unit === 'pct')      return `${(d * 100).toFixed(1)}pp`;
+  if (unit === 'currency') return `$${d.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  if (unit === 'rate')     return `${d.toFixed(1)} SKUs/hr`;
+  return d.toFixed(0);
 }
 
 function buildTextBundle(b: ReportBundle): string {
@@ -191,30 +203,44 @@ function buildTextBundle(b: ReportBundle): string {
   lines.push('');
 
   // ── KPI summary ──────────────────────────────────────────────────────────
-  // Each line pre-computes:
-  //   WoW delta vs previous week (with PEOR/MEJORA label)
-  //   Rolling mean diff: "Xpp POR ENCIMA / POR DEBAJO del promedio 4 semanas"
-  // Claude uses these pre-computed labels directly — no math needed.
+  // Each line pre-computes two things Claude must not derive itself:
+  //
+  //   WoW — DIRECTION ONLY (SUBIÓ / BAJÓ / SE MANTUVO), deliberately without a
+  //   figure. It used to print a signed "+1.2pp" immediately before the
+  //   rolling-mean diff, which was also a signed "+Xpp"; Haiku regularly copied
+  //   the WoW number into the "vs promedio de las últimas 4 semanas" sentence,
+  //   so the report claimed a 4-week comparison while showing a 1-week delta.
+  //   The only thing the prompt needs WoW for is the MNA / faltantes
+  //   "subió / bajó / se mantuvo" sentence, which needs no number at all.
+  //
+  //   FRASE_PROMEDIO — the finished comparison sentence, copied verbatim into
+  //   the report. Built from rollingWeeks so it never claims "4 semanas" for a
+  //   mean assembled from fewer weeks of history.
   lines.push('=== KPIs DEL HUB ===');
   for (const k of b.kpiSummary) {
     const v    = fmtVal(k.value, k.unit);
     const prev = fmtVal(k.prevValue, k.unit);
-    const d    = fmtDelta(k.value, k.prevValue, k.unit);
 
     let wowLabel = '';
-    if (d && k.value !== null && k.prevValue !== null && Number.isFinite(k.value) && Number.isFinite(k.prevValue)) {
-      const worse = k.direction === 'lower_is_better' ? k.value > k.prevValue : k.value < k.prevValue;
-      wowLabel = `  WoW: ${d} ${worse ? 'PEOR' : 'MEJORA'}`;
+    if (k.value !== null && k.prevValue !== null && Number.isFinite(k.value) && Number.isFinite(k.prevValue)) {
+      const move = k.value > k.prevValue ? 'SUBIÓ' : k.value < k.prevValue ? 'BAJÓ' : 'SE MANTUVO';
+      wowLabel = `  WoW: ${move} vs semana anterior (sólo dirección — nunca usar para la frase del promedio)`;
     }
 
     let rollingLabel = '';
     if (k.value !== null && k.rollingMean4w !== null && Number.isFinite(k.value) && Number.isFinite(k.rollingMean4w)) {
-      const diff = k.value - k.rollingMean4w;
-      const absDiff = fmtDelta(k.value, k.rollingMean4w, k.unit); // gives "+Xpp" or "-Xpp"
+      const diff  = k.value - k.rollingMean4w;
       const above = diff > 0;
       const worseThanAvg = k.direction === 'lower_is_better' ? above : !above;
-      const posLabel = above ? 'POR ENCIMA' : 'POR DEBAJO';
-      rollingLabel = `  promedio_4sem: ${fmtVal(k.rollingMean4w, k.unit)}  diff_vs_promedio: ${absDiff} ${posLabel}${worseThanAvg ? ' (PEOR que promedio)' : ' (MEJOR que promedio)'}`;
+      const n = k.rollingWeeks ?? 4;
+      const baseline = n === 1
+        ? 'del valor de la semana anterior'
+        : `del promedio de las últimas ${n} semanas`;
+      const frase = `${fmtMagnitude(diff, k.unit)} por ${above ? 'encima' : 'debajo'} ${baseline}`;
+      rollingLabel =
+        `  promedio_${n}sem: ${fmtVal(k.rollingMean4w, k.unit)}` +
+        `  FRASE_PROMEDIO: "${frase}"` +
+        `${worseThanAvg ? ' (PEOR que promedio)' : ' (MEJOR que promedio)'}`;
     }
 
     lines.push(`${k.name}: ${v}  prev: ${prev}${wowLabel}${rollingLabel}`);
@@ -223,11 +249,15 @@ function buildTextBundle(b: ReportBundle): string {
 
   // ── Assembler data — pre-resolved into two lists so Claude writes them directly ──
   //
-  // LIST 1: assemblers flagged in incidentes_manuales_pct (total > 6%)
-  //   Format: "Nombre: X.X% — tipo" where tipo = sub-metrics also flagged
+  // LIST 1: assemblers flagged on the incidentes total (its configured target,
+  //   6% by default)
+  //   Format: "Nombre (S3): X.X% — tipo" where tipo = sub-metrics also flagged.
+  //   A person over the total but under every sub-metric threshold has NO tipo
+  //   — the line ends at the percentage, and the prompt forbids inventing one.
   //
-  // LIST 2: assemblers NOT in List 1 but flagged in at least one sub-metric (> 4%)
-  //   Format: "Nombre: tipo X.X%" for each flagged sub-metric
+  // LIST 2: every assembler flagged on at least one sub-metric, independent of
+  //   List 1 (someone can legitimately appear in both)
+  //   Format: "Nombre (S3): tipo X.X%" for each flagged sub-metric
   //
   // Sub-metric KPI name → short label used in the report
   const SUB_LABELS: Record<string, string> = {
@@ -252,7 +282,20 @@ function buildTextBundle(b: ReportBundle): string {
   }
 
   const list1Entries = (totalGroup?.entities ?? []).filter((e) => e.flagged);
-  const list1Names   = new Set(list1Entries.map((e) => e.name));
+
+  // Tenure badge by assembler name. Every assembler KPI group carries it now
+  // (GenerarReporte.tsx), so whichever group saw the person first is a valid
+  // source — the badge is a property of the person and the week, not the KPI.
+  const badgeByName = new Map<string, string>();
+  for (const g of b.armadoresPorKpi) {
+    for (const e of g.entities) {
+      if (e.tenureBadge && !badgeByName.has(e.name)) badgeByName.set(e.name, e.tenureBadge);
+    }
+  }
+  const badgeFor = (name: string): string => {
+    const code = badgeByName.get(name);
+    return code ? ` (${code})` : '';
+  };
 
   // List 2: ALL assemblers with at least one flagged sub-metric (independent of list 1)
   const list2Names = new Set<string>();
@@ -263,7 +306,10 @@ function buildTextBundle(b: ReportBundle): string {
   lines.push('=== ARMADORES — LISTAS PRE-PROCESADAS PARA EL REPORTE ===');
   lines.push('');
 
-  lines.push('LISTA 1 — Armadores con % de incidente general elevado (incidentes_manuales_pct > 6%):');
+  const list1Threshold = totalGroup?.threshold !== undefined
+    ? fmtVal(totalGroup.threshold, totalGroup.unit)
+    : '6.0%';
+  lines.push(`LISTA 1 — Armadores con % de incidente general elevado (total > ${list1Threshold}):`);
   if (list1Entries.length === 0) {
     lines.push('(ninguno esta semana)');
   } else {
@@ -271,12 +317,15 @@ function buildTextBundle(b: ReportBundle): string {
       const totalPct  = fmtVal(e.value, 'pct');
       const orderCtx  = (e.numOrders != null && Number.isFinite(e.numOrders)) ? ` [${e.numOrders} pedidos]` : '';
       const tipos     = (subFlagsByName.get(e.name) ?? []).map((s) => s.label).join(', ');
-      lines.push(`- ${e.name}: ${totalPct}${tipos ? ` — ${tipos}` : ''}${orderCtx}`);
+      lines.push(`- ${e.name}${badgeFor(e.name)}: ${totalPct}${tipos ? ` — ${tipos}` : ''}${orderCtx}`);
     }
   }
   lines.push('');
 
-  lines.push('LISTA 2 — Armadores con % de incidentes particular elevado (total ≤ 6%, sub-métrica > 4%):');
+  // Header states what the code actually builds: every assembler with a
+  // flagged sub-metric, independent of LISTA 1. (The old header claimed a
+  // "total ≤ 6%" filter that the loop below has never applied.)
+  lines.push('LISTA 2 — Armadores con alguna sub-métrica de incidentes por encima de su umbral:');
   if (list2Names.size === 0) {
     lines.push('(ninguno esta semana)');
   } else {
@@ -285,7 +334,7 @@ function buildTextBundle(b: ReportBundle): string {
       // Combine all flagged sub-metrics for this assembler onto a single line
       // e.g. "- Nombre: faltantes 9.3%, faltantes completos 7.4%"
       const subsText = subs.map((s) => `${s.label} ${fmtVal(s.value, 'pct')}`).join(', ');
-      lines.push(`- ${name}: ${subsText}`);
+      lines.push(`- ${name}${badgeFor(name)}: ${subsText}`);
     }
   }
   lines.push('');

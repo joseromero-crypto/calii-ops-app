@@ -1,0 +1,2040 @@
+FALTANTES ARMADOR — FULL VOCABULARY
+Weeks 2026-06-19 → 2026-08-07 · 4700 events
+
+This is every distinct value the columns actually take, with counts.
+Read it and tell me what these mean operationally. That is the context
+the app does not have and cannot guess.
+
+======================================================================
+NOTAS ARMADOR — every distinct note, normalised, by frequency
+Format:  count  [my guessed bucket]  note
+======================================================================
+  511  [sin_stock        ]  agotado
+  339  [sin_stock        ]  producto agotado
+  265  [merma            ]  merma
+  238  [sin_stock        ]  0 en stock
+  231  [(sin nota)       ]  
+  162  [sin_stock        ]  sin stock
+  155  [no_localizado    ]  producto no localizado
+  153  [error_inventario ]  error de inventario
+  131  [otro             ]  mala calidad
+  123  [no_localizado    ]  no localizado
+  111  [sin_stock        ]  cero en stock
+   80  [otro             ]  se envia producto en existencia
+   71  [otro             ]  mna
+   69  [merma            ]  producto mermado
+   50  [merma            ]  mermado
+   49  [otro             ]  solo 1 en stock
+   49  [sin_stock        ]  no hay
+   43  [sin_stock        ]  no hay producto disponible en inventario
+   32  [otro             ]  faltante completo
+   31  [sin_stock        ]  producto sin stock
+   30  [merma            ]  producto paso a merma
+   27  [otro             ]  se manda existencia
+   25  [otro             ]  solo 2 en stock
+   23  [otro             ]  se envia existencia
+   23  [otro             ]  nop hay
+   22  [otro             ]  solo uno en existencia
+   22  [otro             ]  solo 3 en stock
+   22  [sin_stock        ]  no hay producto disponible
+   20  [otro             ]  0 en stoke
+   17  [otro             ]  0 en stok
+   17  [otro             ]  no se localizo el producto
+   17  [otro             ]  solo habia 1 pza en stock
+   17  [sin_stock        ]  no hay existencia
+   16  [no_localizado    ]  no encontrado
+   14  [otro             ]  mando existencia
+   14  [otro             ]  se manda 1 de existencia
+   13  [otro             ]  solo 1 disponible
+   13  [merma            ]  mal estado
+   12  [otro             ]  solo hay uno
+   11  [error_inventario ]  faltante completo error de inventario
+   10  [otro             ]  faltante completo por inventario
+   10  [otro             ]  se envia producto existente
+   10  [otro             ]  se mando 1pieza disponible en inventario
+   10  [otro             ]  se mandaron 2 piezas disponibles en inventario
+   10  [otro             ]  cliente solicita 2, se envia existencia 1
+   10  [merma            ]  producto pasa a merma
+   10  [otro             ]  producto en existencia
+   10  [otro             ]  0
+   10  [otro             ]  se envia 1 pieza
+    9  [otro             ]  solo dos en existencia
+    9  [merma            ]  caducidad corta
+    9  [merma            ]  paso a merma
+    9  [otro             ]  fecha corta
+    9  [otro             ]  no se localizo
+    9  [no_localizado    ]  producto no encontrado
+    9  [otro             ]  solo 1 pieza disponible
+    8  [otro             ]  frech
+    8  [merma            ]  merma por caducidad
+    8  [otro             ]  faltante completo inventario en 0
+    8  [otro             ]  se envia unicas piezas
+    8  [sin_stock        ]  no hay en existencia
+    8  [otro             ]  existencia 1 pieza
+    8  [otro             ]  solo hay una pieza
+    7  [otro             ]  faltante completo por calidad
+    7  [otro             ]  se manda disponible
+    7  [otro             ]  solo 3 en existencia
+    7  [otro             ]  se manda 2 de existencia
+    7  [otro             ]  faltante completo inventario en ceros
+    7  [no_localizado    ]  no se encontro
+    7  [otro             ]  no disponible
+    7  [otro             ]  se envia producto disponible
+    6  [otro             ]  se envia ultima pieza de inventario
+    6  [otro             ]  solo 3 en stoke
+    6  [otro             ]  faltante parcial se envian 2 piezas disponibles
+    6  [otro             ]  se manda existencia de 1 pza
+    6  [otro             ]  se manda existencia 1/2
+    6  [otro             ]  inventario en cero
+    6  [otro             ]  faltante parcial se envian 1 pieza disponible
+    6  [otro             ]  se utilizo para uber
+    6  [otro             ]  solo 3 disponible
+    5  [otro             ]  se utilizo para fresh
+    5  [otro             ]  0 stok
+    5  [otro             ]  solo una en existencia
+    5  [sin_stock        ]  sin existencia
+    5  [otro             ]  solo 2 piezas disponibles
+    5  [otro             ]  se envian 3 piezas
+    5  [sin_stock        ]  agotada
+    5  [merma            ]  faltante completo por caducidad
+    5  [otro             ]  faltante parcial se envian 3 piezas disponibles
+    5  [otro             ]  esta en 0
+    5  [sin_stock        ]  no hay en inventario
+    5  [error_inventario ]  faltante completo, error de inventario
+    5  [otro             ]  faltante completo, inventario en ceros
+    5  [no_localizado    ]  no se encontro el producto
+    5  [otro             ]  no cumple con las especificaciones del cliente
+    5  [error_recepcion  ]  error de recepcion
+    5  [otro             ]  no apto para venta
+    5  [otro             ]  unica pieza
+    5  [otro             ]  cero en existencia
+    5  [otro             ]  producto no optimo
+    5  [sin_stock        ]  sin stock mna fno
+    5  [otro             ]  se mandaron por aplicacion
+    4  [otro             ]  el cliente pide 3 pzs y se nevian 2 en stock
+    4  [otro             ]  enviadas por app
+    4  [otro             ]  cliente solicita 3 piezas se manda todo el stock que son 2 piezas
+    4  [merma            ]  producto caducado
+    4  [otro             ]  faltante parcial, se envian 4 piezas disponibles
+    4  [otro             ]  faltante completo, por calidad
+    4  [merma            ]  mermas
+    4  [otro             ]  cliente solicita 10 piezas se manda todo el stock que son 2 piezas
+    4  [otro             ]  solo habia 3 pzas en stock
+    4  [otro             ]  el producto no se puede enviar por mitades
+    4  [otro             ]  faltante parcial, se envia 1 pieza disponible en inventario
+    4  [otro             ]  se mandaron 3 pz disponibles en inventario
+    4  [merma            ]  faltante completo por fecha de caducidad vencida
+    4  [otro             ]  stock en 0 cliente 1 pz
+    4  [otro             ]  solo 5 disponibles
+    4  [otro             ]  se envia solo una pieza
+    4  [otro             ]  se manda inventario disponible
+    4  [otro             ]  faltante completo, inventario en 0
+    4  [otro             ]  2 en stock
+    4  [merma            ]  producto en mal estado
+    4  [otro             ]  se envia unicas piezas disponibles
+    4  [otro             ]  1 en stock
+    4  [otro             ]  uber
+    4  [otro             ]  faltante parcial, se envian existencias
+    4  [otro             ]  faltante parcial se manda 1 pieza disponible
+    4  [otro             ]  solo habia 2 pzas en stock
+    4  [otro             ]  solo dos disponible
+    4  [otro             ]  en existencia solo 5
+    4  [otro             ]  faltante completo stock 0
+    4  [otro             ]  cliente solicita 3, se envia existencia 2
+    4  [otro             ]  unicamente las piezas marcadas en el stock
+    4  [otro             ]  no lokalizado
+    4  [otro             ]  solo hay 3
+    4  [otro             ]  solo una disponible
+    3  [otro             ]  solo 1 en existencia
+    3  [sin_stock        ]  no hay producto
+    3  [otro             ]  9 en stock
+    3  [otro             ]  se envia lo que hay en stock
+    3  [otro             ]  calidad no conforme
+    3  [otro             ]  solo 3 disponibles
+    3  [otro             ]  solo hay una
+    3  [sin_stock        ]  no hay disponible
+    3  [otro             ]  0 en inventario
+    3  [otro             ]  stock 1 pz cliente 2 pz
+    3  [otro             ]  se manda todo el stock de la sucursal
+    3  [otro             ]  solamente 2
+    3  [otro             ]  mna no ajustada
+    3  [sin_stock        ]  producto sin existencia
+    3  [otro             ]  producto no disponible
+    3  [error_inventario ]  inventario erroneo
+    3  [otro             ]  se manda producto disponible en inventario
+    3  [merma            ]  caducado
+    3  [otro             ]  error en inventario
+    3  [otro             ]  faltante comoelto por calidad
+    3  [no_localizado    ]  no localizada
+    3  [merma            ]  faltante por caducidad
+    3  [otro             ]  solo hay uno en stock
+    3  [otro             ]  cliente solicita 2 piezas se manda todo el stock que es 1 pieza
+    3  [otro             ]  en existencia solo 1
+    3  [otro             ]  se manda producto en existencia
+    3  [otro             ]  solo disponible 2 piezas
+    3  [sin_stock        ]  no hay existencias
+    3  [otro             ]  solo 4 en stock
+    3  [otro             ]  producto paso a produccion
+    3  [otro             ]  faltante parcial se envia una pieza disponible
+    3  [otro             ]  se manda todo el stock
+    3  [otro             ]  faltante
+    3  [otro             ]  stock en 0
+    3  [otro             ]  se envia todo el stock
+    3  [merma            ]  producto pasa a merma por caducidad
+    3  [otro             ]  solo hay 1 pz
+    3  [otro             ]  solo hay dos piezas
+    3  [otro             ]  faltante completo producto no catalogado
+    3  [otro             ]  producto no apto
+    3  [otro             ]  se manda 3 de existencia
+    2  [merma            ]  merma tiene hongo
+    2  [otro             ]  solo 2en stock
+    2  [dato_captura     ]  no tiene codigo
+    2  [otro             ]  faltante comoelto inventario en ceros
+    2  [otro             ]  no se cumple con la cantidad de kilos que solicita el cliente
+    2  [otro             ]  se uso para fresh
+    2  [otro             ]  se uso para produccion de fresh
+    2  [dato_captura     ]  sin codigo
+    2  [otro             ]  solo en stock
+    2  [otro             ]  sin inventario
+    2  [otro             ]  produccion de frensh
+    2  [otro             ]  faltante completo producto fuera de catalogo
+    2  [otro             ]  faltante parcial, se envia una pieza disponible
+    2  [otro             ]  faltante parcial, se envian 2 piezas disponibles
+    2  [otro             ]  faltante parcial, se envia 1 pieza disponible
+    2  [otro             ]  se uso en fresh
+    2  [no_localizado    ]  no localizado 🫩🫠
+    2  [otro             ]  merms
+    2  [otro             ]  cliente pide 10 piezas se manda todo el stock que son 9 piezas
+    2  [otro             ]  solo lo q hay
+    2  [otro             ]  solo 4 en stoke
+    2  [otro             ]  se envian existencias
+    2  [sin_stock        ]  producto agotado sin stock
+    2  [otro             ]  solo se localizo 1 pieza se manda en pedido
+    2  [otro             ]  nop 😕 esta
+    2  [otro             ]  el sistema no deja avanzar
+    2  [otro             ]  no localizdo
+    2  [otro             ]  faltante parcial se mandan 2 piezas
+    2  [sin_stock        ]  mna, producto sin stock
+    2  [sin_stock        ]  solo 10 en stock
+    2  [error_inventario ]  error inventario
+    2  [otro             ]  solo 8 disponibles
+    2  [otro             ]  no cumple con las indicaciones del cliente
+    2  [otro             ]  faltaten
+    2  [otro             ]  solo 2 disponibles en el inventario
+    2  [otro             ]  va de cortesia
+    2  [otro             ]  solo hay 8piezas
+    2  [otro             ]  usado en fresh
+    2  [merma            ]  caducidad corta/ van de cortesia
+    2  [otro             ]  se mamda 2 de exsistencia
+    2  [otro             ]  producto no ajustado (calii fresh)
+    2  [no_localizado    ]  no localizado mal inventariado
+    2  [otro             ]  se manda. 2 de exsistencia
+    2  [otro             ]  solo 2 disponibles
+    2  [otro             ]  mala calidad (mna no ajustada)
+    2  [otro             ]  se manda existencia 1/3
+    2  [otro             ]  faltante parcial se envia 1 pieza de stock
+    2  [otro             ]  se envia una pieza en inventario
+    2  [otro             ]  faktante comoleto inventario en ceros
+    2  [otro             ]  aplicacion
+    2  [otro             ]  faltante parcial se envia stock fisico 1 pieza
+    2  [otro             ]  mna 24/07
+    2  [otro             ]  stock 2 pz cliente 3 pz
+    2  [otro             ]  el cliente pide 10 y solo hay 2
+    2  [otro             ]  agotdo
+    2  [otro             ]  se envia existencia de inventario
+    2  [otro             ]  se manda producto disponible
+    2  [otro             ]  solo 1 pieza en existencia
+    2  [otro             ]  el cliente pide 2pz . en stock solo hay 1p
+    2  [otro             ]  se manda existencia de 2 pzas
+    2  [otro             ]  solo 2 disponible
+    2  [otro             ]  faltante completo 0 piezas en existencia
+    2  [otro             ]  producto de devolucion
+    2  [otro             ]  no cumple con espesificaciones del cliente
+    2  [otro             ]  solo 7 disponibles
+    2  [otro             ]  solo 14 disponible
+    2  [otro             ]  1 en stok
+    2  [dato_captura     ]  no cuenta con codigo de barras, solo 1 en stock
+    2  [otro             ]  en existencia solo uno
+    2  [otro             ]  faltante parcial, se envia una pieza disponible en inventario
+    2  [otro             ]  no cumple especificaciones del cliente
+    2  [otro             ]  faltante por calidad
+    2  [otro             ]  faltante comoleto pro calidad
+    2  [otro             ]  faltante completo error por calidad
+    2  [sin_stock        ]  no hay en stock
+    2  [otro             ]  cliente pide 2 y solo hay 1pza en stock
+    2  [otro             ]  cliente pide 4 y solo hay 2 en stock
+    2  [otro             ]  solo una pieza disponible
+    2  [merma            ]  faltante comoleto por caducidad
+    2  [otro             ]  mercancia danada
+    2  [merma            ]  pasa a merma
+    2  [dato_captura     ]  no trae codigo 😩
+    2  [otro             ]  se mandaron 4 piezas disponibles en inventario
+    2  [otro             ]  stock 1 pz cliente 2
+    2  [otro             ]  cliente solicita 15, se envia existencia 12pz
+    2  [otro             ]  se envia unica pieza disponible
+    2  [sin_stock        ]  agotado 😩🫩
+    2  [otro             ]  se tomo para uber
+    2  [otro             ]  solo 7 en stoke
+    2  [otro             ]  faltante parcial se envian 2 piezas disponibles en inventario
+    2  [otro             ]  se envian 3 piezas en existencia
+    2  [merma            ]  faltante producto caducado
+    2  [otro             ]  no se encuentra disponible
+    2  [otro             ]  solo hay 6 piezas
+    2  [otro             ]  solo 4 en stok
+    2  [otro             ]  mala
+    2  [otro             ]  incorrecto en cero
+    2  [otro             ]  faltante completo producto o catalogado
+    2  [otro             ]  se manda una pieza disponible
+    2  [otro             ]  se mandaron 6 pz disponibles en inventario
+    2  [otro             ]  solo habia 5 piezas en stock
+    2  [otro             ]  cambiado con el sabor mango
+    2  [dato_captura     ]  codigo correcto
+    2  [otro             ]  se mandaron 11pz disponibles en inventario
+    2  [otro             ]  se manda todo lo que hay en stock
+    2  [otro             ]  solo disponible 3
+    2  [otro             ]  solo dos piezas disponibles
+    2  [otro             ]  esta cambiado con el acondicionador
+    2  [otro             ]  encontre 1 pza
+    2  [otro             ]  faltante completo mala calidad
+    2  [otro             ]  solo hay dos
+    2  [otro             ]  se localizo una pieza
+    2  [otro             ]  se envia piezas disponibles 😁
+    2  [sin_stock        ]  sin stock. mna producto no optimo
+    2  [otro             ]  cliente solicita 5 piezas se manda todo el stock que son 4 piezas
+    2  [otro             ]  faltante parcial se envia la unica pz disponible
+    2  [otro             ]  disponible en inventario 2 piezas
+    2  [sin_stock        ]  sin stock..mna
+    2  [otro             ]  stock 2 pz cliente 3pz
+    2  [otro             ]  se envia existencia 😞
+    2  [otro             ]  producto no se encuentra en las condiciones que lo pide el cliente
+    2  [sin_stock        ]  ya no hay lo eche en un pedido
+    2  [otro             ]  faltante parcial por calidad se envia. 7 piezas
+    2  [otro             ]  solo se localizo una
+    2  [otro             ]  solo encontre 6pzs
+    2  [otro             ]  en existencia 1
+    2  [otro             ]  y
+    2  [otro             ]  7 en stock
+    2  [otro             ]  mandante completo inventario en 0
+    2  [otro             ]  faltante parcial se mandan 2 piezas disponibles
+    2  [otro             ]  e l cliente pide 2 y se manda todo el stock
+    2  [sin_stock        ]  producto agotado por otro pedido :(
+    2  [otro             ]  solo hay )3
+    2  [otro             ]  faltante parcial se envian 7 piezas disponibles
+    2  [otro             ]  se manda producto existente
+    2  [otro             ]  solo 8 disponible
+    2  [merma            ]  producto mermado 🥲
+    2  [otro             ]  se solicita 2, se envia existencia 1
+    2  [otro             ]  disponible solo 1 pieza
+    2  [otro             ]  mna no ajusatda
+    2  [otro             ]  solo hay 4pz
+    2  [otro             ]  faltantr completo
+    2  [otro             ]  se mands existencia
+    2  [otro             ]  solo quedaba una en existencia
+    2  [otro             ]  se fueron por app
+    2  [otro             ]  enviadas mediante aplicacion
+    2  [otro             ]  producto faltante, inventario en ceros
+    2  [otro             ]  se fueron a cortesia
+    2  [sin_stock        ]  no hay producto en inventario
+    2  [sin_stock        ]  el cliente pide 2piezas y no hay en stock
+    2  [dato_captura     ]  solo hay una pieza (codigo borrado)
+    2  [otro             ]  mando existencia 1 de 2 piezas que me pidieron
+    2  [otro             ]  solo1 en stock
+    2  [otro             ]  se envia lo unico disponible
+    2  [otro             ]  solo dos disponibles
+    2  [error_inventario ]  solo una disponible, error de inventario
+    2  [otro             ]  solo 4 piezas disponibles
+    2  [otro             ]  nop 😔 hay
+    2  [otro             ]  faltante completo: inventario en 0
+    2  [otro             ]  fresh
+    2  [otro             ]  se mandan 18pz todo el stock en tienda
+    2  [merma            ]  solo uno en existencia los demas son merma
+    2  [otro             ]  cero en stok
+    2  [otro             ]  faltante completo error de conteo
+    2  [otro             ]  no me deja mandar producto por el gramaje
+    2  [otro             ]  se manda solo 1 ya que los demas estan 0 en stok
+    2  [otro             ]  solo hay 2pz en inventario
+    2  [otro             ]  producto no optimo cnc
+    2  [otro             ]  faltant parcial se envian 4 pz disponibles
+    2  [otro             ]  faltante parcial se envia 1 pieza
+    2  [otro             ]  se manda 4 de existencia
+    2  [otro             ]  se manda 6 de existencia
+    2  [otro             ]  solo 2 en existencia
+    2  [sin_stock        ]  producto agotado 😩
+    2  [otro             ]  solo una en inventario
+    2  [otro             ]  usado para fresh
+    2  [no_localizado    ]  articulo no localizado
+    2  [otro             ]  se envian 2 piezas
+    2  [otro             ]  faltante completo. inventario en cero
+    2  [otro             ]  solo tres en existencia
+    2  [otro             ]  faltante parcial se envian 4 piezas disponibles
+    2  [otro             ]  se manda parcial cliente pide 2 y en stock solo hay 1 pieza
+    2  [otro             ]  se envia la unica pz de inventario
+    2  [otro             ]  muuuuuy aguadas
+    2  [otro             ]  solo 2 pz disponible
+    2  [otro             ]  se envian ultimas dos piezas
+    2  [error_recepcion  ]  mala recepcion
+    2  [sin_stock        ]  sin stock. no catalogado en mh
+    2  [otro             ]  se manda ultima pieza de inventario
+    2  [otro             ]  faltante completo. o pz en inventario
+    2  [otro             ]  uno en inventario
+    2  [otro             ]  faltante parcial se envian 9 piezas disponibles
+    2  [otro             ]  faltante parcial se envia 1 pieza disponible
+    2  [otro             ]  esta en 0 😁
+    2  [otro             ]  faltante completo inventario en cero
+    2  [otro             ]  faltante completo inventario en 0 fuera de catalogo
+    2  [otro             ]  se manda la unica pieza en inventario
+    2  [otro             ]  producto faltante no permite mandar peso disponible
+    2  [otro             ]  existencia solo 2 piezas
+    2  [otro             ]  faltante parcial se envian 2 piezas
+    2  [sin_stock        ]  agotados
+    2  [otro             ]  faltante completo inventario cero
+    2  [otro             ]  solo habia 2 piezas en stock
+    1  [otro             ]  se manda piezas disponibles
+    1  [otro             ]  cliente solicita 10, se envia existencia 9
+    1  [otro             ]  esta cambiado con el de peruano
+    1  [otro             ]  faltante parcial se manda. 6 piezas disponibles
+    1  [sin_stock        ]  no hay producto 😕
+    1  [otro             ]  producto cambiado
+    1  [otro             ]  disponibles solo 2 en existencia
+    1  [otro             ]  inventario en ceros
+    1  [otro             ]  existencia solo 3 piezqs
+    1  [error_inventario ]  error de inventario 🫩
+    1  [otro             ]  solo hay 8
+    1  [sin_stock        ]  no hay....
+    1  [otro             ]  envia producto en existencia
+    1  [no_localizado    ]  producto no localizado 🥲
+    1  [otro             ]  0en stock
+    1  [otro             ]  faltante completo, inventario 0
+    1  [otro             ]  stock 1 pz, cliente 2 se envia existencia
+    1  [otro             ]  nomas hay 3 en existencia
+    1  [otro             ]  mando existencia 6de 10
+    1  [otro             ]  solo 4 en stock las demas mala calidad
+    1  [otro             ]  cliente solicita 2 se envia existencia 1
+    1  [otro             ]  no se acompleta el pedido del cliente
+    1  [otro             ]  tomado para produccion de fresh
+    1  [sin_stock        ]  cero en stock/ va de cortesia caducidad
+    1  [otro             ]  stock 1, cliente 2 pz
+    1  [otro             ]  solouno en inventario
+    1  [otro             ]  se mandaron 8 pz disponibles
+    1  [otro             ]  faltante parcial se mandan piezas disponibles
+    1  [otro             ]  se manda existencia 4/10
+    1  [otro             ]  faltante parcial. se envian 2 piezas disponibles
+    1  [otro             ]  se envia 2 piezas
+    1  [otro             ]  no cumplen con las especificaciones del cliente
+    1  [no_localizado    ]  no localizado, cheque todo el congelado de los panes
+    1  [sin_stock        ]  no hay erros de inventario
+    1  [otro             ]  faltante parcial, se envia 1pz disponible en inventario
+    1  [otro             ]  se manda parcial cliente pide cuatro en stock solo hay 3
+    1  [merma            ]  solamente una pieza por fecha de caducidad
+    1  [otro             ]  cliente solicita 4, se manda existencia 3
+    1  [otro             ]  cliente solicita 10, se envia existencia 5
+    1  [otro             ]  faltante completo. o pz en existencia
+    1  [otro             ]  se envia 5 piezas
+    1  [otro             ]  se envia una en existencia
+    1  [merma            ]  producto no optimo por fecha de caducidad.
+    1  [otro             ]  existencia solo una pieza
+    1  [otro             ]  faltante parcial se envian piezas disponibles mna
+    1  [otro             ]  faltante parcial, se envian piezas disponibles
+    1  [otro             ]  enviado 📩 por uber
+    1  [otro             ]  solo se encontro 1
+    1  [merma            ]  merma no ajustada
+    1  [otro             ]  0. en stock
+    1  [otro             ]  solo3 en stock
+    1  [otro             ]  solo hay 2
+    1  [sin_stock        ]  no hay en exhibicion
+    1  [otro             ]  faltante parcial, se envian 6 pz disponibles en inventario
+    1  [otro             ]  solo hay 4 piezas
+    1  [otro             ]  cliente pide 3 y solo hay 1 en stock
+    1  [otro             ]  faltante completo por cal
+    1  [otro             ]  no ajustado en fresh
+    1  [otro             ]  inventario no ajustado fres
+    1  [otro             ]  inventario no ajustado( calii fresh)
+    1  [otro             ]  inventario no ajustado calidad fresh
+    1  [otro             ]  socio pide 7 y se le envia la ultima pieza en existencia en cedis
+    1  [otro             ]  error de sistema
+    1  [otro             ]  se manda existencia 5/8
+    1  [otro             ]  socio solicita 4 y se mandan las unicas tres piezas que hay en cedis
+    1  [otro             ]  solo 1 pieza localizada
+    1  [otro             ]  faltante completo por mala calidad
+    1  [no_localizado    ]  no localizado 🫩
+    1  [otro             ]  solo uno pieza disponible
+    1  [otro             ]  faltante parcial. se envian 4 piezas disponibles
+    1  [otro             ]  solo 2 en stoke
+    1  [otro             ]  clienta solicita 6, se envia existencia 5
+    1  [otro             ]  faltente parcial. se envian 2 piezas disponibles.
+    1  [otro             ]  no contamos con esa presentacion
+    1  [error_inventario ]  faltante completo. error de inventario.
+    1  [sin_stock        ]  sin existencia en inventario
+    1  [sin_stock        ]  mna fno sin stock
+    1  [otro             ]  se tomaron para uber
+    1  [otro             ]  solo 1 el otro mala calidad
+    1  [otro             ]  falla de inventario
+    1  [otro             ]  mala calidades
+    1  [otro             ]  fecha no optima
+    1  [otro             ]  pide 4 se mandan solo los tres que hay en stock
+    1  [sin_stock        ]  no hay ya se habia reportado
+    1  [otro             ]  solo hay 5 piezas en buen estado
+    1  [merma            ]  pasa a merma por fecha
+    1  [otro             ]  se manda inventario
+    1  [otro             ]  producto que no se maneja en catalogo de condesa
+    1  [otro             ]  producto que no se maneja en este cedis condesa
+    1  [no_localizado    ]  no encontrada
+    1  [otro             ]  se envian las unicas 5 piezas que hay en existencia en el cedis.
+    1  [otro             ]  se manda existencia de 6 pzas
+    1  [otro             ]  producto no se envia por no estar en condiciones pedidas por el cliente (esta verde)
+    1  [otro             ]  stock 9 pz,cliente 10
+    1  [otro             ]  stock 9 pz. cliente 12
+    1  [otro             ]  stock 4 pz, cliente 6
+    1  [otro             ]  stock 1 pz, cliente 2pz
+    1  [sin_stock        ]  no hay 🫠
+    1  [otro             ]  se envia inventario disponible
+    1  [otro             ]  mando existencia 3de 4
+    1  [otro             ]  solo se encuentran 5 piezas
+    1  [otro             ]  faltante por error en inventario
+    1  [merma            ]  se envia una pza la otra paso a merma
+    1  [otro             ]  solo 1 en stockn
+    1  [otro             ]  stock en cero
+    1  [otro             ]  no esta catalogado producto en mh
+    1  [otro             ]  no en inventario
+    1  [otro             ]  solo 1 en inventario
+    1  [merma            ]  por fecha de caducidad
+    1  [no_localizado    ]  producto no localizado.
+    1  [otro             ]  solo hay 5
+    1  [otro             ]  una pieza en existencia
+    1  [otro             ]  solo 5 en inventario
+    1  [otro             ]  mando existencia 1 de 2
+    1  [otro             ]  se fueron en plataforma
+    1  [otro             ]  se envia existencia, stock 1 pz cliente 2
+    1  [otro             ]  faltante completo. inventario 0
+    1  [otro             ]  faltante parcial, se envian 3 piezas disponibles en inventario
+    1  [otro             ]  solo 1 en stockc
+    1  [otro             ]  cliente pide 6 y solo hay 2pzas en stock
+    1  [otro             ]  disponible solo una pieza
+    1  [error_inventario ]  mal inventario fresh
+    1  [otro             ]  stock 4 pz cliente 5
+    1  [otro             ]  stock 4 pz cliente 6
+    1  [otro             ]  flatante parcial se envian 4 piezas disponibles
+    1  [otro             ]  flatante parcial se envian piezas disponibles
+    1  [sin_stock        ]  productos agotado, cliente pide 6 solo hay 5 en cedis
+    1  [sin_stock        ]  agotado. se fue en pedido en pedido de app
+    1  [otro             ]  faltabte completo por calidad
+    1  [otro             ]  mala calidad (negro)
+    1  [otro             ]  se envia producto en existencia 5pz
+    1  [otro             ]  fecha no optima para su consumo
+    1  [otro             ]  producto no cumple con especificaciones del cliente
+    1  [merma            ]  merma por caducidad corta
+    1  [otro             ]  solo 2 hay
+    1  [otro             ]  se mando a cali fresh
+    1  [otro             ]  solo 1
+    1  [otro             ]  no cumple con el peso requerido
+    1  [otro             ]  por el peso no se puede mandar,ya que arrebasa lo que pide
+    1  [otro             ]  se manda existencia 1/1
+    1  [otro             ]  faltante oarcial se envia una pieza disponible en inventario
+    1  [otro             ]  faltante parcial se envian las unicas 2 pz disponibles
+    1  [otro             ]  se manda existencia 6/10
+    1  [otro             ]  no se encuentra el producto
+    1  [otro             ]  enviados por uber
+    1  [otro             ]  0 en stocl
+    1  [otro             ]  se envia unica pieza
+    1  [merma            ]  producto merma
+    1  [merma            ]  caducidad
+    1  [otro             ]  faltante parcial se envia 1 piezas disponible
+    1  [otro             ]  en existencia 2
+    1  [otro             ]  producto parcial , stock fisico 2 piezas se envia dos piezas
+    1  [otro             ]  cliente pide 4 pzs y se envia 1 en stock
+    1  [otro             ]  solo hay uno en existencia
+    1  [otro             ]  solo se envia 1 pieza
+    1  [otro             ]  error se invetario
+    1  [otro             ]  solo hay 6
+    1  [otro             ]  solo hay 9 en existencia
+    1  [otro             ]  faltante parcial, se envian 3 piezas disponibles
+    1  [otro             ]  solo hay tres
+    1  [otro             ]  solo 1 pieza en stock
+    1  [sin_stock        ]  0 en stock _ se fue en un pedido antes que el mio
+    1  [otro             ]  faltante completo , producto entregado a uber
+    1  [otro             ]  faltante parcial , stock 4 piezas enviadas
+    1  [otro             ]  se mandan 3 piezas cliente me pide 4
+    1  [otro             ]  calii fresh
+    1  [otro             ]  el cliente pidio 4 . pero en stock solo hay 3
+    1  [otro             ]  solo se envia una pieza en inventario
+    1  [otro             ]  producto se fue en un pedido antes q este
+    1  [otro             ]  se mando 1 pz disponible en inventario
+    1  [otro             ]  faltante parcial se envia 2 piezas disponibles en inventario
+    1  [otro             ]  en existencia solo una
+    1  [merma            ]  merma por fecha de caducidad
+    1  [otro             ]  solo una localizada
+    1  [merma            ]  salio a merma
+    1  [sin_stock        ]  sin stock piezas no descontados de plataforma
+    1  [otro             ]  se envia 1
+    1  [otro             ]  se envian 2
+    1  [otro             ]  0 en exhibicion
+    1  [otro             ]  cliente solicita 3 piezas y se manda todo el stock que es 1 pieza
+    1  [otro             ]  cliente solicita 2 piezas, se manda todo el stock que es 1 pieza
+    1  [otro             ]  faltante parcial se envian 2 piezas disponobles 2piezas vendidas a uber
+    1  [otro             ]  producto con fecha de 25 de julio
+    1  [otro             ]  faltamte completo
+    1  [otro             ]  mando existencia 6 de 4 piezas
+    1  [sin_stock        ]  sin stock mna
+    1  [otro             ]  sin etock
+    1  [otro             ]  se envia la ultima pieza en stock. el cliente pide 2
+    1  [otro             ]  se fueron en pedido anterior
+    1  [otro             ]  no me permite enviar
+    1  [otro             ]  cortesia
+    1  [otro             ]  no se manejan en mitad el producto
+    1  [otro             ]  no manejamos mitades de sandia, existencia con peso arriba de 5kg
+    1  [otro             ]  producto faltante
+    1  [otro             ]  merm
+    1  [otro             ]  solo 1 en stoke
+    1  [no_localizado    ]  no se vende mitad solo piezas completas
+    1  [otro             ]  nop 😞 hay
+    1  [otro             ]  stock 1 pz cliente solicita 2
+    1  [otro             ]  solo hay un9
+    1  [otro             ]  solo hay 5 paquetes
+    1  [otro             ]  solo 5 en stock
+    1  [otro             ]  se envia la ultima pieza en stock
+    1  [merma            ]  lo de mas es merma
+    1  [otro             ]  el cliente pide 10 piezas y se envian 6 que hay en stock
+    1  [otro             ]  cliente pide 2 piezas se le manda la unica pieza que hay en stock
+    1  [otro             ]  cliente solicita 6 se envia existencia 5
+    1  [otro             ]  se envian unicas piezas
+    1  [otro             ]  solo 2 pz en existencia
+    1  [otro             ]  producto no catalogado en mh condesa
+    1  [otro             ]  faltante parcial. se envia la unica pz en existencia
+    1  [otro             ]  el cliente pide 3 . y se manda la unica pieza en stock
+    1  [sin_stock        ]  se manda dos piezas y dos piezas sin stock
+    1  [otro             ]  no se localizaron
+    1  [otro             ]  cliente solicita 4, se envia existencia 3
+    1  [error_inventario ]  faltante comoelto por error de inventario
+    1  [otro             ]  no 😞 se encontro
+    1  [otro             ]  se envia la existencia en inventario
+    1  [otro             ]  se envia la que hay en inventario
+    1  [merma            ]  paso a merma por caducidad
+    1  [otro             ]  mando existencia 2 de 1
+    1  [otro             ]  no se localizo producto
+    1  [otro             ]  solo hay dos piezas lo cual se mandaran
+    1  [no_localizado    ]  no localizado solo se envia uno
+    1  [otro             ]  cambiado por fusilli
+    1  [otro             ]  disponible 3 pz
+    1  [otro             ]  cliente solicita 2, se envia examen 1
+    1  [otro             ]  producto se fue un pedido anterior a este
+    1  [otro             ]  faltante parcial. se emvia la unica pieza disponible
+    1  [otro             ]  solo una pieza en stock
+    1  [otro             ]  faltante parcial , se envia 1 pieza disponible
+    1  [sin_stock        ]  ya no hay
+    1  [otro             ]  faltante completo.
+    1  [error_inventario ]  faltante completo por error de inventario
+    1  [otro             ]  se envian 3 pz existencia
+    1  [otro             ]  en existencia solo 2
+    1  [otro             ]  solo hay 7 piezas
+    1  [sin_stock        ]  producto agotado,error de inventario
+    1  [otro             ]  solo hay 4 pz disponibles
+    1  [otro             ]  sib stock
+    1  [sin_stock        ]  no hay exitencias
+    1  [otro             ]  produccion de fresh
+    1  [otro             ]  cliente pide 3 y solo hay 2 en stock
+    1  [otro             ]  se manda 1 de 2
+    1  [otro             ]  solo 7 en stock
+    1  [otro             ]  se manda 22 de existencia
+    1  [otro             ]  cad corta
+    1  [otro             ]  sol9 hay dos
+    1  [otro             ]  unicamente pieza que marca el stock
+    1  [otro             ]  se manda existencia 3 de 6
+    1  [otro             ]  se envia unica pieza disponible 😃
+    1  [sin_stock        ]  agotadoa
+    1  [otro             ]  no se desconto del inventario
+    1  [otro             ]  faltantes
+    1  [otro             ]  se manda 3 de existencia 7501086801046
+    1  [otro             ]  se manda parcial el cliente pide tres y en stock solo hay 1 pieza
+    1  [otro             ]  se manda parcial por que solo hay uno en inventario el cliente pide tres piezas
+    1  [otro             ]  estan verdes
+    1  [otro             ]  solo se localizo una pieza
+    1  [otro             ]  cliente pide 2. se manda una sola pieza que hay en stock
+    1  [otro             ]  0 en existencia
+    1  [otro             ]  solamente encontrado 1
+    1  [otro             ]  se manda existencia 1
+    1  [otro             ]  se manda existencia 3pz
+    1  [otro             ]  se manda lo ultimo en stock. el cliente pidio 3. pero en stock solo hay 2
+    1  [otro             ]  no acpoto
+    1  [sin_stock        ]  producto agotadi
+    1  [otro             ]  faltante incompleto inventario en ceros
+    1  [otro             ]  disponible solo 3
+    1  [otro             ]  producto en mna
+    1  [otro             ]  solo habia 4 pzas en stock
+    1  [otro             ]  mala calidaf
+    1  [otro             ]  solo se surtio lo que tenemos en existencia
+    1  [otro             ]  solo 1 pz disponible
+    1  [otro             ]  se envia 1 pieza en existencia
+    1  [otro             ]  faltante parcial se mandan 3 piezas
+    1  [otro             ]  faltante parcial por calidad
+    1  [otro             ]  el cliente pide 2 y se envia 1 que hay en stock
+    1  [otro             ]  faltante completo inventario 0
+    1  [otro             ]  solo 6 en stock
+    1  [otro             ]  solo 8 piezas disponibles
+    1  [sin_stock        ]  no hay productos
+    1  [otro             ]  error de invetario
+    1  [otro             ]  solo hay 10
+    1  [otro             ]  se envia todo lo que hay en stock
+    1  [otro             ]  producto no optimo mna
+    1  [otro             ]  faltante completo, el cliente pide la mitad y no la vendemos
+    1  [otro             ]  faltante compelto, cliente requiere la mitad y no tenemos producto disponible
+    1  [otro             ]  no cumple con la solicitud que requiere el cliente
+    1  [otro             ]  solo 3 piezas en existencia
+    1  [otro             ]  se manda exitencia 1/2
+    1  [otro             ]  0 en stoke inventario no ajustado calii fresh
+    1  [otro             ]  solo se envia piezas disponibles
+    1  [otro             ]  se manda parcial por que el resto del producto no esta en condiciones para su consumo
+    1  [otro             ]  se manda todo el stock disponible cliente requiere 4 piezas unicamente se manda 1
+    1  [otro             ]  no catalogado en mh condesa
+    1  [otro             ]  producto no optimo para su consumo
+    1  [otro             ]  sin sto
+    1  [otro             ]  mma
+    1  [otro             ]  se manda existencia 3/5
+    1  [otro             ]  faltante completo, inventario en cero
+    1  [otro             ]  3 en stock
+    1  [otro             ]  se manda todo el stock disponible cliente requiere 6 se mandan 4
+    1  [otro             ]  cliente pide 2 y solo hay 1 en stock
+    1  [otro             ]  se mandan 6 piezas el cliente pide 7 pero unicamente hay 6
+    1  [otro             ]  se envia solo lo disponible
+    1  [otro             ]  se manda parcial cliente pide 3 y en stock solo hay 2
+    1  [otro             ]  se manda parcial pide 4 y en stock solo hay 1 pieza
+    1  [otro             ]  se manda todo lo que hay en stock. el cliente pide 6 piezas y unicamente se le mandan 2
+    1  [merma            ]  pasas merma
+    1  [otro             ]  0 e. stock
+    1  [otro             ]  se envio stock 1 pieza , faltante parcial
+    1  [otro             ]  solo hay 3pz
+    1  [otro             ]  solo hay 2pz
+    1  [otro             ]  faltante completo. inventario en ceros
+    1  [otro             ]  mando existencia 3/4
+    1  [sin_stock        ]  no hay produ
+    1  [otro             ]  solo disponibles 4 piezas
+    1  [otro             ]  se manda existencia 3/6
+    1  [otro             ]  se manda existencia 4/6
+    1  [otro             ]  producto no optimo se manda a lo mejor de la sucursal
+    1  [otro             ]  se manda loque hay en stock
+    1  [otro             ]  solo 5 piezas disponibles
+    1  [otro             ]  no venden
+    1  [otro             ]  solo hay uba pieza
+    1  [otro             ]  disponible solo 1
+    1  [otro             ]  nop apto para mandar
+    1  [otro             ]  mala calida
+    1  [otro             ]  soll habia 3 piezas en stock
+    1  [otro             ]  solo habia 2 piezas en buen estado
+    1  [otro             ]  solo se mando la existencia
+    1  [otro             ]  producto no existe
+    1  [otro             ]  usado en otro pedido
+    1  [otro             ]  esta inventario en 0
+    1  [sin_stock        ]  0 en stock producto no localizado
+    1  [otro             ]  se manda existencia 3/4
+    1  [otro             ]  paso a produccion calii fresh
+    1  [otro             ]  no cuento con las piezas que me dieron
+
+======================================================================
+INVENTARIO DISPONIBLE — value distribution
+======================================================================
+negative         91    1.9%
+exactly 0      1425   30.3%
+1              1078   22.9%
+2–5            1439   30.6%
+6–20            498   10.6%
+21–100           83    1.8%
+>100              6    0.1%
+null/blank       80    1.7%
+
+======================================================================
+HUB — raw strings as they arrive (note the trailing spaces)
+======================================================================
+  1194  "MH Contry"  →  mh_contry
+   881  "MH Cumbres"  →  mh_cumbres
+   814  "MH Guadalupe"  →  mh_guadalupe
+   723  "MH San Nicolás"  →  mh_san_nicolas
+   502  "MH Saltillo"  →  mh_avicola
+   301  "MH Condesa"  →  mh_condesa
+   285  "MH Zapopan"  →  mh_zapopan
+
+======================================================================
+CIUDAD
+======================================================================
+  3629  Monterrey
+   499  Saltillo
+   288  Guadalajara
+   282  CDMX
+     2  Queretaro
+
+======================================================================
+PRODUCTO — all 1275 distinct, by frequency
+======================================================================
+  102  Papaya
+   83  Ejotes
+   66  Guayaba
+   64  Fresas caja 454g
+   56  Piña miel cortada Calii Fresh 500g
+   53  Mango ataúlfo
+   50  Manzana golden importada
+   48  Epazote
+   40  Jícama
+   39  Mango ataúlfo cortado Calii Fresh 400g
+   36  Perejil liso
+   35  Hierbabuena
+   34  Papaya cortada Calii Fresh 500g
+   33  Chile serrano verde
+   32  Albahaca
+   27  Zanahoria leña
+   26  Bastones mixtos en charola Calii Fresh 1pz
+   26  Sandía cortada Calii Fresh 500g
+   25  Berros
+   25  Chile poblano
+   25  Repollo verde
+   24  Piña miel
+   24  Pay de limón sin azúcar Calii Fresh 190g
+   24  Zanahoria mediana
+   24  Champiñones blancos 225g caja
+   23  Menta
+   22  Nopales
+   22  Limón sin semilla
+   22  Camote
+   21  Papa blanca ahorramás
+   21  Sandía
+   20  Guacamole Calii Fresh 250g
+   20  Melón chino cortado Calii Fresh 500g
+   20  Morrón rojo
+   19  Lechuga sangría
+   19  Melón chino
+   18  Manzana roja importada
+   17  Uva verde seleccionada Calii Fresh 300g
+   17  Pico de gallo Calii Fresh 200g
+   17  Espinacas
+   17  Mandarina importada
+   16  Elote blanco
+   16  Chile habanero naranja
+   16  Manzana golden escolar 600g
+   16  Pepino cortado Calii Fresh 500g
+   16  Tomatillo
+   15  Chile jalapeño verde
+   15  Kale
+   15  Jícama cortada Calii Fresh 500g
+   14  Piña miel ahorramás
+   14  Morrón verde
+   14  Papa blanca
+   14  Tuna blanca pelada Calii Fresh 500g
+   13  Mini Cheesecake estilo New York Nūbe 130g
+   13  Leche entera Alpura 1.5L
+   13  Jengibre
+   13  Acelgas
+   13  Aguacate extra
+   13  Dona rellena lotus Nūbe 76g
+   12  Rabanitos bolsa 454g
+   12  Floretes de coliflor bolsa Mr. Lucky 454g
+   12  Limón extra
+   12  Chile jalapeño rojo
+   12  Yoghurt bebible durazno LALA 220g
+   12  Manzana gala
+   12  Naranja nacional
+   11  Espinaca Popeye Mr. Lucky 284g
+   11  Tortillas de maíz blanco Nūbe 800g
+   11  Tomatillo con cáscara ahorramás
+   11  Limón ahorramás
+   11  Bagel cristalino Nūbe 55g
+   11  Ajo entero
+   11  Papa russet
+   11  Huevo blanco Bachoco caja 30pz
+   10  Pera d'anjou
+   10  Mezcla floretes brócoli y coliflor con zanahoria Mr. Lucky 454g
+   10  Deshebrada de res guisada Calii 500g
+   10  Tuna blanca
+   10  Alimento lácteo bebible sin azúcar sabor fresa Sofúl LT Yakult 209g
+   10  Brócoli
+    9  Elote amarillo 3-pack
+    9  Espinaca baby Popeye Mr. Lucky 227g
+    9  Filete de salmón Camanchaca 200g
+    9  Pasta fideo grueso Fior Di Pasta 200g
+    9  Bebida ponche de frutas Arizona 570ml
+    9  Panqué de elote sin gluten Nūbe 100g
+    9  Uva roja sin semilla bolsa 1kg
+    9  Plátano macho
+    9  Tiramisú de lotus Calii Fresh 115g
+    9  Sandía personal
+    9  Romero
+    9  Ensalada italiana Mr. Lucky 284g
+    9  Corazón de apio orgánico Mr. Lucky 450g
+    9  Mango bola
+    8  Frambuesas caja 170g
+    8  Betabel
+    8  Frutas en charola Calii Fresh 1pz
+    8  Centro de top sirloin rebanado Praderas Huastecas 1kg
+    8  Pay de limón carlota Calii Fresh 190g
+    8  Café helado con adaptógenos Calii 240ml
+    8  Zanahoria rallada Mr. Lucky 200g
+    8  Queso panela light Chen 400g
+    8  Cebolla cambray
+    8  Verdolaga
+    8  Panqué de coco sin gluten Nūbe 100g
+    8  Yoghurt bebible mango LALA 220g
+    8  Medias noches brioche Bimbo 384g
+    8  Mix de frutas Calii Fresh 300g
+    8  Leche light orgánica Bove 1
+    8  Corazones de lechuga orejona Nutribits 3pz
+    8  Huevo blanco San Juan caja 30pz
+    8  Pechuga de pollo natural congelada Campo Regio 650g
+    8  Yoghurt bebible de fresa Alpura 220ml
+    8  Natilla vainilla Danette 100g
+    8  Crema La Norteñita 250g
+    8  Lechuga italiana
+    7  Yoghurt griego natural 0% grasa Chobani 150g
+    7  Leche entera LALA 1.5L
+    7  Alimento lácteo bebible fresa Danonino 170g
+    7  Pan ciabatta rústica Nūbe 98g
+    7  Jugo de uva Frutsi 250ml
+    7  Hoja té de limón
+    7  Café helado con proteína sabor vainilla Calii 240ml
+    7  Leche evaporada Carnation 360g
+    7  Stevia líquida N'Joy 45ml
+    7  Alimento lácteo fermentado Yakult 80ml (5-pack)
+    7  Yoghurt bebible piña coco LALA 220g
+    7  Cebollín
+    7  Alimento lácteo bebible sin azúcar sabor natural Sofúl LT Yakult 208g
+    7  Arúgula baby orgánica Earthbound Farm 142g
+    7  Yoghurt griego bebible sin azúcar mango Yoplait 220g
+    7  Perejil chino
+    7  Yoghurt griego batido moras Yoplait 145g
+    7  Yoghurt bebible fresa LALA 220g
+    7  Naranja importada
+    6  Leche sabor chocolate Yomi LALA 180ml
+    6  Bigotes con chocolate Tía Rosa 80g
+    6  Dátiles rellenos de crema de almendra Calii Fresh 140g / 6 pz
+    6  Pasta fideo mediano Fior Di Pasta 200g
+    6  Manzanilla
+    6  Leche deslactosada light San Marcos 1L
+    6  Yoghurt natural Yoplait 125g
+    6  Nopal en cubos bolsa 500g
+    6  Leche de coco LALA Vita 960ml
+    6  Tomate bola
+    6  Chícharo en vaina
+    6  Pierna con muslo orgánica congelada Aires de Campo 500g
+    6  Bistec especial de res Campo Regio 500g
+    6  Galletas príncipe chocolate Marinela 126g
+    6  Coco
+    6  Almendra entera Calii 500g
+    6  Salsa verde casera Calii Fresh 200g
+    6  Chorizo casero Kir 200g
+    6  Mezcla floretes brócoli y coliflor Mr. Lucky 454g
+    6  Concha vainilla Nūbe 1pz
+    6  Kiwi importado
+    6  Crema half & half Lyncott 980ml
+    6  Queso panela Caperucita 200g
+    6  Queso panela Zwan 400g
+    6  Yoghurt doble cero durazno bebible Yoplait 242g
+    6  Galletas integral de amaranto sabor amaranto Calii 30g (4 pack)
+    6  Machaca de res Chata 99g
+    6  Jugo spirulina azul mix procesado en frío Calii 480ml
+    6  Jugo zanahoria mix procesado en frío Calii 480ml
+    6  Panqué de zanahoria y nuez Nūbe 85g
+    6  Chocolatín Nūbe 90g
+    6  Leche sin lactosa low carb LALA 100 1L
+    6  Alimento lácteo bebible sin azúcar sabor mango Sofúl LT Yakult 209g
+    6  Cebolla morada
+    6  Pepino americano
+    6  Tomate huaje
+    5  Kombucha sabor manzana jengibre Bebida Viva 377ml
+    5  Kombucha sabor jamaica Bebida Viva 377ml
+    5  Smoothie proteína verde mix Calii 375ml
+    5  Nopal baby bolsa 200g
+    5  Milanesa de pollo natural ALCO 500g
+    5  Plátano chiapas
+    5  Refresco sin azúcar Pepsi Black 1.5L
+    5  Jitomate bola
+    5  Yoghurt griego bebible 20g proteína vainilla Chobani 296ml
+    5  Miel de abeja Carlota 500g
+    5  Leche saborizada vainilla Santa Clara 180ml
+    5  Palitos de apio Mr. Lucky 400g
+    5  Pasta spaghetti La Moderna 450g
+    5  Jugo de mango Jumex 250ml
+    5  Alimento lácteo sin azúcar sabor fresa Sofúl 105g
+    5  Yoghurt batido griego natural sin azúcar Yoplait 145g
+    5  Gelatina sabor uva D'Gari 120g
+    5  Yoghurt batido mango Alpura 125g
+    5  Roll francés Nūbe 84g
+    5  Yoghurt griego natural Oikos 900g
+    5  Filete de salmón premium Camanchaca 227g
+    5  Doraditas veganas de plátano Calii 120g
+    5  Manzana granny smith
+    5  Frijoles bayos Refritos Chata 430g
+    5  Refresco vidrio no retornable Coca Cola 500ml
+    5  Bebida japonesa de lichi con coco Kokozo 320ml
+    5  Atún en trozos en agua bajo en sodio Marina Azul 74g
+    5  Dátil con hueso Calii 200g
+    5  Galleta doble chocolate Nūbe 76g
+    5  Leche saborizada chocolate Santa Clara 180ml
+    5  Queso cottage 4% Lyncott 110g
+    5  Pan de caja multicereal sin gluten Deorno 860g
+    5  Alimento lácteo bebible sin azúcar ciruela Activia 225g
+    5  Gorditas veganas de plátano Calii 270g
+    5  Cubos de atún y camarón Dolores 200g
+    5  Yoghurt bebible fresa mora LALA 220g
+    5  Plátano dominico racimo
+    5  Filete de pechuga de pollo pigmentado congelada Bachoco 550g
+    5  Waffles estilo belga sabor red velvet Wafflus 260g
+    4  Café clásico con leche deslactosada LALA 330ml
+    4  Salsa verde Herdez 240g
+    4  Sashimi de atún premium Dolores 150g
+    4  Mezcla de chips de vegetales enchiladas Calii 100g
+    4  Lavatrastes biodegradable lavanda Kuxtal 820ml
+    4  Ensalada mixta Mr. Lucky 454g
+    4  Cilantro
+    4  Molida de res 95/5 Los Pastizales 500g
+    4  Harina para hot cakes Granvita 400g
+    4  Papilla durazno etapa 2 Gerber 100g
+    4  Súper pan blanco con ajonjolí Wonder 567g
+    4  Avena Quaker 475g
+    4  Mini floretes de brócoli Mr. Lucky 225g
+    4  Avena instantánea 0% variedad de sabores Granvita 8 sobres 35g c/u
+    4  Leche entera Alpura 1L (4 Pack)
+    4  Galletas sabor chocolate Oreo 114g
+    4  Chocolate con leche original Carlos V 18g
+    4  Yoghurt griego natural deslactosado sin grasa Alpura 125g
+    4  Ensalada primavera Mr. Lucky 142g
+    4  Leche vegetal zero NotMilk 1L
+    4  Refresco 7 Up 600ml
+    4  Pork belly sin piel PROAN 500g
+    4  Suero rehidratante manzana Electrolit 625ml
+    4  Zanahoria baby Mr. Lucky 454g
+    4  Fresa congelada con chocolate sin azúcar Eaterz 70g
+    4  Mezcla campesina La Huerta 500g
+    4  Stick de pepperoni Snackin 28g
+    4  Molida de res 80/20 Rancho Norte 500g
+    4  Puré de tomate La Costeña 210g
+    4  Pollo entero pigmentado congelado Bachoco 2kg
+    4  Yoghurt con fresas Yoplait 125g
+    4  Jugo maracuyá procesado en frío Calii 480ml
+    4  Alimento lácteo sin azúcar sabor durazno Sofúl 105g
+    4  Aceitunas verdes deshuesadas Carbonell 140g
+    4  Alimento lácteo sin azúcar sabor natural Sofúl 105g
+    4  Kombucha sabor sandía fresca Bebida Viva 377ml
+    4  Filete de tilapia 100/100 Mar Sereno 150g
+    4  Mix de arándanos y dulces enchilados Calii 100g
+    4  Tortillas de maíz amarillo Nūbe 800g
+    4  Yoghurt griego bajo en grasa moras bebible Yoplait 220g
+    4  Atún en agua Nair 120g
+    4  Gusano chamoy Lucas 36g
+    4  Queso brie Président 198g
+    4  Leche condensada La Lechera 375g
+    4  Dona brownie con chocolate blanco Nūbe 90g
+    4  Papa galeana blanca
+    4  Calabaza
+    4  Huevo blanco de gallina libre Bachoco 12pz
+    4  Yoghurt doble cero fresa bebible Yoplait 242g
+    4  Aguacate ahorramás
+    4  Salsa verde cremosa Calii 500g
+    4  Tortillas de maíz nixtamalizado Calii Fresh 400g
+    4  Yoghurt bebible de fresa deslactosado Alpura 220ml
+    4  Licuado de yoghurt fresa plátano y cereal LALA 220g
+    4  Leche saborizada capuchino Santa Clara 180ml
+    4  Caldo de pollo Knorr 200g
+    4  Queso mozzarella rallado Calii 300g
+    4  Queso panela light LALA 400g
+    4  Ensalada de vegetales Herdez 400g
+    4  Yoghurt griego natural Oikos 125g
+    4  Gelatina piña Dany 125g
+    4  Atún en trozos en agua Marina Azul 74g
+    4  Camarón cocido 41/50 pelado sin desvenar Del Pacifico 500g
+    4  Col blanca
+    4  Salchicha de pavo frankfort Bafar 500g
+    4  Queso monterey jack rallado Dutch Farms 227g
+    4  Costilla de cerdo para guisar Cantú 400g
+    4  Aceite de aguacate Chosen Foods 500ml
+    4  Papas estilo gajo sazonadas Oma's Haus 450g
+    4  Yoghurt griego vainilla Chobani 907g
+    4  Bimbuñuelos Bimbo 99g
+    4  Chamberete orgánico CorganiC 700g
+    4  Shampoo anticaída biotinamina B3 Pantene 510ml
+    4  Fibra esponja multiusos Reynera 1pz
+    4  Dona rellena nocilla Nūbe 72g
+    4  Col morada
+    4  Paletas de hielo surtidas Calii 15pz
+    4  Chícharos con zanahoria Del Monte 410g
+    4  Mango congelado orgánico Ultraorganics 454g
+    4  Jarabe miel de maple Pronto 250ml
+    4  Rebanadas Bimbo 55g
+    4  Frijoles bayos enteros La Costeña 560g
+    4  Crema de avellana Nutella 350g
+    4  Gelatina en leche sabor fresa D'Gari 120g
+    4  Lasagna de luigi La Moderna 500g
+    4  Avena integral Quaker 340g
+    4  Aceite de oliva para cocinar Oli 500ml
+    4  Molida de res 80/20 Campo Regio 500g
+    4  Brownie chocolate belga Nūbe 67g
+    4  Ensalada italiana orgánica Mr. Lucky 284g
+    4  Salami peperami original Zwan 23g
+    4  Frijol pinto nacional Calii 1kg
+    4  Poro
+    4  Crema para café caramelo Chobani 710ml
+    4  Mazapán De La Rosa 12pz
+    4  Alimento lácteo sin azúcar sabor manzana Sofúl 105g
+    4  Queso panela Navarro 400g
+    4  Molida de cerdo 80/20 Rancho Norte 500g
+    4  Yoghurt griego bebible sin azúcar fresa Yoplait 220g
+    4  Refresco Pepsi Light 600ml
+    4  Agua natural Epura 1L
+    4  Tostaditas horneadas salmas Sanissimo 90g
+    4  Arroz con leche Calii Fresh 225g
+    4  Lechuga orejona
+    4  Alimento lácteo fermentado sin azúcar Yakult 80ml (5-pack)
+    3  Mole poblano con chocolate Doña María 235g
+    3  Queso panela La Villita 440g (3-pack)
+    3  Yoghurt griego pastel de queso con fresa sin azúcar Chobani 150g
+    3  Papilla pera etapa 3 Gerber 170g
+    3  Papilla durazno etapa 3 Gerber 170g
+    3  Natilla vainilla LALA 125g
+    3  Galletas Crackets 348g
+    3  Pastillas sabor mentol y eucalipto Halls 9pz
+    3  Sopa de fideos con sabor tomate La Moderna 82g
+    3  Panqué de chocolate sin gluten Nūbe 100g
+    3  Almendra confitada Calii 250g
+    3  Tenders de pollo cubiertos de coliflor sin gluten Caulipower 392g
+    3  Yoghurt batido natural LALA 900g
+    3  Molida de cerdo Campo Regio 500g
+    3  Fajitas de pollo ALCO 500g
+    3  Corazones de lechuga romana orgánica Mr. Lucky 2pz
+    3  Gansito Marinela 50g
+    3  Vinagre balsámico Carbonell 250ml
+    3  Atún en trozos en aceite de oliva Marina Azul 74g
+    3  Life Savers enchilados Calii 150g
+    3  Alimento lácteo bebible fresa Activia 225g
+    3  Leche orgánica de almendra Güd 1L
+    3  Fécula de maíz regular Maizena 425g
+    3  Agua de coco con maracuyá Acapulcoco 330ml
+    3  Hummus dip natural Libanius 280g
+    3  Chocolate amargo 85% cacao excellence Lindt 100g
+    3  Leche deslactosada Alpura Selecta 1L
+    3  Pan ciabatta cristal gouda Nūbe 95g
+    3  Medallones de elote con rajas Cheffry 360g
+    3  Ensalada de atún El Dorado 135g
+    3  Yoghurt batido fresa Alpura 125g
+    3  Jugo fresa citrus procesado en frío Calii 480ml
+    3  Cacahuates estilo japonés Kiyakis 50g
+    3  Shot natural piña, jengibre y pimienta de cayenna Calii 74ml
+    3  Panqué de vainilla y queso sin gluten Nūbe 80g
+    3  Leche deslactosada barista orgánica Bove 946ml
+    3  Yoghurt batido griego frutos rojos LALA 120g
+    3  Molida de res 95/5 Rancho Norte 500g
+    3  Leche cacao LALA 100 330ml
+    3  Bebida energética ultra sin azúcar lata Monster 473ml
+    3  Mix botanero enchilado Calii 200g
+    3  Almendra entera Okko 75g
+    3  Manzana golden ahorrapack 500g
+    3  Aguja norteña Campo Regio 350g
+    3  Crema de almendras Calii 250g
+    3  Ensalada campesina Del Monte 215g
+    3  Detergente en polvo lavanda Arcoíris 1kg
+    3  Suero rehidratante ponche de frutas Electrolife Zero 625ml
+    3  Yoghurt batido durazno LALA 900g
+    3  Manzana golden nacional
+    3  Croissant Nūbe 65g
+    3  Isotónico naranja Gatorade 1L
+    3  Queso panela Caperucita 400g
+    3  Crema para batir Lyncott 980ml
+    3  Salsa tatemada Calii 500g
+    3  Panqué de elote con dulce de leche sin gluten Deorno 100g
+    3  Leche deslactosada LALA 1L
+    3  Producto lácteo combinado Más Amor Que Nutre 1L
+    3  Tortillas de harina Torti Ricas 460g
+    3  Molida de pollo orgánica congelada Aires de Campo 565g
+    3  Agua mineral limonada light Peñafiel 600ml
+    3  Durazno importado
+    3  Milanesa de bola de res Praderas Huastecas 1kg
+    3  Salsa de tomate catsup sin azúcar añadida Heinz 369g
+    3  Chorizo de pavo y cerdo FUD 200g
+    3  Jabón de tocador dermatológico Lirio 150g
+    3  Queso panela light Carranco 400g
+    3  Chile habanero verde
+    3  Hummus dip de chipotle Libanius 280g
+    3  Yoghurt griego bebible 20g proteína frutos rojos vainilla Chobani 296ml
+    3  Pechuga de pavo Sabori 250g
+    3  Macadamia con sal Calii 100g
+    3  Dip jocoque seco chile piquín Sta Evelia 250g
+    3  Corazones de lechuga romana Mr. Lucky 3pz
+    3  Pan multigrano cero cero Bimbo 610g
+    3  Refresco sin azúcar Pepsi Black 600ml
+    3  Leche sabor chocolate Nesquik 240ml
+    3  Refresco sin azúcar Sprite 600ml
+    3  Suero rehidratante coco Electrolit 625ml
+    3  Pechuga de pollo congelada orgánica Tru 500g
+    3  Almendras Verde Valle 75g
+    3  Pingüinos Marinela 80g
+    3  Media crema Nestlé 190g
+    3  Sardinas premium en salsa de tomate Dolores 120g
+    3  Crema para batir Lyncott 500ml
+    3  Galletas sabor chocolate Oreo 189g
+    3  Yoghurt griego crema de cacahuate flip Chobani 128g
+    3  Coco en rebanadas con chamoy Nutribits 160g
+    3  Agua Pureza Vital Nestlé 1L
+    3  Calabaza criolla
+    3  Caldo de tomate en polvo Calii 250g
+    3  Natilla chocolate Danette 100g
+    3  Leche entera LALA 1L
+    3  Salmón fresco noruego Hanseatik 360g
+    3  Leche light Alpura 1L
+    3  Churritos de amaranto sabor sal y limón sin gluten Calii 200g
+    3  Hojuelas de maíz sabor chocolate Kranky 53g
+    3  Pan integral 100 con ajonjolí Wonder 567g
+    3  Café instantáneo Nescafé Decaf 120g
+    3  Chuleta cowboy de cerdo PROAN 300g
+    3  Barras de avena sabor fresa Quaker Stila 150g
+    3  Medallón de atún rojo 4-pack Dolores 680g
+    3  Lomo de cerdo Campo Regio 500g
+    3  Salsa mexicana verde La Costeña 250g
+    3  Panditas enchiladas Calii 250g
+    3  Chayote
+    3  Papa blanca cambray
+    3  Spaghetti con queso La Moderna 200g
+    3  Leche deslactosada Alpura 1.5L
+    3  Huevo blanco Orespi caja 30pz
+    3  Queso manchego rallado Calii 225g
+    3  Chips de jícama sabor salsas negras Healthy Crunch 60g
+    3  Pechuga de pollo entera congelada Bachoco 600g
+    3  Limpiador líquido alegra tu día Poett 4L
+    3  Harina para hot cakes Morama 400g
+    3  Flan horneado tipo casero Yoplait 110g (2 Pack)
+    3  Galletas integral de amaranto sabor chocolate Calii 30g (4 pack)
+    3  Gelatina uva Dany 125g
+    3  Jamón virginia de pavo Sabori 250g
+    3  Leche sabor fresa Yomi LALA 180ml
+    3  Mix de frutos secos Calii 200g
+    3  Queso panela rebanado FUD Cuida-T+ 300g
+    3  Yoghurt bebible fresa Danone 220g
+    3  Agua mineral Topo Chico 600ml
+    3  Arroz integral Verde Valle 900g
+    3  Filete basa Mar Sereno 200g
+    3  Chorizo de pollo Sabropollo 600g
+    3  Queso panela Esmeralda 400g
+    3  Jamón de pierna horneada Corona 250g
+    3  Molida de pechuga de pavo Dos Familias 500g
+    3  Gelatina limón Dany 125g
+    3  Salsa tlaquera Del Primo 300g
+    3  Detergente líquido para ropa delicada Woolite 2.83 kg
+    3  Huevo blanco Orespi caja 12pz
+    3  Aromatizante varitas manzana canela Glade 100ml
+    3  Arrachera marinada nacional Campo Regio 500g
+    3  Frijoles refritos Calii 500g
+    3  Sorbet de frutos del bosque Calii 500ml
+    3  Salchicha de pavo hot dog San Rafael 500g
+    3  Pepperoni Parma 100g
+    2  Churritos de coliflor sabor fuego Healthy Crunch 60g
+    2  Queso crema LALA 190g
+    2  Acaí Sambazon 400g (4pz de 100g c/u)
+    2  Queso panela reducido en grasa Zwan 400g
+    2  Detergente en polvo poder y cuidado Ariel 850g
+    2  Nuggets de pollo cubiertos de coliflor sin gluten Caulipower 392g
+    2  Tortillas de harina estilo Sonora Artemisa 500g
+    2  Yoghurt licuado nuez-cereal Nestlé 500g
+    2  Choco Roles Marinela 80g
+    2  Néctar de manzana Jumex 960ml
+    2  Galletas maxitubo fresa mini barritas Marinela 222g
+    2  Churritos de amaranto sabor tajín sin gluten Calii 200g
+    2  Pepita tostada Calii 250g
+    2  Avena en polvo sabor plátano y moras Granvita 400g
+    2  Lentejas Verde Valle 500g
+    2  Cubos de res congelada orgánica Verdes Motivos 450g
+    2  Chips de taro enchiladas Calii 100g
+    2  Papilla pera etapa 2 Gerber 100g
+    2  Papilla mango etapa 2 Gerber 100g
+    2  Tortillas de nopal y espinaca Nūbe 800g
+    2  Puré de papa Verde Valle 160g
+    2  Queso parmesano Kraft 226g
+    2  Morrón amarillo
+    2  Papas fritas sabor jalapeño Calii 190g
+    2  Waffles estilo belga sabor clásico Wafflus 300g
+    2  Paleta mango con chile Vero 40pz
+    2  Avena en bolsa No.1 400g
+    2  Filete de salmón canadiense Amor a Mar 200g
+    2  Palomitas con mezcla de chiles Slim Pop 110g
+    2  Carpaccio de atún ahumado Fiordo 110g
+    2  Empanizador granulado Corn Flakes 160g
+    2  Yoghurt bebible fresa Yoplait Kids 220g
+    2  Yoghurt batido griego frutos rojos LALA 900g
+    2  Kombucha sabor original Bebida Viva 377ml
+    2  Jugo de guayaba Jumex 413ml
+    2  Refresco Coca Cola Original 355ml (12-pack)
+    2  Frijoles claros enteros Isadora 454g
+    2  Leche semidescremada Granja 1L
+    2  Leche entera Alpura Selecta 1L
+    2  Papilla manzana Gerber Junior 110g pouch
+    2  Harina de trigo San Antonio 907g
+    2  Nachos Tostitos 400g
+    2  Deshebrada vegetariana de soya Soi-Yah! 360g
+    2  Desodorante roll on fresh Old Spice 50g
+    2  Pañuelos faciales ahorrapack Kleenex 90pz (3-pack)
+    2  Leche condensada La Lechera 100g
+    2  Jugo fresa coco procesado en frío Calii 480ml
+    2  Tortillas de harina carb balance Mission Foods 227g
+    2  Concentrado de jamaica Calii 960ml
+    2  Yoghurt griego natural sin azúcar 0% grasa Fage 150g
+    2  Piloncillo Calii 2pz
+    2  Tri pack Gansito Marinela 150g
+    2  Tinte para el cabello vainilla silvia 713 Nutrisse
+    2  Yoghurt griego bebible fresa plátano Chobani 207ml
+    2  Gorditas de azúcar tradicionales Pinitas 2pz
+    2  Porciones de salmón bolsa premium Camanchaca 500g
+    2  Medallón de atún premium Camanchaca 200g
+    2  Camarón crudo 26/30 pelado y desvenado sin cola Del Pacifico 454g
+    2  Porciones de salmón premium sin piel Camanchaca 400g (2-pack)
+    2  Galletas canelitas Marinela 240g
+    2  Avena orgánica sin gluten Okko 400g
+    2  Flor de calabaza
+    2  Filete de cerdo PROAN 300g
+    2  Agua natural Ciel 600ml
+    2  Chocolate con leche y avellanas classic recipe Lindt 125g
+    2  Cosecha invernal La Huerta 500g
+    2  Chícharos y zanahorías Del Monte 215g
+    2  Detergente líquido color 1-2-3 1L
+    2  Galletas sponch Marinela 225g
+    2  Ensalada de atún con mayonesa El Dorado 135g
+    2  Takis fuego 200g
+    2  Té de limón Snapple 473ml
+    2  Agua saborizada tamarindo Bonafont Aguas Frescas 1L
+    2  Café helado con proteína sabor caramelo Calii 240ml
+    2  Hamburguesa a base de vegetales NotBurger 400g
+    2  Tofu extra firme Morinaga 308g
+    2  Yoghurt griego 20g proteína mango Chobani 190g
+    2  Pepitas de cáñamo hemp orgánicas Okko 220g
+    2  Tostaditas horneadas salmas Sanissimo 144g
+    2  Concentrado de tomate doble Mutti 130g
+    2  Refresco sabor cereza Coca Cola 600ml
+    2  Helado sabor napolitano Holanda 900ml
+    2  Alga marina deshidratada Satoru 10pz
+    2  Kombucha guayaba Bebida Viva 377ml
+    2  Botana de maíz Chichos Encanto 210g
+    2  Agua natural Epura 600ml
+    2  Chocolates stick Crunch 20pz
+    2  Refresco Squirt 2.5L
+    2  Nuggets de pollo Tyson 900g
+    2  Salsa para pasta con carne Ragú 680g
+    2  Panqué de zanahoria y queso sin gluten Nūbe 80g
+    2  Salsa en polvo Tajín 400g
+    2  Yoghurt batido griego natural LALA 900g
+    2  Aparato y repuestos hawaiian breeze Glade 42ml
+    2  Rebanadas de piña en almíbar Clemente Jacques 800g
+    2  Aderezo césar Clemente Jacques 237g
+    2  Arroz súper extra Nor-Ver 250g
+    2  Crema de nuez de la india con chía, hemp y sal del Himalaya Calii 250g
+    2  Cebolla blanca
+    2  Cacahuate enchilado botanero Calii 160g
+    2  Orégano molido Terana 55g
+    2  Leche de coco culinary Calahua 330ml
+    2  Mousse final touch Caprice 200g
+    2  Dip queso y jalapeño Tostitos 255g
+    2  Gelatina en leche sabor fresa light D'Gari 20g
+    2  Atún en aceite El Dorado 285g
+    2  Champiñones rebanados Herdez 186g
+    2  Totopos para chilaquiles triángulo Totofast 250g
+    2  Cuadritos de tamarindo Calii 250g
+    2  Avena integral Granvita 700g
+    2  Arroz Nor-Ver 1kg
+    2  Harina para pastel chocolate oscuro Betty Crocker 375g
+    2  Sopa instantánea ramen pollo Nissin 85g
+    2  Salsa para pasta clásica alfredo Ragú 453g
+    2  Brownie vegano suave de dátiles y crema de cacahuate Calii Fresh 90g
+    2  Acondicionador rosemary oil The Botanist 591ml
+    2  Consomé de tomate en cubos de 10.5g Consomate 12pz
+    2  Aceite de oliva extra virgen en aerosol Inés 134g
+    2  Chocolate amargo 70% cacao excellence Lindt 100g
+    2  Agua natural Bonafont 1L
+    2  Bebida en polvo sabor mango Tang 13g
+    2  Jugo de naranja sin pulpa único fresco Jumex 960ml
+    2  Gomitas de lombrices Calii 250g
+    2  Licuado de yoghurt nuez cereal LALA 220g
+    2  Chile Anaheim
+    2  Yoghurt bebible durazno Yoplait 242g
+    2  Betún de chocolate Betty Crocker 453g
+    2  Agua de coco natural Acapulcoco 1L
+    2  Mezcla floretes de brócoli con zanahoria Mr. Lucky 454g
+    2  Yoghurt griego bajo en grasa fresa bebible Yoplait 220g
+    2  Cosecha fresca La Huerta 500g
+    2  Gelatina sabor limón light D'Gari 20g
+    2  Té blanco sabor arándano Nature's Factory 485ml
+    2  Molida de res orgánica Aires de Campo 350g
+    2  Fibra esponja no raya Vileda 1pz
+    2  Galleta triple chocolate Nūbe 80g
+    2  Doraditas de avena Calii 120g
+    2  Ensalada de atún cup can Dolores 135g
+    2  Leche light extra proteína Alpura Pro 1L
+    2  Natilla chocolate LALA 125g
+    2  Chorizo taquero Kir 250g
+    2  Tulipe caramelo Nūbe 110g
+    2  Barra de dátil sabor coco PAL'S 50g
+    2  Cafe capuccino clásico Café Olé 281ml
+    2  Jabón neutro Lirio 150g
+    2  Frijoles refritos con elote Chata 400g
+    2  Yoghurt griego 20g proteína vainilla Chobani 190g
+    2  Margarina con sal La Villita 90g
+    2  Chorizo de cerdo Las Sevillanas 90g
+    2  Tocino ahumado Sabori 200g
+    2  Pimienta negra en polvo Pragná 70g
+    2  Maíz inflado salado Calii 50g
+    2  Pimienta negra molida McCormick 64g
+    2  Chorizo de pavo Sabori 200g
+    2  Agua mineral Peñafiel 600ml
+    2  Refresco Coca Cola Sin Azúcar 355ml (6-pack)
+    2  Atún en cubo cevichero Dolores 200g
+    2  Yoghurt batido griego natural sin azúcar LALA 120g
+    2  Limpiador baños 100% removedor de sarro Harpic 750ml
+    2  Leche deslactosada semidescremada San Marcos 1L
+    2  Salmón noruego en porciones Hofseth 500g
+    2  Corn ribs mantequilla chipotle La Huerta 380g
+    2  Ajonjolí negro Calii 80g
+    2  Ajo en trozo Calii 60g
+    2  Tortillas de harina integrales Calii 20pz
+    2  Cereal sabor miel Cheerios 230g
+    2  Margarina con sal LALA 90g
+    2  Picaña rebanada high choice Campo Regio 1kg
+    2  Avellanas con chocolate sin azúcar Calii 127g
+    2  Salsa para pasta bolognesa Hunt's 500g
+    2  Rib eye taquero Praderas Huastecas 400g
+    2  Refresco Pepsi Light 2.5L
+    2  Dona rellena pistacho Nūbe 73g
+    2  Durazno rebanadas en almíbar La Costeña 820g
+    2  Milanesa de res congelada orgánica Verdes Motivos 400g
+    2  Crema ácida reducida en grasa Alpura 190ml
+    2  Tenders de pollo veganos Gardein 255g
+    2  Ensalada festival clásica Mr. Lucky 312g
+    2  Pasta pluma La Perla 200g
+    2  Leche de almendra sin azúcar Ades 946ml
+    2  Agua mineral mandarina regia Parasol 355ml
+    2  Arroz precocido con tomate Verde Valle 140g
+    2  Salchichas para asar Ponderosa Aza 800g
+    2  Chips sabor pepino jalapeño Healthy Crunch 60g
+    2  Pimienta negra granular Pragná 65g
+    2  Gomitas de lombriz neón Calii 250g
+    2  Salsa verde Del Primo 510g
+    2  Shampoo restauración Pantene 400ml
+    2  Paño suave multiusos Vileda 1pz
+    2  Panqué marmoleado Nūbe 71g
+    2  Queso ranchero Carranco 300g
+    2  Venditas adhesivas transparentes Alfa Medical 50pz
+    2  Camarones empanizados Sierra Madre 500g
+    2  Refresco Coca Cola 2.5L
+    2  Refresco lata Coca Cola Light 355ml
+    2  Sopa instantánea pollo carbonara picante Buldak 130g
+    2  Pasta fettuccine La Moderna 200g
+    2  Yoghurt batido fresa LALA 120g
+    2  Agua saborizada piña Bonafont Aguas Frescas 1L
+    2  Cereal sabor miel Cheerios 480g
+    2  Ajo pelado Mr. Lucky 280g
+    2  Palomitas con limón y sal de mar Slim Pop 18g
+    2  Gomitas sabor frutas Calii 250g
+    2  Mix frutos secos y semillas antioxidante Calii 250g
+    2  Jengibre en polvo Calii 50g
+    2  Yoghurt bebible piña coco Yoplait 242g
+    2  Obleas de elderberry Amarea 50g
+    2  Rastrillos para afeitar suave para mujer Venus 2pz
+    2  Tenders de pollo empanizados Tyson 700g
+    2  Boneless naturales Griller's 500g
+    2  Papas súper crujientes paprika McCain 500g
+    2  Res en filetes para perro adulto Pedigree 100g
+    2  Salsa para pasta bolognesa Hunt's 360g
+    2  Papas jalapeño Chip's 55g
+    2  Dip jocoque seco chipotle Sta Evelia 250g
+    2  Salsa para pasta champiñones Hunt's 500g
+    2  Chile morita Calii 100g
+    2  Sal La Fina 250g
+    2  Plátano chiapas racimo (5-7 pz)
+    2  Jugo detox procesado en frío Calii 480ml
+    2  Gelatina sabor limón JELL-O 25g
+    2  Filete de pescado tilapia empanizado Sierra Madre 500g
+    2  Tamarindo Calii 500g
+    2  Bistec de res Praderas Huastecas 1kg
+    2  Leche deslactosada light Alpura 1L
+    2  Salsa verde Del Primo 300g
+    2  Leche entera orgánica Bove 1L
+    2  Repuestos de aromatizante líquido floral y frutos rojos Glade 3pz
+    2  Jabón de tocador líquido para manos naturals coco y algodón Palmolive 221ml
+    2  Yoghurt griego bebible 20g proteína fresas con crema Chobani 296ml
+    2  Susalitas flama Susalia 51g
+    2  Galletas maxitubo canelitas Marinela 224g
+    2  Barra de dátil con proteína sabor coco PAL'S 50g
+    2  Ensalada de atún con mayonesa Mazatún 135g
+    2  Yoghurt griego batido natural Yoplait Skyr 750g
+    2  Agua natural Epura 1.5L
+    2  Gelato de Ferrero Calii 500ml
+    2  Queso feta desmoronado Président 170g
+    2  Gomitas tiras de arcoiris Calii 100g
+    2  Media crema deslactosada Nestlé 190g
+    2  Leche de avena sin azúcar Silk 946ml
+    2  Queso chihuahua rallado Calii 300g
+    2  Agua mineral con naranja y sal Peñafiel Twist 600ml
+    2  Stick de salami Snackin 28g
+    2  Jugo de manzana minibrik Jumex 125ml
+    2  Limpiador líquido desinfectante espíritu play Poett 4L
+    2  Néctar de manzana Del Valle 1L
+    2  Té negro sabor limón Lipton 600ml
+    2  Queso mozzarella rallado FUD 200g
+    2  Pulled pork BBQ Chata 215g
+    2  Queso manchego rallado Zwan 250g
+    2  Papas originales sal Sabritas 160g
+    2  Lavatrastes líquido limón Salvo 1.2L
+    2  Queso mozzarella cubicado Mojica 1kg
+    2  Galletas de avena con chispas de chocolate Manasur 226g
+    2  Tapetes para mascota ultra absorbentes Ludos 18pz
+    2  Agua mineral limonada Peñafiel 2L
+    2  Chocolate Kit Kat 41g
+    2  Pan tostado doble fibra Bimbo 250g
+    2  Chícharos Del Monte 200g
+    2  Pastillas sabor menta Halls 9pz
+    2  Papilla frutas tropicales etapa 3 Gerber 170g
+    2  Obleas de amaranto sabor matcha rellenas de chocolate sin azúcar Calii 22g
+    2  Atole sabor fresa Maizena 47g
+    2  Desengrasante para cocina límon doypack Mr. Músculo 500ml
+    2  Tortillas de harina sin gluten Sabiolitas 10pz
+    2  Yoghurt griego fresa 0% grasa Chobani 150g
+    2  Jocoque natural Libanius 473g
+    2  Arúgula baby Mr. Lucky 200g
+    2  Setas blancas charola 200g
+    2  Agua mineral Topo chico 192ml (12-pack)
+    2  Escoba dual 2 en 1 Reynera 1pz
+    2  Salsa líquida picor botanero Yaya 325ml
+    2  Pañuelos faciales boutique ahorrapack Kleenex 3pz
+    2  Pan pita integral Libanius 380g
+    2  Yoghurt batido natural con granola Yoplait 125g
+    2  Yoghurt bebible fresa Yoplait 242g
+    2  Refresco Coca Cola 3L
+    2  Sopa instantánea camarón habanero y limón Nissin 64g
+    2  Yoghurt griego batido natural Yoplait 145g
+    2  Crutones sabor césar Fresh Gourmet 142g
+    2  Bolsas de basura jumbo Costalitos 8pz
+    2  Aceituna verde manzanilla fina sin hueso Jolca 180g
+    2  Shampoo rizos definidos Pantene 700ml
+    2  Cristales mar de Cortés granular doypack Pragná 1kg
+    2  Refresco toronja lata Fresca 355ml
+    2  Pechuga de pavo virginia Zwan 250g
+    2  Leche de almendra sin azúcar Silk 946ml
+    2  Chiles chipotles adobados Del Monte 205g
+    2  Refresco Sprite 600ml
+    2  Yoghurt griego bajo en grasa moras Yoplait 442g
+    2  Champiñones cremini 225g caja
+    2  Suero rehidratante coco limón Flashlyte 625ml
+    2  Hojuelas de avena con linaza, chía y quinoa Quaker 475g
+    2  Jamón real de pierna San Rafael 300g
+    2  Refresco Pepsi 600ml
+    2  Panqué de plátano con nuez sin gluten Nūbe 80g
+    2  Arroz con leche LALA 125g / 4pz
+    2  Aceite de oliva para freír Inés 750ml
+    2  Chile güero
+    2  Huevo blanco Orespi caja 18pz
+    2  Servilletas Pétalo 420pz
+    2  Churritos protein limón y sal garbanzo y chícharo Snackin 50g
+    2  Gelatina sabor piña light D'Gari 20g
+    2  Producto lácteo combinado deslactosado Nutri 1L
+    2  Pan blanco con mantequilla Nature's Own 567g
+    2  Tomillo Calii 30g
+    2  Portobello caja 500g
+    2  Maíz inflado sabor salsas negras Calii 50g
+    2  Salchicha viena Bafar 400g
+    2  Crema de nuez de la india tostada Calii 250g
+    2  Frijol negro americano Calii 1kg
+    2  Yoghurt doble cero natural bebible Yoplait 242g
+    2  Pepino criollo
+    2  Queso panela FUD 400g
+    2  Leche deslactosada extra proteína Alpura Pro 1L
+    2  Tulipe red velvet Nūbe 110g
+    2  Ácido muriático limón Sultán 900ml
+    2  Yoghurt griego coco 2% grasa Chobani 150g
+    2  Demi baguette finas hierbas Nūbe 260g (2-pack)
+    2  Sal en grano Calii 400g
+    2  Tofu firme Morinaga 307g
+    2  Champiñones rebanados Herdez 380g
+    2  Mermelada de fresa Calii 355g
+    2  Jugo de mango Jumex 413ml
+    2  Toallas multiusos súper absorbentes Magitel 2-pack
+    2  Gomitas de aros de durazno Calii 250g
+    2  Sopa instantánea pollo picante Buldak 140g
+    2  Ciruela roja importada
+    2  Sopa instantánea camarón picante Nissin 64g
+    2  Chocolate con oreo Milka 100g
+    2  Chocolate amargo con caramelo y sal de mar excellence Lindt 100g
+    2  Yoghurt griego vainilla sin azúcar Chobani 907g
+    2  Nuez pedazo Calii 500g
+    2  Pasta penne rigate Barilla 500g
+    2  Yoghurt griego batido sin azúcar coco Yoplait 145g
+    2  Leche deslactosada LALA 1.5L
+    2  Tartas de smores Pop Tarts 96g
+    2  Yoghurt griego natural deslactosado sin azúcar sin grasa Alpura 125g
+    2  Topitos Jalapeño 160g
+    2  Fruta del monje Super Life 80pz
+    2  Lavatrastes en pasta lima limón Axion 425g
+    2  Queso panela Carranco 400g
+    2  Churritos de brócoli sabor chamoy Healthy Crunch 60g
+    2  Camarón crudo grande 16/20 Mar Sereno 500g
+    2  Yoghurt batido natural zero LALA 900g
+    2  Doraditas en tiras Tía Rosa 110g
+    2  Huevo blanco Bachoco caja 12pz
+    2  Jamaica Calii 500g
+    2  Pechuga de pollo entera pigmentada congelada Bachoco 600g
+    2  Vinagre blanco La Costeña 1.05L
+    2  Suavizante de ropa cuidado superior fresca primavera Suavitel 1L
+    2  Antitranspirante en gel cool wave Gillette 82g
+    2  Salsa para pasta Bolognesa Barilla 400g
+    2  Elote dorado en granos La Costeña 220g
+    2  Vasos desechables biodegradables rojos 16oz Primo 20pz
+    2  Gelatina fresa Dany 125g
+    2  Chiles jalapeños rajas Clemente Jacques 220g
+    2  Suero rehidratante fresa Electrolit 625ml
+    2  Suero rehidratante manzana Hydrolit 625ml
+    2  Bebida vita coco sin azúcar LALA 960ml
+    2  Agua tónica Schweppes 355ml
+    2  Fibra esponja práctica doble uso Magitel 1pz
+    2  Yoghurt griego natural sin azúcar Oikos 900g
+    2  Demi baguette natural Nūbe 260g (2-pack)
+    2  Avena orgánica sin gluten Tía Ofilia 300g
+    2  Saborizante en polvo sabor chocolate Nesquik 357g
+    1  Acaí sin azúcar Sambazon 400G (4pz de 100g c/u)
+    1  Sopa instantánea hot sauce camarón Nissin 64g
+    1  Pasta fusilli Fior Di Pasta 200g
+    1  Barra de proteína caramelo y nuez pecana Quest 60g
+    1  Chips de proteína sabor nachos con queso Quest 32g
+    1  Pimienta negra entera Calii 60g
+    1  Bimbollos parrilleros Bimbo 516g
+    1  Atún en agua El Dorado 285g
+    1  Chicharrón natural Mission Foods 113g
+    1  Refresco Manzana Joya 2.5L
+    1  Leche sin lactosa más proteína light LALA 100 1L
+    1  Rodajitas de papa spicy limón 4Buddies 30g
+    1  Obleas de frutos rojos Come Verde 60g
+    1  Chips de jícama con limón Calii 200g
+    1  Cheetos Torciditos 360g
+    1  Salsa de chile guajillo Doña Chonita 350g
+    1  Jamón de pierna Zwan 250g
+    1  Frijoles refritos con elote Karne Garibaldi 250g
+    1  Yoghurt batido de fresa Alpura 900g
+    1  Crema ácida entera Alpura 190ml
+    1  Té de limón dieta Snapple 473ml
+    1  Chocolate con cacahuate sin azúcar añadida Eaterz 70g
+    1  Crema de elote Campbells 310g
+    1  Gorditas de avena Calii 270g
+    1  Jabón de tocador aqua Zest 450g (5-pack)
+    1  Huevo blanco San Juan caja 18pz
+    1  Pastel de helado sabor cappuccino Vienetta 650ml
+    1  Crema ácida regular Alpura 426g
+    1  Chips de carne seca res chile limón Snackin 24g
+    1  Back rib de cerdo PROAN 450g
+    1  Salsa de chipotle Doña Chonita 350g
+    1  Leche sabor vainilla Yomi LALA 180ml
+    1  Panditas clásicos Ricolino 60g
+    1  Yoghurt batido fresa LALA 900g
+    1  Té negro y limón Fuze Tea 600ml
+    1  Pan de campo de masa madre con semillas Nūbe 750g
+    1  Tostada al comal natural chica Los Reyes 30pz
+    1  Pan ciabatta natural Nūbe 224g (2-pack)
+    1  Pan para hot dog Butter Krust 8pz
+    1  Sour Punch Bites frutos rojos 105g
+    1  Salsa de tomate catsup Del Monte 320g
+    1  Caldo de pollo en cubos de 10.5g Knorr 24pz
+    1  Dip jocoque seco natural Sta Evelia 250g
+    1  Pasta dental máxima protección anticaries Colgate 75ml
+    1  Camarón pelado y desvenado 51/60 Mar Sereno 500g
+    1  Yoghurt griego batido fresa Yoplait Skyr 120g
+    1  Galletas integral de amaranto sabor linaza Calii 30g (4 pack)
+    1  Jabón líquido para manos leche de coco pouch Lirio 500ml
+    1  Aceitunas verdes rellenas de jamón serrano Jolca 300g
+    1  Cherry Bombs enchilados Calii 200g
+    1  Wipes antibacteriales para superficies pouch Escudo 80pz
+    1  Gelatina sabor uva light D'Gari 20g
+    1  Aceite de soya antigoteo Nutrioli 700ml
+    1  Sopa de estrellitas con sabor tomate La Moderna 82g
+    1  Chips de camote natural Healthy Crunch 60g
+    1  Chile chipotle Calii 100g
+    1  Papas a la francesa corte ondulado Oma's Haus 450g
+    1  Cacahuate tostado sabor chipotle Calii 250g
+    1  Jabón leche de coco Dove 90g (4-pack)
+    1  Lavatrastes líquido frutos rojos Eficaz 750ml
+    1  Té de menta y manzanilla sweet dreams Bigelow 18pz
+    1  Brownies chocolate fudge Fiber One 24pz
+    1  Chips sabor pepino fuego Healthy Crunch 60g
+    1  Coyotas sabor dulce de leche doble relleno Calii 250g
+    1  Yoghurt griego frutos rojos 0% azúcar Chobani 150g
+    1  Queso gouda rallado Calii 225g
+    1  Salsa roja Calii 500g
+    1  Arroz blanco con elote Isadora 250g
+    1  Chile guajillo Tajín 75g
+    1  Cortadillo de res Cantú 400g
+    1  Mejorana
+    1  Chile pasilla Calii 100g
+    1  Filete de barbero natural Sierra Madre 500g
+    1  Frijoles negros enteros La Costeña 560g
+    1  Helado sabor chocolate Holanda 900ml
+    1  Repuestos de aromatizante líquido paraíso azul Glade 3pz
+    1  Kombucha glow Bebida Viva 500ml
+    1  Suero rehidratante uva Electrolife Zero 625ml
+    1  Salchicha de pechuga de pavo Zwan 500g
+    1  Harina para hot cakes San Blas 800g
+    1  Frijol negro nacional Calii 1kg
+    1  Acondicionador hidratante detox Tresemme 715ml
+    1  Mantequilla sin sal Alpura 90g
+    1  Galletas con chocolate Lu Petite Ecolier 150g
+    1  Mantequilla sin sal untable Gloria 250g
+    1  Yoghurt griego fresa Oikos 125g
+    1  Susalitas nacho Susalia 200g
+    1  Tostada deshidratada ajonjolí Los Reyes 20pz
+    1  Helado sabor vainilla Häagen-Dazs 473ml
+    1  Leche de almendra Nature's Heart 946ml
+    1  Leche evaporada tetra Carnation 360g
+    1  Isotónico sabor cítrico tropical Vitamin Water 500ml
+    1  Top sirloin Campo Regio 350g
+    1  Repuestos de aromatizante líquido mora radiante Glade 3pz
+    1  Vinagre blanco Clemente Jacques 500ml
+    1  Gelatina de jamaica con chamoy sin azúcar Calii Fresh 190g
+    1  Pasta tallarín largo Yemina 200g
+    1  Crema para café vainilla Chobani 710ml
+    1  Queso manchego reducido en grasa rebanado Caperucita 400g
+    1  Yoghurt griego natural 0% grasa Chobani 907g
+    1  Suavizante de ropa fresca primavera Suavitel 850ml
+    1  Dulce de leche Los Nietitos 400g
+    1  Gelatina sabor limón Pronto 84g
+    1  Ensalada de verduras La Costeña 410g
+    1  Palomitas sabor queso cheddar picante Calii 75g
+    1  Obleas de amaranto sabor taro rellenas de chocolate sin azúcar Calii 22g
+    1  Chicharrón de cerdo natural Leo 130g
+    1  Harina para hot cakes Pearl Miling Company 800g
+    1  Yoghurt griego batido natural Yoplait Skyr 120g
+    1  Mango enchilado con sal del Himalaya Calii 200g
+    1  Té de frambuesa dieta Snapple 473ml
+    1  Agua de coco con piña Acapulcoco 330ml
+    1  Mini wontons pollo y vegetales Bibigo 680g
+    1  Papilla durazno Heinz 113g
+    1  Tahini de ajonjolí Dipasa 530g
+    1  Barra de chocolate oscuro y almendra alta en proteína Calii 45g
+    1  Mix de nueces sal del Himalaya Calii 200g
+    1  Habas enchiladas Calii 150g
+    1  Chícharo en mitades Calii 300g
+    1  Edamames congelados sin vaina Toyo 400g
+    1  Mezcla de quesos Monterey jack y cheddar rallado Calii 225g
+    1  Queso brie azul Ile de France 125g
+    1  Tamarindo confitado Calii 250g
+    1  Salsa negra La Costeña 360ml
+    1  Pan de barra 12 granos Oroweat 680g
+    1  Pasta almeja La Moderna 200g
+    1  Pasta fideo mediano Yemina 200g
+    1  Mango enchilado Calii 200g
+    1  Salsa BBQ original Heinz 390g
+    1  Agua mineralizada frambuesa Velvet Soda 275ml
+    1  Carne seca pimienta limón Calii 50g
+    1  Waffle Belga Nūbe 90g
+    1  Queso cottage 1% reducido en grasa Lyncott 380g
+    1  Gomita lombriz chamoy Calii 250g
+    1  Tortillas de maíz amarillas Exquisitas 755g
+    1  Queso de cabra natural Flaveur 140g
+    1  Jamaicool individual 50g
+    1  Saborizante vainilla La Anita 120ml
+    1  Zarzamoras caja 170g
+    1  Crema ácida deslactosada Alpura 190ml
+    1  Frijoles refritos con chorizo y queso Chata 400g
+    1  Harina de maíz antojitos Maseca 1kg
+    1  Mole poblano con chocolate listo para servir Doña María 360g
+    1  Jabón líquido para manos leche de coco Lirio 500ml
+    1  Pulpa negra corte delgado Campo Regio 500g
+    1  Insecticida casa y jardín Baygon 400ml
+    1  Uva roja globo bolsa 1kg
+    1  Eneldo
+    1  Blueberries caja 170g
+    1  Gomitas sabor sandía enchiladas Calii 300g
+    1  Porciones de filete de huachinango Sierra Madre 500g
+    1  Galletas maxitubo príncipe chocolate Marinela 210g
+    1  Arroz precocido integral Verde Valle 250g
+    1  Ensalada de vegetales Herdez 220g
+    1  Bebida en polvo sabor fresa Tang 13g
+    1  Salchicha de pavo Kir 1kg
+    1  Crema ácida Alpura 200ml
+    1  Pechuga de pollo rostizada FUD Cuida-T+ 250g
+    1  Pasta codo Fior Di Pasta 200g
+    1  Donas espolvoreadas Bimbo 140g
+    1  Fruta mixta deshidratada sin azúcar Calii 400g
+    1  Tostadas de maíz horneadas Mission Foods 224g
+    1  Fresa entera congelada orgánica Ultraorganics 454g
+    1  Crema ácida reducida en grasa Lyncott 400g
+    1  Chips sabor pepino natural Healthy Crunch 60g
+    1  Cochinita pibil Sinaloa 215g
+    1  Nuez garapiñada Calii 250g
+    1  Tostada al comal multrigrano chica Los Reyes 30pz
+    1  Gelatina sabor piña D'Gari 120g
+    1  Cereal con almendras Honey Bunches 340g
+    1  Leche de coco sin azúcar Nature's Heart 946ml
+    1  Natillas Linares 13pz
+    1  Uva pasa golden Calii 200g
+    1  Queso manchego Carranco 400g
+    1  Merengues sin azúcar sabor Cookies & Cream Don't Worry 51g
+    1  Smoothie proteína mango mix Calii 375ml
+    1  Aparato y repuestos mora radiante Glade 42ml
+    1  Yoghurt doble cero natural Yoplait 1kg
+    1  Agua mineralizada maracuyá Velvet Soda 275ml
+    1  Salsa roja casera Calii Fresh 200g
+    1  Barras de amaranto sabor chocolate semiamargo Calii 27g (6 pack)
+    1  Suero rehidratante fresa kiwi Electrolife Zero 625ml
+    1  Obleas de taro Come Verde 60g
+    1  Bebida en polvo sabor limón Tang 13g
+    1  Leche deslactosada vainilla Alpura Vaquitas 200ml
+    1  Queso mozzarella rallado Dutch Farms 227g
+    1  Gomitas de mango enchilado Calii 250g
+    1  Cortadillo de res pulpa negra Rancho Norte 500g
+    1  Crema de cacahuate cremosa clásica Skippy 793g
+    1  Crema para peinar hidra hialurónico Elvive 300ml
+    1  Queso cottage reducido en grasa LALA 350g
+    1  Obleas de cacao Come Verde 60g
+    1  Jamón serrano Parma 100g
+    1  Cuerno danés Nūbe 1pz
+    1  Guiso deshebrada de res Saboregio 600g
+    1  Gomitas sabor pepino enchiladas Calii 250g
+    1  Salsa para pasta aceite de oliva y ajo Bertolli 680g
+    1  Alimento lácteo bebible ciruela Activia 225g
+    1  Nibs de cacao Okko 100g
+    1  Agua natural Bonafont 1.5L
+    1  Polvo para hornear Rexal 250g
+    1  Leche light LALA 1L
+    1  Totopos de maíz originales Nūbe 300g
+    1  Flan sabor vainilla Pronto 84g
+    1  Molida de res 80/20 Los Pastizales 500g
+    1  Posta de atún importado Mar Sereno 200g
+    1  Chicharrón artesanal enchilado Calii 60g
+    1  Leche deslactosada light LALA 1.5L
+    1  Carne seca natural Calii 50g
+    1  Granola 0% azúcar con arándanos y mora azul Granvita 350g
+    1  Pepino persa
+    1  Mezcla de jugo verde congelado orgánico Ultraorganics 600g
+    1  Ensalada de atún con aderezo de mayonesa light Tuny 135g
+    1  Molida de res 90/10 Rancho Norte 500g
+    1  Bebida sabor cítricos Del Valle Frut 600ml
+    1  Salchicha de pavo tradicional Oscar Mayer 500g
+    1  Miel de abeja Azahar de Allende 700g
+    1  Queso tipo americano light LALA 144g
+    1  Desengrasante para cocina naranja doypack Brasso 500ml
+    1  Palomitas sweet and salty Slim Pop 25g
+    1  Salsa picante De La Viuda 150ml
+    1  Wipes pouch Escudo 50pz
+    1  Desodorante antimanchas men B&W fresh spray Nivea 150 ml
+    1  Veggie crunch limón y sal zanahoria y garbanzo Snackin 35g
+    1  Agua mineral Topo Chico 355ml
+    1  Refresco vidrio no retornable Coca Cola 235ml
+    1  Té negro sabor durazno Lipton 600ml
+    1  Atún en agua Ancla 120g
+    1  Caldo de pollo Don Simón 1L
+    1  Yoghurt griego bebible 15g proteína cereza Chobani 207ml
+    1  Nieve artesanal sabor limón Calii 250ml
+    1  Limpiador multiusos limón bicarbonato Maestro Limpio 1L
+    1  Refresco lata Coca Cola 355ml
+    1  Guarnición de verduras La Huerta 500g
+    1  Boneless búfalo Pilgrim's 600g
+    1  Pimienta con limón Calii 90g
+    1  Desmanchador ropa blancos brillantes Clorox 1.89L
+    1  Aromatizante repuesto lavanda y vainilla Glade 270ml
+    1  Leche de avena y linaza Nature's Heart 946ml
+    1  Pasta caracol 3 La Moderna 200g
+    1  Chocolate amargo 78% cacao excellence Lindt 100g
+    1  Leche deslactosada Santa Clara 1L
+    1  Ensalada de verduras Clemente Jacques 410g
+    1  Tostadas amarillas norteña Mission 300g
+    1  Leche sabor chocolate Yomi LALA 960ml
+    1  Miel de maple Karo 255ml
+    1  Antitranspirante en barra stainguard Speed Stick 50g
+    1  Salchicha de pavo FUD 500g
+    1  Jugo de verduras original V8 340ml
+    1  Filete de pescado tilapia al guajillo Sierra Madre 500g
+    1  Fajitas de pechuga de pavo Dos Familias 500g
+    1  Salsa para pasta pomodoro Ammori 430g
+    1  Mortadela Bafar 200g
+    1  Leche de avena vainilla Nature's Heart 946ml
+    1  Guantes Fuerte mediano Vileda 1pz
+    1  Salsa taquera Herdez 453g
+    1  Bites cheddar y jalapeño Cheffry 250g
+    1  Sardinas en salsa de tomate Dolores 425g
+    1  Gomitas de aros sabor manzana Calii 250g
+    1  Jamaica Calii 250g
+    1  Leche semidescremada San Marcos 1L
+    1  Refresco Coca Cola 1.25L
+    1  Arroz grano grueso La Merced 750g
+    1  Malvavisco con chocolate Bubulubu 35g
+    1  Mix espinaca baby y arugula baby Earthbound Farm 142g
+    1  Yoghurt griego natural sin azúcar 0% grasa Fage 454g
+    1  Palomitas cheddar Slim Pop 18g
+    1  Aceite Nutrioli 850ml
+    1  Leche deslactosada orgánica LALA 960ml
+    1  Jugo de tomate con almeja original Clamato 946ml
+    1  Antitranspirante aerosol active dry Rexona Men 150ml
+    1  Vinagre blanco Clemente Jacques 1L
+    1  Almendra sabor cocoa sin azúcar añadida Dayrise 90g
+    1  Chicharrón natural de cerdo mini Calii 200g
+    1  Molida de res 95/5 Campo Regio 500g
+    1  Agua de coco natural Acapulcoco 330ml
+    1  Chiles jalapeños rajas La Costeña 380g
+    1  Ácido muriático regular Sultán 900ml
+    1  Salsa guacamole Del Primo 300g
+    1  Aderezo soya y limón Gavilla 250ml
+    1  Pasta fusilli Barilla 500g
+    1  Detergente líquido toque de downy Ace 4.85L
+    1  Papilla manzana Heinz 113g
+    1  Molida de res 90/10 Los Pastizales 500g
+    1  Queso untable original La Vaca Que Ríe 154g
+    1  Yoghurt bebible fresa LALA 220g (6-pack)
+    1  Baguette sin gluten Deorno 170g
+    1  Salsa roja Del Primo 300g
+    1  Papel higiénico premium soft Elite 18pz
+    1  Molida magra de res congelada orgánica Verdes Motivos 350g
+    1  Guantes extra sensation mediano Vileda 1pz
+    1  Refresco cream soda Dr. Pepper 600ml
+    1  Refresco Coca Cola Light 1.25L
+    1  Desodorante en aerosol hombre active Obao 150ml
+    1  Palomitas salsas negras Slim Pop 125g
+    1  Crema para café líquida Coffee Mate 530ml
+    1  Chocolate artesanal 58% cacao Dubai Calii 105g
+    1  Smoothie mix jugo verde La Huerta 450g
+    1  Crema corporal humectación intensiva St. Ives 530ml
+    1  Barra de proteína chocolate cacahuate sin azúcar añadida Wild Foods 45g
+    1  Papas originales sal Ruffles 185g
+    1  Leche light Santa Clara 1L
+    1  Apio
+    1  Chiles jalapeños rojos toreados en rodajas La Costeña 220g
+    1  Papas receta crujiente originales sal Sabritas 240g
+    1  Pasta dental 100% limpieza Oral B 50ml
+    1  Detergente en polvo poder y cuidado Ariel 4.5kg
+    1  Maíz inflado sabor fuego Calii 50g
+    1  Cacahuate enchilado Calii 250g
+    1  Refresco regular Dr. Pepper 600ml
+    1  Churritos de maíz sabor chipotle Calii 100g
+    1  Galletas Lotus Biscoff 250g
+    1  Pasta nidi tagliatelle De Cecco 500g
+    1  Salsa para pasta italiana La Moderna 227g
+    1  Cereal Zucaritas 600g
+    1  Salsagheti sandía Skwinkles 24g
+    1  Refresco lata Coca Cola Sin Azúcar 355ml
+    1  Papilla mango etapa 3 Gerber 170g
+    1  Barritas de piña Marinela 268g
+    1  Crema de cacahuate M de Maní 200g
+    1  Yoghurt griego batido sin azúcar fresa Yoplait 145g
+    1  Antitranspirante en barra powder protect cotton Secret 45g
+    1  Mantecadas de vainilla Bimbo 250g
+    1  Palomitas para microondas naturales ACT II 80g
+    1  Espinaca baby orgánica Earthbound Farm 142g
+    1  Res en filetes para gato Whiskas 85g
+    1  Corazón de nuez cubierto con chocolate y cocoa Calii 250g
+    1  Cacahuate español salado 270g
+    1  Bolsa mediana fortiflex Costalitos 18pz
+    1  Papas fritas sabor fuego Calii 190g
+    1  Tortillas de harina Calii 20pz
+    1  Kit taquero deshebrada de res caliente Calii 500g
+    1  Avena integral Granvita 400g
+    1  Pastillas sabor limón y miel Halls 9pz
+    1  Frijoles negros enteros Isadora 454g
+    1  Milanesa pulpa negra Cantú 500g
+    1  Pechuga de pollo deshebrada ALCO 400g
+    1  Crema de coco Calahua 1L
+    1  Pan integral Nature's Own 567g
+    1  Pollo entero orgánico congelado Aires de Campo 2kg
+    1  Té oolong sabor jamaica Nature's Factory 485ml
+    1  Totopo horneado Susalia 200g
+    1  Galleta de avena y amaranto rellena de cacahuate y cacao Calii 40g
+    1  Kéfir mora azul bebible Lifeway 236 ml
+    1  Leche de avena orgánica sin gluten Real Natural 1L
+    1  Quitamanchas desodorante y sudor Dr. Beckmann 250ml
+    1  Leche de soya sabor manzana Ades 946ml
+    1  Crema de cacahuate cremosa Aladino 340g
+    1  Frijoles ranch Chata 425g
+    1  Jabón original Dove 135g
+    1  Salsa para pasta con carne Ragú 396g
+    1  Panditas ácidos Ricolino 60g
+    1  Chile en polvo original Miguelito 250g
+    1  Chuleta ahumada de cerdo Kowi 500g
+    1  Pasta dental luminous white Colgate 50ml
+    1  Papel higiénico aires de lavanda Regio 12pz / 200HD
+    1  Acondicionador anticaída biotinamina B3 Pantene 510ml
+    1  Deshebrada de pollo natural Saboregio 380g
+    1  Pechuga de pavo virginia FUD 250g
+    1  Barra de proteína vegana chocolate amargo sin azúcar añadida Wild Foods 45g
+    1  Leche light San Marcos 1L
+    1  Pasta dental máxima protección anticaries Colgate 160ml
+    1  Empanizador granulado Corn Flakes 350g
+    1  Queso mozzarella fresco perlas Belgioioso 226g
+    1  Crutones sabor italiano Fresh Gourmet 142g
+    1  Espiral de acero Magitel 1pz
+    1  Mole rojo listo para servir Doña María 360g
+    1  Filete de tilapia 50/50 Sea Jarpi 250g
+    1  Mezcla de chips de vegetales naturales Calii 100g
+    1  Gomitas de frutas Calii 250g
+    1  Tartaleta de nuez Nūbe 90g
+    1  Pita crisp natural Libanius 125g
+    1  Leche deslactosada fresa Alpura Vaquitas 200ml
+    1  Cloro líquido desinfectante mascotas Cloralex 3.75L
+    1  Claras de huevo líquidas pasteurizadas San Juan 500g
+    1  Muffin blueberry Nūbe 82g
+    1  Agua saborizada pepino limón Bonafont Levité 1L
+    1  Almendra entera tostada Calii 200g
+    1  Suero rehidratante naranja mandarina Electrolit 625ml
+    1  Frijoles chipotle La Sierra 430g
+    1  Palomitas para microondas sabor mantequilla extra ACT II 3-pack de 90g
+    1  Crema humectación diaria Lubriderm 400ml
+    1  Crema de avellanas Nutella 200g
+    1  Escoba para pisos finos Reynera 1pz
+    1  Harina para hot cakes con chispas Morama 350g
+    1  Queso chihuahua LALA 200g
+    1  Jabón líquido de manos original Dove 220ml
+    1  Agua saborizada jamaica Be Light 1.5L
+    1  Chiles jalapeños enteros La Costeña 220g
+    1  Crema para café Coffee Mate 311g
+    1  Leche deslactosada orgánica Bove 1L
+    1  Chilorio de soya Chata 215g
+    1  Cotonetes Johnson 150pz
+    1  Churritos de espinaca sabor limón Healthy Crunch 60g
+    1  Pasta dental sensitive original pro alivio Colgate 75ml
+    1  Sopa instantánea pollo picante y queso Buldak 140g
+    1  Chícharos con zanahoria Herdez 400g
+    1  Yoghurt griego batido sin azúcar fresa Yoplait 1kg
+    1  Papilla manzana etapa 3 Gerber 170g
+    1  Churritos de amaranto sabor nopal chipotle sin gluten Calii 200g
+    1  Jabón líquido corporal neutro Blumen 650ml
+    1  Sorbet de limón con lima Calii 500ml
+    1  Gelato de Glorias Calii 500ml
+    1  Tostada al comal nopal chica Los Reyes 30pz
+    1  Galletas Saladitas 186g
+    1  Pasta Farfalle Luigi 500g
+    1  Fritos chile y limón 170g
+    1  Margarina sin sal Primavera 90g
+    1  Chuleta de cerdo ahumada Rancho Norte 500g
+    1  Salsa para pasta tradicional Prego 397g
+    1  Chips sabor pepino limón y sal Healthy Crunch 60g
+    1  Sal con ajo McCormick 125g
+    1  Queso oaxaca Carranco 400g
+    1  Refresco Toronja Fresca 600ml
+    1  Desodorante para pies silver active Curitas 150ml
+    1  Milanesas de seitan veganas Soi-Yah! 500g
+    1  Hierbas finas Calii 30g
+    1  Arándano cubierto con chocolate sin azúcar Calii 100g
+    1  Pechuga deshuesada orgánica congelada Aires de Campo 500g
+    1  Cebolla en polvo McCormick 70g
+    1  Tostadas deshidratadas Totofast 200g
+    1  Galletas príncipe tentación avellana Marinela 252g
+    1  Pasta fusilli Italpasta 200g
+    1  Mandarina
+    1  Naranja para jugo
+    1  Cordero en filetes para perro razas pequeñas Pedigree 100g
+    1  Yoghurt griego bebible vainilla Skyr 280g
+    1  Yoghurt griego natural bajo en grasa Yoplait 442g
+    1  Jugo tropical procesado en frío Calii 480ml
+    1  Alimento seco para perro adulto Pedigree 2kg
+    1  Nieve artesanal sabor guayaba Calii 250ml
+    1  Pimienta con limón Pragná 120g
+    1  Frambuesas congeladas cubiertas de chocolate blanco y chocolate amargo Franuí 150g
+    1  Galletas clásicas flor de naranjo Gamesa 600g
+    1  Refresco Coca Cola Light 2.5L
+    1  Tiritas enchiladas sabor sandía Calii 200g
+    1  Galletas sabor vainilla Oreo 105g
+    1  Queso cottage LALA 350g
+    1  Helado artesanal sabor fresa Calii 250ml
+    1  Orejón de manzana Calii 200g
+    1  Pasta fettuccine Barilla 500g
+    1  Barras de amaranto sabor chocolate Calii 27g (6 pack)
+    1  Sopa instantánea dark dragon salsa negra y limón Nissin 64g
+    1  Refresco Coca Cola Light 235ml (8-Pack)
+    1  Filete de pollo mezquite Bachoco 700g
+    1  Cubeta para limpieza xprime Reynera 1pz
+    1  Acondicionador ceramidas Sedal 620ml
+    1  Pan de hogaza de masa madre con centeno Nūbe 500g
+    1  Salsa para pasta champiñones Hunt's 360g
+    1  Leche deslactosada light Santa Clara 1L
+    1  Barbacoa de res Calii 500g
+    1  Queso tipo americano light rebanado LALA 144g
+    1  Refresco zero azúcar Dr. Pepper 600ml

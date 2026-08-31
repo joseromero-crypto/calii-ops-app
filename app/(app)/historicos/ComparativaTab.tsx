@@ -5,6 +5,7 @@ import {
   HUB_COLORS, formatValue, weekEndLabel, isResumenKpi,
   type Kpi, type Hub, type Snapshot,
 } from './_shared';
+import { effectiveDirection } from '@/lib/kpi-direction';
 
 /**
  * Custom tooltip for the comparativa chart — sorts hubs by the hovered week's
@@ -112,7 +113,7 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
       list.push({ hubId: h.id, value: 0, hub: h });
     }
   }
-  list.sort((a, b) => kpi.direction === 'lower_is_better' ? b.value - a.value : a.value - b.value);
+  list.sort((a, b) => effectiveDirection(kpi.id, kpi.direction) === 'lower_is_better' ? b.value - a.value : a.value - b.value);
   return list;
 }, [snapshots, hubs, kpi.id, kpi.direction, kpi.unit, currentWeek]);
 
@@ -124,7 +125,7 @@ function KpiCompareCard({ kpi, hubs, snapshots, currentWeek }: { kpi: Kpi; hubs:
         <div>
           <h3 className="text-[13px] font-semibold">{kpi.name_es}</h3>
           <div className="text-[10.5px] text-[var(--muted)]">
-            {kpi.unit} · {kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'} · {kpi.category}
+            {kpi.unit} · {effectiveDirection(kpi.id, kpi.direction) === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'} · {kpi.category}
           </div>
         </div>
       </div>

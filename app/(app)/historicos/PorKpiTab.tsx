@@ -8,6 +8,7 @@ import {
   deltaClassForDirection, resolveTarget, isResumenKpi,
   type Kpi, type Hub, type Snapshot, type Peer, type KpiTarget,
 } from './_shared';
+import { effectiveDirection } from '@/lib/kpi-direction';
 
 // ─── Chart tooltip ────────────────────────────────────────────────────────────
 function ChartTooltip({
@@ -223,7 +224,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
           deltaDisplay = kpi.unit === 'pct' ? rawDiff * 100 : rawDiff;
           const isFlat = Math.abs(rawDiff) < 0.00001;
           if (!isFlat) {
-            deltaGood = kpi.direction === 'lower_is_better' ? rawDiff < 0 : rawDiff > 0;
+            deltaGood = effectiveDirection(kpi.id, kpi.direction) === 'lower_is_better' ? rawDiff < 0 : rawDiff > 0;
           }
         }
 
@@ -237,7 +238,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
 
         let bgClass = '';
         if (mean4w !== null) {
-          const wantsLow = kpi.direction === 'lower_is_better';
+          const wantsLow = effectiveDirection(kpi.id, kpi.direction) === 'lower_is_better';
           const diff = value - mean4w;
 
           if (priorVals.length >= 2) {
@@ -305,7 +306,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {topMovers.map(({ snap, kpi: mk, delta }, i) => {
             const isUp = delta > 0;
-            const wantsUp = mk.direction === 'higher_is_better';
+            const wantsUp = effectiveDirection(mk.id, mk.direction) === 'higher_is_better';
             const good = wantsUp ? isUp : !isUp;
             const hub = hubs.find((h) => h.id === snap.scope_key);
             return (
@@ -345,7 +346,7 @@ export function PorKpiTab({ kpis, hubs, snapshots, currentWeek, selectedKpi, onK
           </select>
           <span className="text-[11px] uppercase tracking-wide text-[var(--muted)] font-bold">{kpi.unit}</span>
           <span className="text-[11px] text-[var(--muted)]">
-            {kpi.direction === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'} · {kpi.category}
+            {effectiveDirection(kpi.id, kpi.direction) === 'lower_is_better' ? '↓ menor mejor' : '↑ mayor mejor'} · {kpi.category}
           </span>
           {kpi.watched_globally && (
             <span className="text-[10px] bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-bold">en home</span>
