@@ -1,0 +1,271 @@
+==============================================================================
+ROLE ACCOUNT CENSUS
+Full history: 23 weeks, 2026-03-27 → 2026-08-28
+==============================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+desempeno_operadores.assembler
+  194 distinct name×hub combinations · 39 look role-named
+──────────────────────────────────────────────────────────────────────────────
+
+  hub              account                                     wks  assembled  faltantes
+  mh_avicola       Auxiliar Turno Matutino Avícola ("ATM")      21        152          6
+  mh_avicola       Coordinador MH Avícola ("Cord")              21         24          0
+  mh_avicola       Auxiliar Turno Vespertino Avícola ("ATV")    21        122          5
+  mh_avicola       Auxiliar Calidad Avícola ("AC")              20         59          2
+  mh_avicola       Auxiliar Inventario Avícola ("AI")           20         71          3
+  mh_condesa       Auxiliar Turno Matutino Condesa ("ATM Con    23        118          4
+  mh_condesa       Auxiliar Turno Vespertino Condesa ("ATV C    23         53          0
+  mh_condesa       Coordinador MH Condesa ("Coord MH Condesa    23         41          3
+  mh_condesa       Auxiliar Calidad Condesa ("AC Condesa")      21        114          1
+  mh_condesa       Auxiliar Inventarios Condesa ("AI Condesa    21        144          2
+  mh_condesa       Auxiliar Recibo Condesa ("AR Condesa")       20        197         11
+  mh_contry        Coordinador MH Contry ("Coord MH")           21         35          1
+  mh_contry        Auxiliar Turno Matutino Contry ("ATM Cont    21        192         12
+  mh_contry        Auxiliar Calidad Contry ("AC")               21        137          4
+  mh_contry        Auxiliar Turno Vespertino Contry ("ATV CO    21        144         13
+  mh_contry        Auxiliar Inventario Contry ("AIC")           21        195         22
+  mh_contry        Auxiliar Recibo Contry ("AR Contry")         20          5          1
+  mh_cumbres       Auxiliar Turno Matutino CUM ("ATM CUM")      21        103          5
+  mh_cumbres       Coordinador MH Cumbres ("Coord MH CUM")      21         45          1
+  mh_cumbres       Auxiliar Calidad Cumbres ("AC CUM")          21          7          2
+  mh_cumbres       Auxiliar Turno Vespertino Cumbres ("ATV C    21        174          4
+  mh_cumbres       Auxiliar Inventario Cumbres ("AI CUM")       21        154         10
+  mh_guadalupe     Auxiliar Turno Vespertino Gpe ("ATV")        21        118         13
+  mh_guadalupe     Coordinador MH Gpe ("Coord MH")              21         14          0
+  mh_guadalupe     Auxiliar Turno Matutino Gpe ("ATM")          21        110         11
+  mh_guadalupe     Auxiliar Inventarios Gpe ("Aux. inv. Gpe"    20        108          8
+  mh_guadalupe     Auxiliar Calidad Gpe ("AC")                  20        140          3
+  mh_san_nicolas   Auxiliar Inventarios SN ("AI")               21        180          8
+  mh_san_nicolas   Auxiliar Calidad SN ("AC")                   21        119          4
+  mh_san_nicolas   Coordinador MH SN ("Coord MH")               21         35          0
+  mh_san_nicolas   Auxiliar Turno Matutino SN ("ATM")           21        117         12
+  mh_san_nicolas   Auxiliar Turno Vespertino SN ("ATV")         21         87          8
+  mh_san_pedro     Coordinador MH SPGG ("Coord MH")              4          0          0
+  mh_zapopan       Auxiliar Turno Matutino Zapopan ("Eugenia    21         65          0
+  mh_zapopan       Auxiliar Calidad Zapopan ("Victor")          21        127          0
+  mh_zapopan       Coordinador MH Zapopan ("Coord MH")          21         32          0
+  mh_zapopan       Auxiliar Turno Vespertino Zapopan ("David    21        130          4
+  mh_zapopan       Auxiliar Inventarios Zapopan ("Xennia")      21        208          4
+  mh_zapopan       Auxiliar Recepción Zapopan ("Angel")         11         77          3
+
+  FLEX INTENSITY — share of hub assembly volume done by role accounts:
+    mh_condesa          6.7%   (667 of 9970 orders)
+    mh_zapopan          5.3%   (639 of 12140 orders)
+    mh_avicola          4.4%   (428 of 9671 orders)
+    mh_san_nicolas      3.4%   (538 of 15627 orders)
+    mh_guadalupe        3.3%   (490 of 15048 orders)
+    mh_contry           3.2%   (708 of 21989 orders)
+    mh_cumbres          2.5%   (483 of 19712 orders)
+    (no hub col)          —%   (0 of 0 orders)
+    mh_san_pedro          —%   (0 of 0 orders)
+
+  HEADCOUNT CHECK — role accounts seen vs auxiliares expected
+  (expected excludes líderes de turno and the coordinador, so accounts
+   ABOVE expected may simply be líderes/coordinador also assembling)
+    ↑ mh_zapopan       seen  6 · expected aux 3
+         Auxiliar Turno Matutino Zapopan ("Eugenia")
+         Auxiliar Calidad Zapopan ("Victor")
+         Coordinador MH Zapopan ("Coord MH")
+         Auxiliar Turno Vespertino Zapopan ("David")
+         Auxiliar Inventarios Zapopan ("Xennia")
+         Auxiliar Recepción Zapopan ("Angel")
+    ↑ mh_condesa       seen  6 · expected aux 3
+         Auxiliar Turno Matutino Condesa ("ATM Condesa")
+         Auxiliar Turno Vespertino Condesa ("ATV Condesa")
+         Coordinador MH Condesa ("Coord MH Condesa")
+         Auxiliar Calidad Condesa ("AC Condesa")
+         Auxiliar Inventarios Condesa ("AI Condesa")
+         Auxiliar Recibo Condesa ("AR Condesa")
+    ↑ mh_contry        seen  6 · expected aux 2
+         Coordinador MH Contry ("Coord MH")
+         Auxiliar Turno Matutino Contry ("ATM Contry")
+         Auxiliar Calidad Contry ("AC")
+         Auxiliar Turno Vespertino Contry ("ATV CON")
+         Auxiliar Inventario Contry ("AIC")
+         Auxiliar Recibo Contry ("AR Contry")
+    ↑ mh_cumbres       seen  5 · expected aux 2
+         Auxiliar Turno Matutino CUM ("ATM CUM")
+         Coordinador MH Cumbres ("Coord MH CUM")
+         Auxiliar Calidad Cumbres ("AC CUM")
+         Auxiliar Turno Vespertino Cumbres ("ATV CUM")
+         Auxiliar Inventario Cumbres ("AI CUM")
+    ↑ mh_san_nicolas   seen  5 · expected aux 2
+         Auxiliar Inventarios SN ("AI")
+         Auxiliar Calidad SN ("AC")
+         Coordinador MH SN ("Coord MH")
+         Auxiliar Turno Matutino SN ("ATM")
+         Auxiliar Turno Vespertino SN ("ATV")
+    ↑ mh_guadalupe     seen  5 · expected aux 2
+         Auxiliar Turno Vespertino Gpe ("ATV")
+         Coordinador MH Gpe ("Coord MH")
+         Auxiliar Turno Matutino Gpe ("ATM")
+         Auxiliar Inventarios Gpe ("Aux. inv. Gpe")
+         Auxiliar Calidad Gpe ("AC")
+    ↑ mh_avicola       seen  5 · expected aux 2
+         Auxiliar Turno Matutino Avícola ("ATM")
+         Coordinador MH Avícola ("Cord")
+         Auxiliar Turno Vespertino Avícola ("ATV")
+         Auxiliar Calidad Avícola ("AC")
+         Auxiliar Inventario Avícola ("AI")
+    ! role accounts at unrecognised hubs: mh_san_pedro
+
+──────────────────────────────────────────────────────────────────────────────
+faltantes_armador.Armador
+  222 distinct name×hub combinations · 34 look role-named
+──────────────────────────────────────────────────────────────────────────────
+
+  hub              account                                         wks   rows
+  mh_avicola       Auxiliar Turno Matutino Avícola ("ATM")           8     17
+  mh_avicola       Auxiliar Turno Vespertino Avícola ("ATV")         6     10
+  mh_avicola       Auxiliar Inventario Avícola ("AI")                4      5
+  mh_avicola       Auxiliar Calidad Avícola ("AC")                   2      4
+  mh_avicola       Coordinador MH Avícola ("Cord")                   1      1
+  mh_condesa       Auxiliar Recibo Condesa ("AR Condesa")           13     23
+  mh_condesa       Auxiliar Inventarios Condesa ("AI Condesa")       4      8
+  mh_condesa       Auxiliar Calidad Condesa ("AC Condesa")           3      4
+  mh_condesa       Auxiliar Turno Matutino Condesa ("ATM Condesa     1      3
+  mh_condesa       Coordinador MH Condesa ("Coord MH Condesa")       2      2
+  mh_contry        Auxiliar Inventario Contry ("AIC")               13     52
+  mh_contry        Auxiliar Turno Vespertino Contry ("ATV CON")     11     24
+  mh_contry        Auxiliar Turno Matutino Contry ("ATM Contry")     8     18
+  mh_contry        Auxiliar Calidad Contry ("AC")                    5     12
+  mh_contry        Coordinador MH Contry ("Coord MH")                1      2
+  mh_contry        Auxiliar Recibo Contry ("AR Contry")              1      1
+  mh_cumbres       Auxiliar Inventario Cumbres ("AI CUM")           10     20
+  mh_cumbres       Auxiliar Turno Vespertino Cumbres ("ATV CUM")     7     12
+  mh_cumbres       Auxiliar Turno Matutino CUM ("ATM CUM")           4      4
+  mh_cumbres       Coordinador MH Cumbres ("Coord MH CUM")           3      4
+  mh_cumbres       Auxiliar Calidad Cumbres ("AC CUM")               1      3
+  mh_guadalupe     Auxiliar Turno Vespertino Gpe ("ATV")             8     23
+  mh_guadalupe     Auxiliar Turno Matutino Gpe ("ATM")               9     17
+  mh_guadalupe     Auxiliar Inventarios Gpe ("Aux. inv. Gpe")        6     11
+  mh_guadalupe     Auxiliar Calidad Gpe ("AC")                       2      7
+  mh_san_nicolas   Auxiliar Turno Matutino SN ("ATM")                8     20
+  mh_san_nicolas   Auxiliar Inventarios SN ("AI")                   11     17
+  mh_san_nicolas   Auxiliar Turno Vespertino SN ("ATV")              7      9
+  mh_san_nicolas   Auxiliar Calidad SN ("AC")                        6      8
+  mh_san_nicolas   Coordinador MH SN ("Coord MH")                    4      5
+  mh_zapopan       Auxiliar Inventarios Zapopan ("Xennia")          11     20
+  mh_zapopan       Auxiliar Recepción Zapopan ("Angel")             10     16
+  mh_zapopan       Auxiliar Turno Vespertino Zapopan ("David")       3      9
+  mh_zapopan       Auxiliar Calidad Zapopan ("Victor")               2      2
+
+──────────────────────────────────────────────────────────────────────────────
+desempeno_repartidores.driver_name
+  111 distinct name×hub combinations · 0 look role-named
+──────────────────────────────────────────────────────────────────────────────
+  (no role-named accounts found)
+
+──────────────────────────────────────────────────────────────────────────────
+incidentes.Operador
+  408 distinct name×hub combinations · 39 look role-named
+──────────────────────────────────────────────────────────────────────────────
+
+  hub              account                                         wks   rows
+  (no hub col)     Auxiliar Turno Matutino Condesa                  23    137
+  (no hub col)     Auxiliar Turno Vespertino Condesa                23    137
+  (no hub col)     Coordinador MH Condesa                           23    137
+  (no hub col)     Auxiliar Turno Matutino Zapopan                  23    137
+  (no hub col)     Auxiliar Turno Vespertino Zapopan                23    137
+  (no hub col)     Coordinador MH Zapopan                           23    137
+  (no hub col)     Auxiliar Inventarios SN                          21    121
+  (no hub col)     Auxiliar Turno Matutino Avícola                  21    121
+  (no hub col)     Coordinador MH Avícola                           21    121
+  (no hub col)     Auxiliar Turno Vespertino Avícola                21    121
+  (no hub col)     Auxiliar Calidad SN                              21    120
+  (no hub col)     Auxiliar Turno Vespertino Gpe                    21    120
+  (no hub col)     Auxiliar Turno Matutino Gpe                      21    120
+  (no hub col)     Coordinador MH Gpe                               21    120
+  (no hub col)     Coordinador MH SN                                21    120
+  (no hub col)     Auxiliar Turno Vespertino SN                     21    120
+  (no hub col)     Auxiliar Turno Matutino SN                       21    120
+  (no hub col)     Coordinador MH Cumbres                           21    120
+  (no hub col)     Auxiliar Calidad Cumbres                         21    120
+  (no hub col)     Auxiliar Turno Matutino CUM                      21    120
+  (no hub col)     Coordinador MH Contry                            21    120
+  (no hub col)     Auxiliar Turno Matutino Contry                   21    120
+  (no hub col)     Auxiliar Calidad Contry                          21    120
+  (no hub col)     Auxiliar Turno Vespertino Contry                 21    120
+  (no hub col)     Auxiliar Turno Vespertino Cumbres                21    120
+  (no hub col)     Auxiliar Inventario Contry                       21    120
+  (no hub col)     Auxiliar Inventario Cumbres                      21    120
+  (no hub col)     Auxiliar Calidad Zapopan                         21    120
+  (no hub col)     Auxiliar Inventarios Zapopan                     21    120
+  (no hub col)     Auxiliar Recepción Zapopan                       21    120
+  (no hub col)     Auxiliar Calidad Condesa                         20    119
+  (no hub col)     Auxiliar Inventarios Condesa                     20    119
+  (no hub col)     Auxiliar Recibo Contry                           20    114
+  (no hub col)     Auxiliar Recibo Condesa                          20    114
+  (no hub col)     Auxiliar Calidad Avícola                         20    114
+  (no hub col)     Auxiliar Inventario Avícola                      20    114
+  (no hub col)     Auxiliar Inventarios Gpe                         19    113
+  (no hub col)     Auxiliar Calidad Gpe                             19    113
+  (no hub col)     Coordinador MH SPGG                               5     28
+
+──────────────────────────────────────────────────────────────────────────────
+incidentes.Responsable
+  14 distinct name×hub combinations · 4 look role-named
+──────────────────────────────────────────────────────────────────────────────
+
+  hub              account                                         wks   rows
+  (no hub col)     aux.inventario.sn@calii.com                      12     35
+  (no hub col)     aux.turno.sn@calii.com                           15     22
+  (no hub col)     aux.turno.con@calii.com                           5     15
+  (no hub col)     aux.inventario.avi@calii.com                      1      1
+
+──────────────────────────────────────────────────────────────────────────────
+discrepancia.Repartidor
+  113 distinct name×hub combinations · 0 look role-named
+──────────────────────────────────────────────────────────────────────────────
+  (no role-named accounts found)
+
+==============================================================================
+WEEK-BY-WEEK: role accounts in desempeno_operadores
+Shows whether an aux assembles EVERY week (structural) or only SOME weeks
+(genuine flex). This is the distinction the causal chain depends on.
+==============================================================================
+
+  account                                   06-12  06-19  06-26  07-03  07-10  07-17  07-24  07-31  08-07  08-14  08-21  08-28
+  Auxiliar Calidad Avícola ("AC")               0      0      0      0      0      0      0      0      0      0      0      0
+  Auxiliar Calidad Condesa ("AC Condesa")      11      9      9     10      2      9      0      0      0      0      0      0
+  Auxiliar Calidad Contry ("AC")                0      0     10      0      5      0      3      3      0     10      7      0
+  Auxiliar Calidad Cumbres ("AC CUM")           3      0      0      0      0      0      0      0      0      0      0      0
+  Auxiliar Calidad Gpe ("AC")                   6     10      2      1      2      2      8      4      5      3     16      3
+  Auxiliar Calidad SN ("AC")                    9     10      7      4      5      0      2      0      5      0      7      2
+  Auxiliar Calidad Zapopan ("Victor")           6      3      4      4      4      0      5      7      5     16      4      2
+  Auxiliar Inventario Avícola ("AI")            3      2      5      2      3      2      0      0      3      0      1      0
+  Auxiliar Inventario Contry ("AIC")            7     11      9      6      0      0      6      0      9      0      6      6
+  Auxiliar Inventario Cumbres ("AI CUM")       11      5      7      5     14      6      6     11      6      6      6      8
+  Auxiliar Inventarios Condesa ("AI Conde       9     10     10      9     10     10      2     13      5      0      0      0
+  Auxiliar Inventarios Gpe ("Aux. inv. Gp       8      9      6      1      1      0      5      1      8      3     19     11
+  Auxiliar Inventarios SN ("AI")                9      9      9      8      9     10      0      8     14      9      9      9
+  Auxiliar Inventarios Zapopan ("Xennia")       5      9      9      9      0     13      9      9     18     16     11     16
+  Auxiliar Recepción Zapopan ("Angel")          3      5      ·      ·      ·      ·      ·      ·      ·      ·      ·      ·
+  Auxiliar Recibo Condesa ("AR Condesa")        9      0      8      9     19     10      9     10     12      9     12     15
+  Auxiliar Recibo Contry ("AR Contry")          0      0      0      0      0      0      0      0      0      4      0      0
+  Auxiliar Turno Matutino Avícola ("ATM")       8      6     12     21      3      4     12     11      4     11      3      6
+  Auxiliar Turno Matutino CUM ("ATM CUM")      11      2      0      0     15      6      4      0      0      0      0      2
+  Auxiliar Turno Matutino Condesa ("ATM C       8      5      5      5      6      1      0     10      7      0      9      7
+  Auxiliar Turno Matutino Contry ("ATM Co       0      0      0      6      3      0      6     20      3      2     12     13
+  Auxiliar Turno Matutino Gpe ("ATM")           5      4     11      0      2      5     13     12      8      0      0      7
+  Auxiliar Turno Matutino SN ("ATM")            4      4      5      6      4      4      4      4     18      4      5      4
+  Auxiliar Turno Matutino Zapopan ("Eugen       4      1      0      4      0      0      0      0      0      0      0      0
+  Auxiliar Turno Vespertino Avícola ("ATV       7      3      6      2      5      8      2      1      3      0     10      5
+  Auxiliar Turno Vespertino Condesa ("ATV       2      1      0      0      1      0      0      0      4      5      3      1
+  Auxiliar Turno Vespertino Contry ("ATV        5      0      7      1      9      0      1     17      0     11      7      1
+  Auxiliar Turno Vespertino Cumbres ("ATV      21      2      7     11      3     10      0     13      4      0     10      9
+  Auxiliar Turno Vespertino Gpe ("ATV")         0      0      0      1      6     12      3      6      9      5     12      5
+  Auxiliar Turno Vespertino SN ("ATV")          5      6      4      4      4      5      4      8      4      2      4      0
+  Auxiliar Turno Vespertino Zapopan ("Dav       1      2     22     25      0     13      4      5      1      0      1      4
+  Coordinador MH Avícola ("Cord")               1      0      0      1      0      0      0      0      0      0      1      0
+  Coordinador MH Condesa ("Coord MH Conde       0      0      0      0      0      0      0      3      0      2      0      0
+  Coordinador MH Contry ("Coord MH")            0      0      0      0      0      2      1      0      0      4      0      0
+  Coordinador MH Cumbres ("Coord MH CUM")       0      1      0      0      0      0      0      0      0      0      0      0
+  Coordinador MH Gpe ("Coord MH")               0      0      0      0      0      0      0      0      0      0      0      0
+  Coordinador MH SN ("Coord MH")                0      8      0      0      0      0      1      0      0      2      0      0
+  Coordinador MH SPGG ("Coord MH")              ·      ·      ·      ·      ·      ·      ·      ·      ·      ·      ·      ·
+  Coordinador MH Zapopan ("Coord MH")           0      0      0      1      0      0      0      0      0      7      0      0
+
+  · = no row that week (did not assemble at all)
+  a number = orders assembled that week

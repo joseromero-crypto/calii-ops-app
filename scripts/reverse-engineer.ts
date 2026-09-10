@@ -58,12 +58,28 @@ const DEFAULT_TARGETS: [string, string][] = [
   ['desempeno_operadores', 'num_idle_days'],
   ['desempeno_operadores', 'order_total_multiplier'],
   ['desempeno_operadores', 'normalized_num_assembly_minutes'],
+  // OPS_CONTEXT.md §4.5b: tasa_armado's clock starts at ASSIGNMENT, not at pick
+  // start. The file appears to carry BOTH clocks — ~29 min/order on one,
+  // ~7.6 min/order on the other. If so, the difference is queue waiting time and
+  // can be isolated out of tasa_armado. These runs test that at row level.
+  ['desempeno_operadores', 'total_num_min_of_assembly'],
+  ['desempeno_operadores', 'avg_min_per_assembly'],
+  ['desempeno_operadores', 'backcompat_avg_min_per_assembly'],
   ['desempeno_repartidores', 'num_admin_incidents'],
+  // Identical on every summary stat to num_assigned_orders. H1 settles whether
+  // they are the same column under two names, at row level, across all 20 weeks.
+  ['desempeno_repartidores', 'num_orders'],
   // José confirmed the INTENT of this one (days of stock cover at current
   // consumption). We are testing whether the shipped VALUE matches that intent,
   // because '0' / '90' / '45' dominate and look like caps, not measurements.
   ['mna', 'Días de inventario'],
   ['mna', '1 en N pedidos'],
+  // Both confirmed at mean level from José's answers. These runs promote them
+  // from "the averages line up" to "holds on every row", or find where they don't.
+  //   Diferencia vales       ?= Cálculo digital vales − Conciliación Clip
+  //   Diferencia devoluciones ?= Por devolver − Devoluciones confirmadas
+  ['discrepancia', 'Diferencia vales'],
+  ['discrepancia', 'Diferencia devoluciones'],
 ];
 
 /**
@@ -231,6 +247,9 @@ async function main() {
         // so `n` on these rows is smaller — read the n, not just the rate.
         results.push({ label: `= ${ka} / ${kb}`, ...matchRate(target, (i) => va[i] / vb[i]) });
         results.push({ label: `= ${kb} / ${ka}`, ...matchRate(target, (i) => vb[i] / va[i]) });
+        // Products — catches "per-order average × order count" relationships,
+        // e.g. total_num_min_of_assembly ?= backcompat_avg_min_per_assembly × num_assembled
+        results.push({ label: `= ${ka} × ${kb}`, ...matchRate(target, (i) => va[i] * vb[i]) });
         // H8 capped ratios. min(x/0, K) === K, so these DO cover the
         // divide-by-zero rows that H7 skips.
         for (const K of CAPS) {

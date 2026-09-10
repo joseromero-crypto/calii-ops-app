@@ -1,0 +1,109 @@
+==============================================================================
+CROSS-FILE RECONCILIATION TESTS
+==============================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+TEST A — 3PL volume  =  pedidos_entregados − Σ driver num_orders
+──────────────────────────────────────────────────────────────────────────────
+Reading pedidos_entregados from kpi_snapshots (hub scope) so we use the
+SHIPPED definition, not a re-derivation.
+⚠ resumen_operativo starts 2026-05-01, so only ~15 weeks are testable.
+
+  hub | week                    entregados  Σ drivers      gap   gap %
+  mh_san_nicolas | 2026-06-26          675        655       20    3.0%
+  mh_san_nicolas | 2026-07-03          644        632       12    1.9%
+  mh_san_nicolas | 2026-07-10          622        606       16    2.6%
+  mh_san_nicolas | 2026-07-17          627        522      105   16.7%
+  mh_san_nicolas | 2026-07-24          629        605       24    3.8%
+  mh_san_nicolas | 2026-07-31          673        587       86   12.8%
+  mh_san_nicolas | 2026-08-07          630        606       24    3.8%
+  mh_san_nicolas | 2026-08-14          678        633       45    6.6%
+  mh_san_nicolas | 2026-08-21          632        513      119   18.8%
+  mh_san_nicolas | 2026-08-28          709        640       69    9.7%
+  mh_zapopan | 2026-05-01              606        584       22    3.6%
+  mh_zapopan | 2026-05-08              545        520       25    4.6%
+  mh_zapopan | 2026-05-15              609        556       53    8.7%
+  mh_zapopan | 2026-05-22              543        522       21    3.9%
+  mh_zapopan | 2026-05-29              559        536       23    4.1%
+  mh_zapopan | 2026-06-05              505        496        9    1.8%
+  mh_zapopan | 2026-06-12              556        537       19    3.4%
+  mh_zapopan | 2026-06-19              459        451        8    1.7%
+  mh_zapopan | 2026-06-26              501        455       46    9.2%
+  mh_zapopan | 2026-07-03              508        482       26    5.1%
+  mh_zapopan | 2026-07-10              498        483       15    3.0%
+  mh_zapopan | 2026-07-17              449        429       20    4.5%
+  mh_zapopan | 2026-07-24              479        462       17    3.5%
+  mh_zapopan | 2026-07-31              489        472       17    3.5%
+  mh_zapopan | 2026-08-07              464        440       24    5.2%
+  mh_zapopan | 2026-08-14              517        499       18    3.5%
+  mh_zapopan | 2026-08-21              469        441       28    6.0%
+  mh_zapopan | 2026-08-28              514        488       26    5.1%
+
+  hub-weeks compared:      126
+  NEGATIVE gaps:           4  ← consistent with the hypothesis
+  mean gap (orders):       39.3
+  median |gap| as % of entregados: 5.2%
+
+  READ IT THIS WAY:
+   · Few/no negatives + a stable positive gap → the gap is real 3PL volume.
+   · Many negatives → the two numbers count different things; hypothesis dead.
+   · Gap ≈ 0 everywhere → 3PL volume is negligible, or it IS in the driver file.
+   · Wild week-to-week swings → something else is moving; do not use as a metric.
+
+──────────────────────────────────────────────────────────────────────────────
+TEST B — is the same complaint written to BOTH armador and driver rows?
+──────────────────────────────────────────────────────────────────────────────
+If yes, hub-week TOTALS should match closely (same orders, grouped by the
+two people who touched them). Decides whether bipartite attribution works.
+
+  num_orders_with_missing_items
+    hub-weeks 165   armador total 1843   driver total 2088   ratio 1.13×
+    within ±5% per hub-week: 36/165   median |rel diff| 14.3%
+    🔶 partial overlap → inspect before relying on it
+
+  num_orders_with_partial_missing
+    hub-weeks 165   armador total 506   driver total 665   ratio 1.31×
+    within ±5% per hub-week: 56/165   median |rel diff| 25.0%
+    🔶 partial overlap → inspect before relying on it
+
+  num_orders_with_full_missing
+    hub-weeks 165   armador total 1426   driver total 1536   ratio 1.08×
+    within ±5% per hub-week: 39/165   median |rel diff| 12.5%
+    🔶 partial overlap → inspect before relying on it
+
+  num_orders_with_bad_quality
+    hub-weeks 165   armador total 2549   driver total 3510   ratio 1.38×
+    within ±5% per hub-week: 14/165   median |rel diff| 37.5%
+    🔶 partial overlap → inspect before relying on it
+
+──────────────────────────────────────────────────────────────────────────────
+TEST C — num_undelivered_orders (repartidores) vs "Por devolver" (discrepancia)
+──────────────────────────────────────────────────────────────────────────────
+
+  hub | week                    undelivered  por devolver    diff
+  mh_zapopan | 2026-04-17                 3             6      -3
+  mh_zapopan | 2026-04-24                 5             9      -4
+  mh_zapopan | 2026-05-01                 9            14      -5
+  mh_zapopan | 2026-05-08                 5             9      -4
+  mh_zapopan | 2026-05-15                 5             9      -4
+  mh_zapopan | 2026-05-22                 4             7      -3
+  mh_zapopan | 2026-05-29                 8            13      -5
+  mh_zapopan | 2026-06-05                 7            13      -6
+  mh_zapopan | 2026-06-12                 6            13      -7
+  mh_zapopan | 2026-06-19                 5            10      -5
+  mh_zapopan | 2026-06-26                 6            14      -8
+  mh_zapopan | 2026-07-03                 5             8      -3
+  mh_zapopan | 2026-07-10                 6            12      -6
+  mh_zapopan | 2026-07-17                 4            10      -6
+  mh_zapopan | 2026-07-24                 3             6      -3
+  mh_zapopan | 2026-07-31                11            14      -3
+  mh_zapopan | 2026-08-07                 2             6      -4
+  mh_zapopan | 2026-08-14                 8            16      -8
+  mh_zapopan | 2026-08-21                 6            12      -6
+  mh_zapopan | 2026-08-28                 4            15     -11
+
+  hub-weeks 174   undelivered total 1582   por devolver total 2260   ratio 1.43×
+  within ±5% per hub-week: 4/174
+
+  A stable ratio near 1 means both pipelines see the same events.
+  A persistent gap means one of them is dropping rows — worth finding.

@@ -1,0 +1,212 @@
+==============================================================================
+HUB INVESTIGATION — mh_contry
+Question: why is faltantes armador higher here than at peer hubs?
+Window: 2026-06-12 → 2026-08-28 (12 weeks)
+==============================================================================
+
+
+──────────────────────────────────────────────────────────────────────────────
+1 · IS THE PREMISE TRUE?   faltante events per 1,000 orders assembled
+──────────────────────────────────────────────────────────────────────────────
+  Raw counts favour big hubs. This does not.
+
+  hub                 events  assembled   per 1k
+  mh_contry             1967      11053    178.0  ← target
+  mh_guadalupe          1349       7690    175.4
+  mh_avicola             736       4730    155.6
+  mh_cumbres            1506       9881    152.4
+  mh_san_nicolas        1048       8048    130.2
+  mh_condesa             512       4908    104.3
+  mh_zapopan             493       5992     82.3
+
+  mh_contry = 178.0 per 1k · peer mean = 133.4 · GAP = +44.6
+
+  ⭐ THE GAP IS THE THING TO EXPLAIN. Every candidate below is judged on whether
+     it moves this number, not on how big it is.
+
+
+──────────────────────────────────────────────────────────────────────────────
+2 · CANDIDATE A — stock availability   (does the inventory split explain it?)
+──────────────────────────────────────────────────────────────────────────────
+  `Inventario disponible` = system stock at the moment of the report (CONFIRMED).
+  = 0 → genuine stockout, not the armador. > 0 → stock was believed present.
+
+  hub                     n   inv=0   inv>0  inv<0  rate1k (inv>0 only)
+  mh_contry            1967   31.7%   63.2%     75                112.5
+  mh_guadalupe         1349   32.7%   64.0%     23                112.2
+  mh_avicola            736   29.9%   67.0%     12                104.2
+  mh_cumbres           1506   31.9%   65.6%     17                100.0
+  mh_san_nicolas       1048   31.6%   65.7%     15                 85.6
+  mh_condesa            512   19.7%   69.7%      7                 72.7
+  mh_zapopan            493   29.2%   62.3%      3                 51.2
+
+  Gap on ALL events:        +44.6 per 1k
+  Gap on inv>0 events only: +24.8 per 1k
+  → removing genuine stockouts closes 44.4% of the gap
+
+  ✅ DISCRIMINATES — a real part of the gap is genuine stockouts, not operations.
+
+
+──────────────────────────────────────────────────────────────────────────────
+3 · CANDIDATE B — product mix   (which products are SPECIFIC to this hub?)
+──────────────────────────────────────────────────────────────────────────────
+  ⭐ A product that is big everywhere explains nothing. Only products that are
+     over-represented HERE relative to peers can explain the gap.
+
+  product                                 here  peers   share    peer    lift
+  Ejotes                                    45     68    2.3%    1.2%     1.9
+  Uva verde bolsa 1kg                       33     29    1.7%    0.5%     3.3  ← specific
+  Guayaba                                   24     78    1.2%    1.4%     0.9
+  Papaya                                    23    130    1.2%    2.3%     0.5
+  Fresas caja 454g                          21     54    1.1%    1.0%     1.1
+  Mandarina importada                       19     17    1.0%    0.3%     3.2  ← specific
+  Brócoli                                   18     18    0.9%    0.3%     2.9  ← specific
+  Piña miel cortada Calii Fresh 500g        16     45    0.8%    0.8%     1.0
+  Manzana golden importada                  15     25    0.8%    0.4%     1.7
+  Sandía                                    13     35    0.7%    0.6%     1.1
+  Camote                                    13     20    0.7%    0.4%     1.9
+  Morrón rojo                               13      9    0.7%    0.2%     4.1  ← specific
+  Repollo verde                             12     21    0.6%    0.4%     1.6
+  Frambuesas caja 170g                      12      9    0.6%    0.2%     3.8  ← specific
+  Sandía cortada Calii Fresh 500g           12     33    0.6%    0.6%     1.0
+
+  Products ≥5 events here AND ≥2× peer share: 32
+  They account for 13.9% of this hub's faltantes.
+  ✅ DISCRIMINATES — these are hub-specific and worth naming:
+     Uva verde bolsa 1kg  (33 here vs 29 across 6 peers)
+     Mandarina importada  (19 here vs 17 across 6 peers)
+     Brócoli  (18 here vs 18 across 6 peers)
+     Morrón rojo  (13 here vs 9 across 6 peers)
+     Frambuesas caja 170g  (12 here vs 9 across 6 peers)
+     Durazno importado  (10 here vs 14 across 6 peers)
+     Tuna blanca pelada Calii Fresh 500g  (10 here vs 10 across 6 peers)
+     Lechuga italiana  (9 here vs 9 across 6 peers)
+     Insecticida Raid Max 400ml  (8 here vs 0 across 6 peers)
+     Manzana granny smith  (8 here vs 5 across 6 peers)
+
+
+──────────────────────────────────────────────────────────────────────────────
+4 · CANDIDATE C — is it concentrated in PEOPLE?
+──────────────────────────────────────────────────────────────────────────────
+  Using the armador file's own declared count (num_orders_with_faltante_armador),
+  which is ORDERS-with-a-faltante ÷ orders assembled — a true rate per person.
+
+  hub                 people  hub rate  top-3 share of FA
+  mh_contry               22      8.1%                 6%
+  mh_guadalupe            19      7.6%                 4%
+  mh_avicola              14      6.5%                50%
+  mh_cumbres              15      7.6%                21%
+  mh_san_nicolas          20      6.1%                 5%
+  mh_condesa              15      2.8%                42%
+  mh_zapopan              16      2.1%                29%
+
+  Worst individual rates at mh_contry (≥50 orders assembled):
+     gerardo aaron jimenez medellin                   17 /   105 =  16.2%
+     auxiliar turno matutino contry                   10 /    65 =  15.4%   [role account]
+     erika marlene castro lopez                       25 /   226 =  11.1%
+     heidy leilany gutierrez martinez                101 /   967 =  10.4%
+     auxiliar turno vespertino contry                  6 /    59 =  10.2%   [role account]
+     auxiliar inventario contry                        6 /    60 =  10.0%   [role account]
+     yoani elvira tejeda gonzalez                     35 /   356 =   9.8%
+     luz guadalupe castillo heredia                   91 /   983 =   9.3%
+     median at this hub: 8.1%
+
+  Top-3 share here 6% vs peer mean 25%
+  ❌ DOES NOT DISCRIMINATE — spread across the workforce much like peer hubs.
+     A hub/process problem, not a few individuals.
+
+
+──────────────────────────────────────────────────────────────────────────────
+5 · CANDIDATE D — cross-file factors   (does anything else track the gap?)
+──────────────────────────────────────────────────────────────────────────────
+  For each factor: the hub value, and whether it rank-correlates with the
+  faltantes rate ACROSS ALL HUBS. A factor that does not correlate cannot
+  explain why one hub differs, however bad its own value looks.
+
+  factor                            mh_contry  peer mean  rank corr  verdict
+  orders per armador                   368.43     356.55       0.25  ❌ neither
+  tasa_armado (mean SKU/hr)             79.74     122.12      -0.68  ✅ DISCRIMINATES
+  unjustified absences /person-wk        2.09       2.32      -0.57  ❌ neither
+  idle days /person-wk                   2.19       1.91       0.07  ❌ neither
+     ⚠ num_idle_days is OPEN — meaning unknown
+  role-account share of assembly         0.02       0.04      -0.79  ✅ DISCRIMINATES
+  workforce size                        30.00      19.33       0.32  ❌ outlier here, but no cross-hub relationship
+
+  ⚠ 7 hubs = 7 data points. A rank correlation on n=7 is a LEAD, never proof.
+
+
+──────────────────────────────────────────────────────────────────────────────
+6 · WHAT THE ARMADORES THEMSELVES WROTE
+──────────────────────────────────────────────────────────────────────────────
+  `Notas armador` is free text typed by the armador (CONFIRMED). Raw counts,
+  normalised only for case/accents. NO taxonomy applied — the official one
+  (Error del armador / de inventario / del sistema) lives in the #hub_fa
+  Slack thread, which we do not ingest.
+
+  mh_contry: 340 distinct notes over 1967 events
+  note                                           here  peer share   lift
+  agotado                                         314        8.1%    2.0
+  merma                                           255        3.6%    3.6  ← specific
+  error de inventario                             172        0.2%   38.0  ← specific
+  no localizado                                   132        1.6%    4.3  ← specific
+  producto agotado                                120        6.5%    0.9
+  no encontrado                                    36        0.0%   51.6  ← specific
+  producto no localizado                           28        3.0%    0.5
+  solo uno en existencia                           24        0.0%   34.4  ← specific
+  solo 1 disponible                                23        0.0%      ∞  ← specific
+  solo hay uno                                     18        0.1%   17.2  ← specific
+  producto mermado                                 17        0.9%    1.0
+  solo 1 pieza disponible                          14        0.0%      ∞  ← specific
+  no hay                                           13        1.6%    0.4
+  solo una pieza disponible                        13        0.0%      ∞  ← specific
+  se utilizo para fresh                            12        0.0%      ∞  ← specific
+
+
+==============================================================================
+7 · CONFIDENCE — ASSISTANT_DESIGN.md §3
+==============================================================================
+  Overall confidence = the WEAKEST axis. Never the average.
+
+  COVERAGE     ✅  1967 events at mh_contry, 12 weeks.
+                   Inventario disponible missing on 26 (1.3%).
+  MEANING      ✅  Inventario disponible, Notas armador, num_assembled — all CONFIRMED.
+               🔶  num_idle_days is OPEN. Any conclusion using it is unfounded.
+  STATISTICAL  🔶  7 hubs. Rank correlations are leads, not evidence.
+  CAUSAL       🔶  Nothing here traces a MECHANISM. Discrimination narrows the
+                   field; it does not prove causation.
+
+  ⚠ NOT VISIBLE TO THIS ANALYSIS, and each could change the answer:
+    · The #hub_fa Slack thread — official root cause per event, and the aux
+      verification. The only place "error del armador vs de inventario vs del
+      sistema" is actually recorded.
+    · Whether the armador consulted the aux before marking (never recorded).
+    · MNA-flagged stock — Inventario can be >0 yet genuinely unavailable.
+    · Express orders jumping the queue; marketplace orders absent entirely.
+    · Daily patterns — the Mon/Tue/Sun aux rota is invisible at weekly grain.
+
+
+==============================================================================
+8 · SYNTHESIS — finding + evidence + suggested action
+==============================================================================
+
+  FINDING
+    · mh_contry's faltante rate is 44.6 per 1k orders above the peer mean (178.0 vs 133.4) — a real gap, normalised for hub size, not a raw-count artifact.
+    · Genuine stockouts explain 44.4% of the gap; the remaining 55.6% survives even after removing them, so this is not purely a supply-side problem.
+    · It is NOT concentrated in a few people (top-3 share 6% vs peer 25%) — rules out "a few bad armadores"; whatever this is, it's hub-wide.
+    · 32 products are specifically over-represented here (13.9% of this hub's faltantes) — led by Uva verde bolsa 1kg, Mandarina importada, Brócoli.
+    · Cross-hub, "role-account share of assembly" discriminates (mh_contry 0.02 vs peer 0.04, rank-correlation -0.79) — a lead, not proof (n=7 hubs).
+    · Cross-hub, "tasa_armado (mean SKU/hr)" discriminates (mh_contry 79.74 vs peer 122.12, rank-correlation -0.68) — a lead, not proof (n=7 hubs).
+    · The note "solo 1 disponible" appears 23 times here — not seen at any peer hub at all. Free text, no official taxonomy applied (that lives in the #hub_fa Slack thread, not ingested — §7).
+
+  SUGGESTED ACTION  (hedged — Causal confidence is 🔶, see §7; José decides, this is input not a directive)
+    · Not a coaching problem for specific people — the elevated rate is spread across the whole floor.
+    · Check whether staffing/scheduling is keeping pace with order volume — assembly rate is the strongest below-peer number found (79.74 vs 122.12 SKU/hr), and "orders per armador" itself came back inconclusive, so headcount ratio alone doesn't explain it.
+    · Look into "solo 1 disponible" at mh_contry specifically — it's the most hub-specific note found (23 events, absent at every peer hub), which points at whatever that phrase describes as a pattern local to this hub, not network-wide noise.
+    · Flag the hub-specific products above to whoever owns stocking/exhibition capacity here — a stocking-pattern issue, not a network-wide catalog one.
+
+  ⚠ CONTRADICTS A DOCUMENTED HYPOTHESIS
+    OPS_CONTEXT.md §2 predicts more aux time on assembly → less on inventory → MORE faltantes.
+    Here the correlation runs the OTHER way (ρ=-0.79): hubs where aux assemble MORE tend
+    to have FEWER faltantes. mh_contry is the highest-faltante-rate hub in this window and has the LOWEST aux-assembly share of any hub.
+    Either the flex-chain hypothesis needs revising, or something else is compensating at the
+    hubs with higher aux-assembly share. Not resolved by this data alone.

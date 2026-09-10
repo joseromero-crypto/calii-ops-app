@@ -6,6 +6,7 @@
  */
 export function normalizeName(raw: string): string {
   return raw
+    .replace(/\s*\(\s*["“][^"”]*["”]\s*\)\s*$/, '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()

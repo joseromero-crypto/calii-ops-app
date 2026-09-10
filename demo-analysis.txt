@@ -1,0 +1,75 @@
+==============================================================================
+PHASE 2 DEMO — mh_contry, last 12 weeks
+Every number below came from lib/analysis/*, called exactly as Phase 3's
+chat loop will call it — no ad-hoc script logic, no AI.
+==============================================================================
+
+Gathering per-hub faltantes rate + candidate factors across all 7 hubs...
+
+──────────────────────────────────────────────────────────────────────────────
+1 · faltantesBreakdown(hub, weeks)
+──────────────────────────────────────────────────────────────────────────────
+  1967 events · inv=0: 623 · inv>0: 1243 · inv<0: 75
+  top notes: "agotado" (314), "merma" (255), "error de inventario" (172)
+  confidence: coverage=CONFIRMED meaning=CONFIRMED statistical=CONFIRMED causal=ASSUMED
+  caveats: 75 events have Inventario disponible < 0 — meaning unknown (DATA_DICTIONARY.md ❓ OPEN, network-wide historically ~46 events, min −8).
+  claims: 623 of 1967 faltantes had Inventario disponible = 0 | 1243 of 1967 faltantes had stock believed present (Inventario disponible > 0)
+
+──────────────────────────────────────────────────────────────────────────────
+2 · faltantesProductLift(hub, weeks)
+──────────────────────────────────────────────────────────────────────────────
+  32 products discriminate (≥5 here, ≥2× peer share)
+    Insecticida Raid Max 400ml: 8 here vs 0 peers, lift ∞
+    Limpiador baños power ultra todo en 1 original Harpic 750ml: 6 here vs 0 peers, lift ∞
+    Fresa congelada con chocolate sin azúcar Eaterz 70g: 5 here vs 0 peers, lift ∞
+    Waffles estilo belga sabor red velvet Wafflus 260g: 5 here vs 0 peers, lift ∞
+    Manzana golden escolar 600g: 8 here vs 1 peers, lift 23.0×
+  confidence: coverage=CONFIRMED meaning=CONFIRMED statistical=CONFIRMED causal=ASSUMED
+
+──────────────────────────────────────────────────────────────────────────────
+3 · faltantesByPerson(hub, weeks)
+──────────────────────────────────────────────────────────────────────────────
+  top3_share_of_total: 6%, hub_median_rate: 8.1%
+  confidence: coverage=CONFIRMED meaning=CONFIRMED statistical=CONFIRMED causal=CORRECTED
+  caveats: Role accounts (auxiliares assembling under the Mon/Tue/Sun rota or off-rota flex, OPS_CONTEXT.md §2) are included and flagged, not excluded — their rate reflects flex-assembly conditions, not a normal armador shift.
+
+──────────────────────────────────────────────────────────────────────────────
+4 · deliveryLateness(hub, weeks) — built on Phase 1's order_deliveries
+──────────────────────────────────────────────────────────────────────────────
+  9928 orders · >10min (system "late"): 393 (4.0%)
+  protocol targets: >30min: 1.6% (target ≤5%) · >60min: 0.4% (target ≤1%)
+  worst window: "8am - 10am" at 3.6% >30min-late (n=1853)
+  confidence: coverage=CONFIRMED meaning=CONFIRMED statistical=CONFIRMED causal=ASSUMED
+
+──────────────────────────────────────────────────────────────────────────────
+5 · mnaBreakdown(hub, weeks)
+──────────────────────────────────────────────────────────────────────────────
+  total MNA: $274706 (4.44% of received value) · top-10 SKUs = 22.6% of total MNA
+    Fresas caja 454g: $17973
+    Papa blanca: $11065
+    Plátano chiapas racimo (5-7 pz): $8826
+  confidence: coverage=CONFIRMED meaning=CONFIRMED statistical=CONFIRMED causal=ASSUMED
+
+──────────────────────────────────────────────────────────────────────────────
+6 · discriminate() — candidates built from kpis.ts + workforce.ts, network-wide
+──────────────────────────────────────────────────────────────────────────────
+  mh_contry: 178.0/1k vs peer mean 133.4/1k (gap +44.6)
+    role_account_share_of_assembly   target=    0.02 peer=    0.04 ρ=-0.79  DISCRIMINATES
+    unjustified_absences_armador     target=  592.00 peer=  409.67 ρ= 0.00  OUTLIER_NO_RELATIONSHIP
+    tasa_armado                      target=   86.60 peer=  104.33 ρ=-0.32  NEITHER
+    idle_days_sum                    target=  621.00 peer=  340.83 ρ= 0.14  OUTLIER_NO_RELATIONSHIP  [OPEN column]
+  confidence: coverage=CONFIRMED meaning=OPEN statistical=ASSUMED causal=ASSUMED
+  caveats: 7 hubs = 7 data points. Never present a DISCRIMINATES verdict as proof — it is a lead worth investigating, nothing more.
+  claims: "role_account_share_of_assembly" discriminates for mh_contry (0.02 vs peer mean 0.04, rank correlation -0.79 with faltantes_rate_per_1k — n=7 hubs, a lead not proof)
+
+==============================================================================
+7 · SYNTHESIS
+==============================================================================
+  FINDING
+    · mh_contry's faltante rate is 44.6/1k above the peer mean (178.0 vs 133.4).
+    · 623 of 1967 faltantes had genuine stock unavailability (Inventario disponible = 0); the rest were believed in stock.
+    · 32 products are specifically over-represented here, not just large everywhere.
+    · Cross-hub, "role_account_share_of_assembly" discriminates (ρ=-0.79, n=7 — a lead, not proof).
+
+  This finding, its evidence, and its confidence were ALL produced by lib/analysis/*
+  in code — nothing above was narrated or summarised by a model.

@@ -53,7 +53,9 @@ const CAUSE_RULES: [string, RegExp][] = [
   ['merma',            /merma|mal estado|hongo|podrid|madur|golpead|caduc|descompuest|mal olor|echad|maltratad/],
   ['error_inventario', /error de inventario|error inventario|inventario (incorrect|erroneo|mal)|no coincide|mal inventario|diferencia de inventario/],
   ['no_localizado',    /no localizad|no se encontr|no encontr|no aparec|no lo encuentr|no estaba|no se ve/],
-  ['error_recepcion',  /recepcion|no lleg|no se recibi|nunca lleg|falto en recep|no vino|no surtier/],
+  // 'error_recepcion' removed (DATA_DICTIONARY.md `faltantes_armador` — "error de
+  // recepción" lives in the `registro de inventario` worksheet, which is not
+  // ingested. These notes now fall through to 'otro' rather than a fabricated bucket.
   ['dato_captura',     /codigo|barras|scane|escane|captur|etiquet/],
   ['proveedor',        /proveedor/],
 ];

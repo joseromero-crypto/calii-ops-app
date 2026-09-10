@@ -165,7 +165,13 @@ holds this gives complaint counts by product × category × hub × week from a s
 | `avg_min_per_assembly` | 73.2% | 7.56 |
 | `resumen_operativo` Comienzo/Finalización armado + entregas | 50%* | — |
 
-Idle is ~43% of logged assembly-room time and nothing reads it.
+⚠️ **UNRELIABLE — superseded by `DATA_DICTIONARY.md`.** The 43% figure divides
+`total_idle_time_min` by `total_num_min_of_assembly`, which turned out to be the
+**legacy** assembly clock (`backcompat_avg_min_per_assembly × num_assembled`, confirmed
+100% at row level) — not the current one (`avg_min_per_assembly`, ~7.56 min/order). It
+also over-claims: `total_idle_time_min` is *shift time minus order-open time*, which
+includes breaks, restocking and aisle upkeep, not idle-while-waiting-for-work. Do not
+cite the 43% figure or recompute it against the legacy denominator.
 *The 50% is the CH-row artifact — see §5.
 
 **Open question:** what does negative idle time mean?
@@ -210,7 +216,7 @@ Remember the 12,000-row cap on these figures.
 
 | # | What | Evidence | Impact |
 |---|---|---|---|
-| 1 | Panamericano leg never populated | `Conciliación Panamericano` = 0 in all 330 rows. `Diferencia Panamericano` identical to `Cálculo digital efectivo` on every statistic (min 0, max 37403.63, mean 9505.08, 56 zeros) | A "difference" that always equals the full amount |
+| 1 | ⚠️ Panamericano is a **dead rail**, not a broken reconciliation | `Conciliación Panamericano` = 0 in all 330 rows. `Diferencia Panamericano` identical to `Cálculo digital efectivo` on every statistic (min 0, max 37403.63, mean 9505.08, 56 zeros) — i.e. `efectivo − 0`, exactly as expected for an unused leg. Corrected in `DATA_DICTIONARY.md` §`discrepancia` — the columns should be dropped, not repaired. | Nothing to fix; `Diferencia Panamericano` and `Conciliación Panamericano` are dead columns, not evidence of a bug |
 | 2 | "Delivered" measures assembled | `pedidos_entregados` = `Pedidos (#)` − `Pendiente armado (#)`. `Pendiente entrega (#)` is 0 in all 56 rows | `ingresos_hub` inherits the same subtraction |
 | 3 | Dead classifier | `classify-notes.ts` writes `labels`; no KPI/chart/prompt reads it. Also `await`ed on the upload request path despite the comment saying otherwise (`app/api/upload/route.ts:248`) | Small spend (~115 rows/upload) + upload latency |
 | 4 | Two false docstrings | `classify-notes.ts:3`, `generate-insights.ts:5` | See §0 |

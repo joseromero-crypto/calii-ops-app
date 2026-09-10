@@ -1,0 +1,138 @@
+==============================================================================
+BLOB:  desempeno_repartidores.orders_data
+==============================================================================
+  parent rows sampled: 200   non-null blobs: 200
+  blob shape: array
+  total entries extracted: 10213
+  entry types: object=10213
+
+  10213 object entries · 6 distinct keys
+
+  key                            fill  types                samples
+  ──────────────────────────────────────────────────────────────────────────
+  delivered_at                    98%  string               2026-08-07T16:54:02.412-06:0 · 2026-08-07T16:44:54.647-06:0
+  delivery_date_str              100%  string               Ago-7 · Ago-7
+  delivery_window_start_date_    100%  string               2026-08-07T15:59:59.999-06:0 · 2026-08-07T15:59:59.999-06:0
+  delivery_window_time           100%  string               4pm - 6pm · 4pm - 6pm
+  minutes_delivered_late_or_e    100%  number               0 · 0
+  user_name                      100%  string               Jorge Sandoval · Francisco Sepulveda
+
+  ⏱  TIMESTAMP-LIKE KEYS: delivered_at, delivery_window_start_date_time
+     These are what would make per-order window and lateness analysis possible.
+     Nothing in the app reads them today.
+
+  Two full entries, verbatim:
+    {"user_name":"Jorge Sandoval","delivered_at":"2026-08-07T16:54:02.412-06:00","delivery_date_str":"Ago-7","delivery_window_time":"4pm - 6pm","delivery_window_start_date_time":"2026-08-07T15:59:59.999-06:00","minutes_delivered_late_or_early":0}
+    {"user_name":"Francisco Sepulveda","delivered_at":"2026-08-07T16:44:54.647-06:00","delivery_date_str":"Ago-7","delivery_window_time":"4pm - 6pm","delivery_window_start_date_time":"2026-08-07T15:59:59.999-06:00","minutes_delivered_late_or_early":0}
+
+==============================================================================
+BLOB:  desempeno_repartidores.client_issues_for_driver
+==============================================================================
+  parent rows sampled: 200   non-null blobs: 200
+  blob shape: array
+  total entries extracted: 8
+  entry types: object=8
+
+  8 object entries · 12 distinct keys
+
+  key                            fill  types                samples
+  ──────────────────────────────────────────────────────────────────────────
+  app_location                   100%  string               Pedido entregado > Problema  · Pedido entregado > Problema 
+  created_at                     100%  string               2026-08-08T13:51:10.250-06:0 · 2026-04-26T15:15:38.625-06:0
+  id                             100%  number               3566 · 3474
+  ignored_at                       0%                       
+  message                        100%  string               Se llevó a l poro y lo ocupo · Hola mi pedido no fue recibi
+  order_id                       100%  number               3720399 · 43336556
+  patient_id                     100%  number               611081 · 2826135
+  replied_at                       0%                       
+  subject                        100%  string               Incidente con el repartidor · Incidente con el repartidor
+  updated_at                     100%  string               2026-08-08T13:51:10.250-06:0 · 2026-04-26T15:15:38.625-06:0
+  user_cellphone                   0%                       
+  user_name                        0%                       
+
+  ⏱  TIMESTAMP-LIKE KEYS: created_at, updated_at
+     These are what would make per-order window and lateness analysis possible.
+     Nothing in the app reads them today.
+
+  Two full entries, verbatim:
+    {"id":3566,"message":"Se llevó a l poro y lo ocupo ","subject":"Incidente con el repartidor","order_id":3720399,"user_name":"","created_at":"2026-08-08T13:51:10.250-06:00","ignored_at":null,"patient_id":611081,"replied_at":null,"updated_at":"2026-08-08T13:51:10.250-06:00","app_location":"Pedido entregado > Problema con el repartidor","user_cellphone":""}
+    {"id":3474,"message":"Hola mi pedido no fue recibido y me aparece como entregado ","subject":"Incidente con el repartidor","order_id":43336556,"user_name":"","created_at":"2026-04-26T15:15:38.625-06:00","ignored_at":null,"patient_id":2826135,"replied_at":null,"updated_at":"2026-04-26T15:15:38.625-06:00","app_location":"Pedido entregado > Problema con el repartidor","user_cellphone":""}
+
+==============================================================================
+BLOB:  desempeno_repartidores.admin_incidents
+==============================================================================
+  parent rows sampled: 200   non-null blobs: 200
+  blob shape: array
+  total entries extracted: 37
+  entry types: object=37
+
+  37 object entries · 12 distinct keys
+
+  key                            fill  types                samples
+  ──────────────────────────────────────────────────────────────────────────
+  arrival_time                     0%                       
+  created_at                     100%  string               2026-08-07T12:04:33.409-06:0 · 2026-08-12T13:49:33.856-06:0
+  created_by                     100%  string               aux.turno.sn@calii.com · abdiel.gonzalez@calii.com
+  fault_date                     100%  string               2026-08-07 · 2026-08-11
+  id                             100%  number               170079 · 170704
+  is_absence                     100%  boolean              false · false
+  is_deleted                     100%  boolean              false · false
+  is_tardy                       100%  boolean              false · false
+  notes                          100%  string               NO SOLICITA PERMISO PARA SAL · No cuenta con ticket de gaso
+  operator_id                    100%  number               4442 · 4442
+  supervisor_id                    0%                       
+  updated_at                     100%  string               2026-08-07T12:04:33.409-06:0 · 2026-08-12T13:49:33.856-06:0
+
+  ⏱  TIMESTAMP-LIKE KEYS: created_at, updated_at
+     These are what would make per-order window and lateness analysis possible.
+     Nothing in the app reads them today.
+
+  Two full entries, verbatim:
+    {"id":170079,"notes":"NO SOLICITA PERMISO PARA SALIR A COMPRAR COMIDA","is_tardy":false,"created_at":"2026-08-07T12:04:33.409-06:00","created_by":"aux.turno.sn@calii.com","fault_date":"2026-08-07","is_absence":false,"is_deleted":false,"updated_at":"2026-08-07T12:04:33.409-06:00","operator_id":4442,"arrival_time":null,"supervisor_id":null}
+    {"id":170704,"notes":"No cuenta con ticket de gasolina ","is_tardy":false,"created_at":"2026-08-12T13:49:33.856-06:00","created_by":"abdiel.gonzalez@calii.com","fault_date":"2026-08-11","is_absence":false,"is_deleted":false,"updated_at":"2026-08-12T13:49:33.856-06:00","operator_id":4442,"arrival_time":null,"supervisor_id":null}
+
+==============================================================================
+BLOB:  desempeno_operadores.issues_comments
+==============================================================================
+  parent rows sampled: 200   non-null blobs: 200
+  blob shape: array
+  total entries extracted: 375
+  entry types: string=375
+
+  Entries are not objects. Verbatim samples:
+
+    Mala calidad | Piña miel cortada Calii Fresh 500g | Esta fermentado 
+    Mala calidad | Queso panela cremoso La Villita 400g | Esta baboso y huele.feo 
+    Mala calidad | Ajo entero | Una cabeza de ajo está húmeda en algunos dientes y en otros está en mal estado 
+    Mala calidad | Uva verde bolsa 1kg | Las uvas están pequeñas y aguadas. No se pueden comer así. Calii se distingue por siempre entregar frutas y verduras de muy buena calidad pero estás uvas están pés
+    Mala calidad | Plátano dominico racimo | Estan aguados y negros por Centro y por fuera.
+    Mala calidad | Mango ataúlfo | Ok pedi verde el Amarillo no me sirve. 
+    Mala calidad | Toronja | Espero si le lleguen los videos 
+    Mala calidad | Piña miel ahorramás | Me enviaron las piñas más verdes que tenían, eran para esta semana no para la que sigue 🫠
+    Mala calidad | Plátano chiapas racimo (5-7 pz) | Igual los plátanos, son los más verdes que había 😨
+    Mala calidad | Uva verde seleccionada Calii Fresh 300g | Están todas aguadas y vino mucha menos cantidad que otras veces 
+    Faltante | Limón ahorramás | No llego el limón 
+    Faltante | Tiramisú de lotus Calii Fresh 115g | Hola, no pude reportar ayer por falta de tiempo pero no me llegó mi tiramisú y el cilantro la mitad del manojo llegó podrido. 
+
+==============================================================================
+BLOB:  desempeno_repartidores.issues_comments
+==============================================================================
+  parent rows sampled: 200   non-null blobs: 200
+  blob shape: array
+  total entries extracted: 572
+  entry types: string=572
+
+  Entries are not objects. Verbatim samples:
+
+    Mala calidad | Queso mozzarella rallado FUD 200g | Sabe mal 
+    Mala calidad | Queso mozzarella rallado FUD 200g | Menciona que tiene mal sabor, como echadoa perder
+    Mala calidad | Blueberries caja 170g | Al sacar las frutas, una ya venía aplastada y con moho, por lo que el resto ya no se puede consumir
+    Mala calidad | Plátano chiapas racimo (5-7 pz) | Esta demasiado verde ño se podra comer de eso en unos dias solo para que verifiquen las siguientes veces 
+    Mala calidad | Mango ataúlfo | Ño ests pasado pero ests demasiado duro y verde incomible para unos dias y el plátano igyal 
+    Mala calidad | Frambuesas caja 170g | Algunas están en mal estado y las otras muy maduras 
+    Mala calidad | Uva roja sin semilla bolsa 1kg | Tiene pus las uvas
+    Mala calidad | Melón chino | Viene golpeado, tiene pozos aguados 
+    Mala calidad | Papaya | Viene golpeada, tiene pedazos grandes aguados 
+    Mala calidad | Huevo blanco Orespi caja 12pz |  el huevo en mal estado 
+    Mala calidad | Ensalada italiana Mr. Lucky 284g | La ensalada huele a que esta pasada y tiene algunas piezas que ya están oxidadas como viejas 
+    Mala calidad | Naranja nacional | Todas las naranjas completamente verdes y duras no se pueden consumir 

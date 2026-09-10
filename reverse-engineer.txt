@@ -1,104 +1,313 @@
 Loading incidentes for the cross-file test…
-  14440 incidentes rows · tipos seen: Inasistencia, Otro, Llegada tardía
+  16582 incidentes rows · tipos seen: Inasistencia, Otro, Llegada tardía
 
 ==============================================================================
 TARGET:  desempeno_operadores.num_idle_days
 ==============================================================================
-  rows: 2477   num_idle_days non-null: 2477
+  rows: 2845   num_idle_days non-null: 2845
   distinct values: 6   range: 0 … 5
   numeric columns available to test against: 25
-  weeks covered: 20
+  weeks covered: 23
 
-  cross-file join to incidentes: 0/2477 person-weeks matched a name
+  cross-file join to incidentes: 2280/2845 person-weeks matched a name
 
   ❌ NO DERIVATION at ≥98%. num_idle_days stays OPEN.
 
   WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
   Never record any of these in DATA_DICTIONARY.md as a meaning.
-     r=-0.865   total_num_min_of_assembly
-     r=-0.853   total_idle_time_min
-     r=-0.797   num_assembled
-     r=-0.709   num_skus_assembled
-     r= 0.682   num_absences_including_justified
-     r=-0.640   normalized_num_assembly_minutes
-     r= 0.625   num_absences
-     r=-0.594   num_orders_with_incidents
+     r=-0.868   total_num_min_of_assembly
+     r=-0.856   total_idle_time_min
+     r=-0.801   num_assembled
+     r=-0.706   num_skus_assembled
+     r= 0.689   num_absences_including_justified
+     r=-0.637   normalized_num_assembly_minutes
+     r= 0.635   num_absences
+     r=-0.596   num_orders_with_incidents
 
 ==============================================================================
 TARGET:  desempeno_operadores.order_total_multiplier
 ==============================================================================
-  rows: 2477   order_total_multiplier non-null: 1963
-  distinct values: 26   range: 0.43 … 1.21
+  rows: 2845   order_total_multiplier non-null: 2240
+  distinct values: 27   range: 0.43 … 1.21
   numeric columns available to test against: 25
-  weeks covered: 20
+  weeks covered: 23
 
-  cross-file join to incidentes: 0/2477 person-weeks matched a name
+  cross-file join to incidentes: 2280/2845 person-weeks matched a name
 
   ❌ NO DERIVATION at ≥98%. order_total_multiplier stays OPEN.
 
   WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
   Never record any of these in DATA_DICTIONARY.md as a meaning.
-     r=-0.094   num_orders_with_faltante_armador
+     r=-0.103   num_orders_with_faltante_armador
      r=-0.063   normalized_num_assembly_minutes
      r= 0.045   operator_id
-     r=-0.044   num_assembled_late
-     r=-0.036   num_tardy_including_justified
-     r=-0.032   num_orders_with_missing_barcode
-     r=-0.030   num_orders_with_incidents
-     r= 0.030   total_idle_time_min
+     r=-0.037   num_assembled_late
+     r= 0.033   total_idle_time_min
+     r= 0.031   backcompat_avg_min_per_assembly
+     r=-0.030   num_orders_with_missing_barcode
+     r=-0.026   num_orders_with_pending_confirmation
 
 ==============================================================================
 TARGET:  desempeno_operadores.normalized_num_assembly_minutes
 ==============================================================================
-  rows: 2477   normalized_num_assembly_minutes non-null: 1898
-  distinct values: 1876   range: 0.43 … 2276.35
+  rows: 2845   normalized_num_assembly_minutes non-null: 2160
+  distinct values: 2134   range: 0.43 … 2276.35
   numeric columns available to test against: 25
-  weeks covered: 20
+  weeks covered: 23
 
-  cross-file join to incidentes: 0/2477 person-weeks matched a name
+  cross-file join to incidentes: 2280/2845 person-weeks matched a name
 
   ❌ NO DERIVATION at ≥98%. normalized_num_assembly_minutes stays OPEN.
 
   WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
   Never record any of these in DATA_DICTIONARY.md as a meaning.
-     r= 0.926   num_skus_assembled
-     r= 0.902   num_assembled
-     r= 0.822   total_num_min_of_assembly
-     r= 0.699   total_idle_time_min
-     r= 0.695   num_orders_with_incidents
-     r= 0.658   num_orders_with_faltante_armador
-     r=-0.640   num_idle_days
-     r= 0.636   num_orders_with_bad_quality
+     r= 0.924   num_skus_assembled
+     r= 0.900   num_assembled
+     r= 0.821   total_num_min_of_assembly
+     r= 0.697   total_idle_time_min
+     r= 0.691   num_orders_with_incidents
+     r= 0.644   num_orders_with_faltante_armador
+     r=-0.637   num_idle_days
+     r= 0.634   num_orders_with_bad_quality
+
+==============================================================================
+TARGET:  desempeno_operadores.total_num_min_of_assembly
+==============================================================================
+  rows: 2845   total_num_min_of_assembly non-null: 2845
+  distinct values: 2226   range: 0 … 2975.78
+  numeric columns available to test against: 25
+  weeks covered: 23
+
+  cross-file join to incidentes: 2280/2845 person-weeks matched a name
+
+  ✅ DERIVATION FOUND (≥98% match)
+     100.00%  (n=2240)   total_num_min_of_assembly = num_assembled × backcompat_avg_min_per_assembly
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.980   total_idle_time_min
+     r= 0.941   num_assembled
+     r= 0.901   num_skus_assembled
+     r=-0.868   num_idle_days
+     r= 0.821   normalized_num_assembly_minutes
+     r= 0.719   num_orders_with_incidents
+     r=-0.699   num_absences_including_justified
+     r=-0.665   num_absences
+
+==============================================================================
+TARGET:  desempeno_operadores.avg_min_per_assembly
+==============================================================================
+  rows: 2845   avg_min_per_assembly non-null: 2239
+  distinct values: 984   range: 0.07 … 31.37
+  numeric columns available to test against: 25
+  weeks covered: 23
+
+  cross-file join to incidentes: 2280/2845 person-weeks matched a name
+
+  ❌ NO DERIVATION at ≥98%. avg_min_per_assembly stays OPEN.
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r=-0.249   total_idle_time_min
+     r= 0.134   num_assembled_late
+     r= 0.108   num_orders_with_pending_confirmation
+     r= 0.098   num_idle_days
+     r= 0.097   num_orders_with_missing_expiration_date
+     r=-0.097   total_num_min_of_assembly
+     r=-0.093   num_skus_assembled
+     r= 0.090   num_orders_with_missing_barcode
+
+==============================================================================
+TARGET:  desempeno_operadores.backcompat_avg_min_per_assembly
+==============================================================================
+  rows: 2845   backcompat_avg_min_per_assembly non-null: 2240
+  distinct values: 1736   range: 0 … 183.55
+  numeric columns available to test against: 25
+  weeks covered: 23
+
+  cross-file join to incidentes: 2280/2845 person-weeks matched a name
+
+  ✅ DERIVATION FOUND (≥98% match)
+     100.00%  (n=2240)   backcompat_avg_min_per_assembly = total_num_min_of_assembly / num_assembled
+     100.00%  (n=2240)   backcompat_avg_min_per_assembly = min(total_num_min_of_assembly / num_assembled, 365)
+     99.96%  (n=2240)   backcompat_avg_min_per_assembly = min(total_num_min_of_assembly / num_assembled, 180)
+     99.73%  (n=2240)   backcompat_avg_min_per_assembly = min(total_num_min_of_assembly / num_assembled, 120)
+     99.29%  (n=2240)   backcompat_avg_min_per_assembly = min(total_num_min_of_assembly / num_assembled, 90)
+
+  Below threshold — leads only, NOT answers:
+     97.14%  (n=2240)   backcompat_avg_min_per_assembly = min(total_num_min_of_assembly / num_assembled, 60)
+     88.62%  (n=2240)   backcompat_avg_min_per_assembly = min(total_num_min_of_assembly / num_assembled, 45)
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.207   total_idle_time_min
+     r=-0.148   num_skus_assembled
+     r=-0.147   normalized_num_assembly_minutes
+     r= 0.145   operator_id
+     r= 0.139   total_num_min_of_assembly
+     r=-0.127   num_idle_days
+     r= 0.125   num_tardy
+     r=-0.123   num_absences
 
 ==============================================================================
 TARGET:  desempeno_repartidores.num_admin_incidents
 ==============================================================================
-  rows: 1587   num_admin_incidents non-null: 1587
+  rows: 1813   num_admin_incidents non-null: 1813
   distinct values: 4   range: 0 … 3
   numeric columns available to test against: 17
-  weeks covered: 20
+  weeks covered: 23
 
-  cross-file join to incidentes: 973/1587 person-weeks matched a name
+  cross-file join to incidentes: 1113/1813 person-weeks matched a name
 
   ✅ DERIVATION FOUND (≥98% match)
-     99.37%  (n=1587)   num_admin_incidents = count of incidentes rows [Otro] for this person-week
+     99.39%  (n=1813)   num_admin_incidents = count of incidentes rows [Otro] for this person-week
 
   Below threshold — leads only, NOT answers:
-     88.91%  (n=1587)   num_admin_incidents = 0 (constant)
-     88.91%  (n=1587)   num_admin_incidents = num_orders − num_assigned_orders
-     88.91%  (n=1587)   num_admin_incidents = num_assigned_orders − num_orders
-     88.72%  (n=1587)   num_admin_incidents = num_early_orders
-     81.29%  (n=1587)   num_admin_incidents = num_orders_with_three_or_more_wrong
-     81.22%  (n=1587)   num_admin_incidents = num_orders_with_three_or_more_wrong − num_early_orders
-     81.16%  (n=1587)   num_admin_incidents = num_early_orders + num_orders_with_three_or_more_wrong
+     89.02%  (n=1813)   num_admin_incidents = 0 (constant)
+     89.02%  (n=1813)   num_admin_incidents = num_early_orders / driver_id
+     89.02%  (n=1813)   num_admin_incidents = min(num_early_orders / driver_id, 7)
+     89.02%  (n=1813)   num_admin_incidents = min(num_early_orders / driver_id, 14)
+     89.02%  (n=1813)   num_admin_incidents = min(num_early_orders / driver_id, 30)
+     89.02%  (n=1813)   num_admin_incidents = min(num_early_orders / driver_id, 45)
+     89.02%  (n=1813)   num_admin_incidents = min(num_early_orders / driver_id, 60)
+     89.02%  (n=1813)   num_admin_incidents = min(num_early_orders / driver_id, 90)
 
   WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
   Never record any of these in DATA_DICTIONARY.md as a meaning.
-     r= 0.266   num_orders_with_three_or_more_wrong
-     r= 0.214   total_num_missing_items
-     r= 0.179   num_orders
-     r= 0.179   num_assigned_orders
-     r= 0.158   num_orders_with_incidents
-     r= 0.154   num_orders_with_missing_items
-     r= 0.145   num_orders_with_full_missing
-     r= 0.129   num_driver_orders_with_eggs
+     r= 0.260   num_orders_with_three_or_more_wrong
+     r= 0.213   total_num_missing_items
+     r= 0.182   num_orders
+     r= 0.182   num_assigned_orders
+     r= 0.164   num_orders_with_incidents
+     r= 0.164   num_orders_with_missing_items
+     r= 0.151   num_orders_with_full_missing
+     r= 0.135   num_driver_orders_with_eggs
+
+==============================================================================
+TARGET:  desempeno_repartidores.num_orders
+==============================================================================
+  rows: 1813   num_orders non-null: 1813
+  distinct values: 126   range: 0 … 130
+  numeric columns available to test against: 17
+  weeks covered: 23
+
+  cross-file join to incidentes: 1113/1813 person-weeks matched a name
+
+  ✅ DERIVATION FOUND (≥98% match)
+     100.00%  (n=1813)   num_orders = num_assigned_orders
+     99.83%  (n=1813)   num_orders = num_early_orders + num_assigned_orders
+     99.83%  (n=1813)   num_orders = num_assigned_orders − num_early_orders
+
+  Below threshold — leads only, NOT answers:
+     89.02%  (n=1813)   num_orders = num_admin_incidents + num_assigned_orders
+     89.02%  (n=1813)   num_orders = num_assigned_orders − num_admin_incidents
+     85.27%  (n=1813)   num_orders = num_assigned_orders + num_orders_with_three_or_more_wrong
+     85.27%  (n=1813)   num_orders = num_assigned_orders − num_orders_with_three_or_more_wrong
+     80.42%  (n=1813)   num_orders = num_assigned_orders + num_issues_with_eggs
+     80.42%  (n=1813)   num_orders = num_assigned_orders − num_issues_with_eggs
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 1.000   num_assigned_orders
+     r= 0.924   num_driver_orders_with_eggs
+     r= 0.641   num_orders_with_incidents
+     r=-0.574   num_absences
+     r= 0.572   num_orders_with_bad_quality
+     r= 0.445   num_orders_with_missing_items
+     r= 0.383   num_orders_with_full_missing
+     r= 0.357   num_undelivered_orders
+
+==============================================================================
+TARGET:  mna.Días de inventario
+==============================================================================
+  ⚠ row cap 50000 reached — testing a prefix of the history, not all of it
+  rows: 50000   Días de inventario non-null: 41679
+  distinct values: 16544   range: -5 … 5805
+  numeric columns available to test against: 12
+  weeks covered: 23
+
+  ✅ DERIVATION FOUND (≥98% match)
+     100.00%  (n=41679)   Días de inventario = Inventario / Consumo / día
+
+  Below threshold — leads only, NOT answers:
+     96.55%  (n=41679)   Días de inventario = min(Inventario / Consumo / día, 365)
+     91.72%  (n=41679)   Días de inventario = min(Inventario / Consumo / día, 180)
+     85.98%  (n=41679)   Días de inventario = min(Inventario / Consumo / día, 120)
+     83.13%  (n=41679)   Días de inventario = min(Inventario / Consumo / día, 90)
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.327   Inventario
+     r= 0.201   Tiers
+     r=-0.166   Hubs out of stock
+     r= 0.153   1 en N pedidos
+     r=-0.090   Consumo / día
+     r=-0.068   Recibido
+     r=-0.034   MNA (kg/pz)
+     r=-0.028   Represanta X% de merma total
+
+==============================================================================
+TARGET:  mna.1 en N pedidos
+==============================================================================
+  ⚠ row cap 50000 reached — testing a prefix of the history, not all of it
+  rows: 50000   1 en N pedidos non-null: 50000
+  distinct values: 5303   range: 1 … 20000
+  numeric columns available to test against: 12
+  weeks covered: 23
+
+  ❌ NO DERIVATION at ≥98%. 1 en N pedidos stays OPEN.
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.665   Tiers
+     r= 0.178   Días de inventario
+     r=-0.140   Inventario
+     r=-0.124   Consumo / día
+     r=-0.100   Recibido
+     r= 0.083   Source price
+     r=-0.043   MNA (kg/pz)
+     r=-0.034   Represanta X% de merma total
+
+==============================================================================
+TARGET:  discrepancia.Diferencia vales
+==============================================================================
+  rows: 1944   Diferencia vales non-null: 1944
+  distinct values: 1572   range: -18365.691517499996 … 25488.509592929084
+  numeric columns available to test against: 11
+  weeks covered: 23
+
+  ✅ DERIVATION FOUND (≥98% match)
+     100.00%  (n=1944)   Diferencia vales = Cálculo digital vales − Conciliación Clip
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r=-0.509   Conciliación Clip
+     r= 0.168   Cálculo digital vales
+     r= 0.083   Diferencia devoluciones
+     r= 0.079   ID efectivo
+     r=-0.050   Devoluciones confirmadas
+     r= 0.031   Por devolver
+     r= 0.027   Operator ID
+     r= 0.014   Diferencia Panamericano
+
+==============================================================================
+TARGET:  discrepancia.Diferencia devoluciones
+==============================================================================
+  rows: 1944   Diferencia devoluciones non-null: 1944
+  distinct values: 8   range: 0 … 8
+  numeric columns available to test against: 11
+  weeks covered: 23
+
+  ✅ DERIVATION FOUND (≥98% match)
+     100.00%  (n=1944)   Diferencia devoluciones = Por devolver − Devoluciones confirmadas
+
+  WEAK SIGNAL — correlation only. Says what it moves with, NOT what it is.
+  Never record any of these in DATA_DICTIONARY.md as a meaning.
+     r= 0.718   Por devolver
+     r= 0.418   ID efectivo
+     r= 0.355   Diferencia Panamericano
+     r= 0.355   Cálculo digital efectivo
+     r= 0.337   Conciliación manual
+     r= 0.333   Cálculo digital vales
+     r= 0.237   Conciliación Clip
+     r= 0.170   Operator ID

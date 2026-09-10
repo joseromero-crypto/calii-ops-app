@@ -99,22 +99,42 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   //   an explicit range we silently get only the first 1 000 rows across all
   //   uploads — wrong for weeks with many CSVs.
   //
-  // Solution: one query per upload_id. Each query is a single-value index scan
-  //   on upload_rows(upload_id) — O(rows for that upload), no sort, no cap
-  //   (limit is generous at 10 000 which is far above any realistic single-file
-  //   row count). 25 uploads × ~50–200 ms each stays comfortably within budget.
+  // ⚠️ CORRECTED (BUILD.md Phase 2, 2026-09-09): this project's PostgREST
+  //   "Max Rows" is 1000 and — contrary to the assumption below — it caps
+  //   `.limit()` too, not just unranged requests. `.limit(10_000)` silently
+  //   returned exactly 1000 rows against a real `mna` upload with 5,007 true
+  //   rows (verified via exact count). `mna` is the only app whose uploads
+  //   exceed 1000 rows (~4,800-5,000/hub-week; every other app samples well
+  //   under 1000 — checked all of them), so this was silently truncating
+  //   mna_pct/mna_graneles_pct/mna_carnes_pct/mna_fyv_pct to ~20% of the
+  //   real data on every computation. Fixed: page with `.range()` per
+  //   upload_id until an under-full page comes back, same as
+  //   lib/analysis/shared.ts's fetchRowsForUploads. Existing kpi_snapshots
+  //   rows for the affected KPIs need a recompute — they were written under
+  //   the old, truncated code.
+  //
+  // Solution: one query per upload_id — a single-value index scan on
+  //   upload_rows(upload_id), O(rows for that upload), no sort — paginated
+  //   within each upload_id so no single file's rows are silently dropped.
+  //   25 uploads × ~50–200 ms each (× however many pages a large file needs)
+  //   stays comfortably within budget.
+  const PAGE_ROWS = 1000; // this project's PostgREST Max Rows setting
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
   for (const u of uploads) {
-    const { data: rows, error } = await sb
-      .from('upload_rows')
-      .select('upload_id, data')
-      .eq('upload_id', u.id)
-      .eq('is_excluded', false)
-      .limit(10_000);
-    if (error) throw error;
-    for (const r of (rows ?? []) as RawRow[]) {
-      if (!rowsByApp.has(u.app_id)) rowsByApp.set(u.app_id, []);
-      rowsByApp.get(u.app_id)!.push({ upload: u, data: r.data });
+    for (let from = 0; ; from += PAGE_ROWS) {
+      const { data: rows, error } = await sb
+        .from('upload_rows')
+        .select('upload_id, data')
+        .eq('upload_id', u.id)
+        .eq('is_excluded', false)
+        .range(from, from + PAGE_ROWS - 1);
+      if (error) throw error;
+      const page = (rows ?? []) as RawRow[];
+      for (const r of page) {
+        if (!rowsByApp.has(u.app_id)) rowsByApp.set(u.app_id, []);
+        rowsByApp.get(u.app_id)!.push({ upload: u, data: r.data });
+      }
+      if (page.length < PAGE_ROWS) break;
     }
   }
 

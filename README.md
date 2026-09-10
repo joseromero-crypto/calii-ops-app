@@ -6,6 +6,38 @@ Architecture: Next.js 14 (App Router) + Supabase (Postgres + Storage + Auth) + A
 
 See `../calii-ops-app-proposal.md` for the full design (v7).
 
+> ⚠️ **Footnote — 2026-09-10, more recent than the rest of this file.** Several
+> claims above are stale and were NOT corrected in place (this file wasn't
+> rewritten this session, just annotated):
+> - **Deploy target: actually Netlify, not Vercel** — confirmed in
+>   `HANDOFF.md` ("Deploy: Netlify (git push to main triggers deploy)").
+>   Everything under "Production deployment (Vercel + hosted Supabase)"
+>   below describes a setup that isn't what's actually running.
+> - **Model env vars are outdated.** `ANTHROPIC_MODEL_SONNET` should be
+>   `claude-sonnet-5`, not `claude-sonnet-4-6` (see `BUILD.md` Phase 0.5 /
+>   `lib/anthropic.ts`). A third model, `ANTHROPIC_MODEL_OPUS`
+>   (`claude-opus-5`), is now also used and isn't listed anywhere below.
+> - **"Cost ceiling" is no longer accurate.** A new chat/investigation
+>   feature (see below) can cost $0.05–$1+ per question depending on depth —
+>   the "$0.50–$2/week" estimate predates it entirely.
+> - **Project layout section is missing an entire feature.** This session
+>   (`BUILD.md` Phases 0–4) added: `lib/analysis/` (pure KPI/faltantes/
+>   delivery/workforce/inventory analysis functions + the `discriminate()`
+>   tool + `evidence.ts`), `lib/etl/order-deliveries.ts` (flattens the
+>   `orders_data` JSON blob in `desempeno_repartidores` into a queryable
+>   `order_deliveries` table), `lib/chat/` (client-side agent-loop driver),
+>   `lib/prompts/chat-system-prompt.ts` + `lib/prompts/lookup.ts`,
+>   `app/api/chat`, `app/api/tools/[name]`, `app/api/evidence`, and a full
+>   chat UI at `app/(app)/chat` ("Investigar" in the sidebar nav) —
+>   an on-demand investigation assistant over the weekly-upload data, not
+>   covered anywhere in this README as written.
+> - Also fixed this session, unrelated to the above but worth knowing:
+>   `lib/kpi-compute.ts` and `historicos/page.tsx`'s MNA tile were silently
+>   reading only ~1000 of ~5000 rows per `mna` upload (a PostgREST "Max
+>   Rows" cap that silently truncates `.limit()`/`.range()` instead of
+>   erroring) — see `HANDOFF.md` §12 for the full writeup.
+> None of this has been committed or deployed yet as of this footnote.
+
 ---
 
 ## Local setup

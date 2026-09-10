@@ -167,17 +167,32 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
           .range(i * PAGE, (i + 1) * PAGE - 1)
       )
     ),
-    // MNA rows: one query per upload to guarantee all rows are fetched.
+    // MNA rows: one query per upload to guarantee all rows are fetched, PAGED
+    // within each upload. ⚠️ CORRECTED (BUILD.md Phase 2, 2026-09-09): this
+    // project's PostgREST Max Rows is 1000 and silently caps `.limit()` too
+    // — a real mna upload has ~5,000 true rows, so `.limit(10_000)` here was
+    // silently returning only the first 1000 (verified). mna is the only app
+    // whose uploads exceed 1000 rows; every other per-upload fetch on this
+    // page (faltantes below) was checked and stays safely under the cap.
     mnaUploadList.length > 0
       ? Promise.all(
-          mnaUploadList.map((u) =>
-            sb
-              .from('upload_rows')
-              .select('upload_id, data')
-              .eq('upload_id', u.id)
-              .eq('is_excluded', false)
-              .limit(10_000)
-          )
+          mnaUploadList.map(async (u) => {
+            const rows: { upload_id: string; data: Record<string, unknown> }[] = [];
+            const MNA_PAGE = 1000;
+            for (let from = 0; ; from += MNA_PAGE) {
+              const { data, error } = await sb
+                .from('upload_rows')
+                .select('upload_id, data')
+                .eq('upload_id', u.id)
+                .eq('is_excluded', false)
+                .range(from, from + MNA_PAGE - 1);
+              if (error) return { data: null, error };
+              const page = data ?? [];
+              rows.push(...(page as { upload_id: string; data: Record<string, unknown> }[]));
+              if (page.length < MNA_PAGE) break;
+            }
+            return { data: rows, error: null };
+          })
         )
       : Promise.resolve([]),
     // Faltantes rows: same per-upload strategy.

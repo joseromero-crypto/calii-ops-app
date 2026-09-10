@@ -6,6 +6,7 @@ import { validateUpload } from '@/lib/validate';
 import { computeIdentityChecks } from '@/lib/validate-identity';
 import { classifyIncidentNotes } from '@/lib/classify-notes';
 import { refreshTenureLedger, type Role as TenureRole } from '@/lib/tenure';
+import { flattenOrderDeliveries } from '@/lib/etl/order-deliveries';
 import { weekStartFriday, type AppColumn } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -263,6 +264,15 @@ export async function POST(req: Request) {
   if (tenureRole) {
     refreshTenureLedger(admin, { role: tenureRole }).catch((e: any) => {
       console.error('refreshTenureLedger failed', tenureRole, e?.message);
+    });
+  }
+
+  // Flatten orders_data into order_deliveries (BUILD.md Phase 1). Fire-and-
+  // forget like the tenure refresh above — a failure here must never fail
+  // the upload itself.
+  if (app_id === 'desempeno_repartidores') {
+    flattenOrderDeliveries(admin, upload.id).catch((e: any) => {
+      console.error('flattenOrderDeliveries failed', upload.id, e?.message);
     });
   }
 
