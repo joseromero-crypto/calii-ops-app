@@ -15,8 +15,57 @@ interface PageProps {
 
 const PAGE = 1000;
 
+/**
+ * Bounded-concurrency gate for Supabase reads on this page (session 15,
+ * 2026-09-10, see HANDOFF.md §12 addendum). /historicos broke in production
+ * — Netlify observability showed the RSC request completing in ~18s with a
+ * ~1KB body under a 200 status, and the browser threw "Error: Connection
+ * closed." mid-stream: the signature of the host cutting the connection
+ * before the server finished, after headers/streaming had already started
+ * (so it can't downgrade to a clean error status). This page fans out to
+ * 60+ independent Supabase queries (13 in the initial counts/registry
+ * batch, dozens more paging through snapshots/peers/mna/faltantes) — each
+ * one is cheap on its own, but 60+ round trips add up fast, and a bare
+ * `Promise.all` lets peak concurrency spike unbounded. A single shared
+ * limiter across the whole page caps how many requests are in flight at
+ * once (same concurrency=8 already proven for this project's Supabase in
+ * `lib/analysis/shared.ts`'s `fetchRowsForUploads`), and the MNA branch
+ * below was changed from 5 sequential per-upload round trips to 2. Net
+ * effect is fewer round trips and a bounded burst — real, structural
+ * latency reduction — though the exact number this buys back on Netlify's
+ * infrastructure specifically wasn't independently measurable from this
+ * session's dev environment (its own network path to Supabase had ~3s of
+ * fixed per-connection overhead, confirmed via a bare curl to the Supabase
+ * REST endpoint — that's this environment's problem, not the app's, but it
+ * means local timing numbers from this session aren't a reliable proxy for
+ * Netlify's actual latency budget). Verify against Netlify Observability
+ * after deploying, not against local timing.
+ */
+function createLimiter(concurrency: number) {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  function runNext() {
+    if (queue.length === 0 || active >= concurrency) return;
+    active++;
+    const task = queue.shift()!;
+    task();
+  }
+  return function limit<T>(fn: () => PromiseLike<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      queue.push(() => {
+        Promise.resolve(fn()).then(
+          (v) => { active--; runNext(); resolve(v); },
+          (e) => { active--; runNext(); reject(e); }
+        );
+      });
+      runNext();
+    });
+  };
+}
+
 export default async function HistoricosPage({ searchParams }: PageProps) {
   const sb = createServerClient();
+  const limit = createLimiter(8);
 
   // ── Step 1: resolve current week ────────────────────────────────────────────
   const { data: cw } = await sb.from('current_week').select('week_start').single();
@@ -53,59 +102,59 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
     rampsRes,
     rosterWeeksRes,
   ] = await Promise.all([
-    sb
+    limit(() => sb
       .from('kpi_snapshots')
       .select('*', { count: 'exact', head: true })
       .gte('week_start', sinceIso)
       .lte('week_start', currentWeek)
-      .in('scope_level', ['hub', 'city', 'global']),
-    sb
+      .in('scope_level', ['hub', 'city', 'global'])),
+    limit(() => sb
       .from('peer_comparisons')
       .select('*', { count: 'exact', head: true })
-      .eq('week_start', currentWeek),
-    sb
+      .eq('week_start', currentWeek)),
+    limit(() => sb
       .from('uploads')
       .select('id, hub_id')
       .eq('week_start', currentWeek)
       .eq('status', 'validated')
-      .eq('app_id', 'mna'),
-    sb
+      .eq('app_id', 'mna')),
+    limit(() => sb
       .from('uploads')
       .select('id, hub_id')
       .eq('week_start', currentWeek)
       .eq('status', 'validated')
-      .eq('app_id', 'faltantes_armador'),
-    sb.from('kpis').select('*').eq('active', true).order('display_order'),
-    sb.from('hubs').select('id, display_name, city').eq('active', true).order('id'),
-    sb.from('hub_roles').select('id, name_es'),
+      .eq('app_id', 'faltantes_armador')),
+    limit(() => sb.from('kpis').select('*').eq('active', true).order('display_order')),
+    limit(() => sb.from('hubs').select('id, display_name, city').eq('active', true).order('id')),
+    limit(() => sb.from('hub_roles').select('id, name_es')),
     // Multi-week operator peer data for the assembler WoW charts in Por Hub tab.
     // Scoped to within_hub only — one row per assembler × KPI × week.
-    sb
+    limit(() => sb
       .from('peer_comparisons')
       .select('*', { count: 'exact', head: true })
       .eq('entity_type', 'operator')
       .eq('scope_type', 'within_hub')
       .gte('week_start', sinceIso)
-      .lte('week_start', currentWeek),
+      .lte('week_start', currentWeek)),
     // Multi-week driver peer data for the driver WoW charts in Por Hub tab.
     // Scoped to within_hub — drivers are resolved to hub via desempeno_repartidores cross-ref.
-    sb
+    limit(() => sb
       .from('peer_comparisons')
       .select('*', { count: 'exact', head: true })
       .eq('entity_type', 'driver')
       .eq('scope_type', 'within_hub')
       .gte('week_start', sinceIso)
-      .lte('week_start', currentWeek),
+      .lte('week_start', currentWeek)),
     // Configurable KPI targets — tiny table, no pagination needed.
-    sb.from('kpi_targets').select('kpi_id, scope_level, scope_key, target_value, comparator, unit, active').eq('active', true),
+    limit(() => sb.from('kpi_targets').select('kpi_id, scope_level, scope_key, target_value, comparator, unit, active').eq('active', true)),
     // Modo Entrenamiento (session 14) — tenure ledger + ramp targets. Both
     // tiny (hundreds / tens of rows), no pagination needed.
-    sb.from('person_tenure').select('*'),
-    sb.from('kpi_ramp_targets').select('kpi_id, role, week_number, target_value, stretch_value, comparator, unit, active').eq('active', true),
+    limit(() => sb.from('person_tenure').select('*')),
+    limit(() => sb.from('kpi_ramp_targets').select('kpi_id, role, week_number, target_value, stretch_value, comparator, unit, active').eq('active', true)),
     // Validated-upload weeks for the two roster apps — needed to recompute
     // each tenure row's reentry_weeks (not a person_tenure column, see
     // lib/tenure.ts's hydrateTenureRow doc comment).
-    sb.from('uploads').select('app_id, week_start').eq('status', 'validated').in('app_id', ['desempeno_operadores', 'desempeno_repartidores']),
+    limit(() => sb.from('uploads').select('app_id, week_start').eq('status', 'validated').in('app_id', ['desempeno_operadores', 'desempeno_repartidores'])),
   ]);
 
   const snapTotal             = snapCountRes.count ?? 0;
@@ -135,7 +184,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   const [snapPages, peerPages, mnaRawPages, faltantesRawPages, assemblerTrendPages, driverTrendPages] = await Promise.all([
     Promise.all(
       snapIdxs.map((i) =>
-        sb
+        limit(() => sb
           .from('kpi_snapshots')
           .select(
             'kpi_id, week_start, scope_level, scope_key, value, numerator, denominator, prev_week_value, rolling_mean_4w'
@@ -144,12 +193,12 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
           .lte('week_start', currentWeek)
           .in('scope_level', ['hub', 'city', 'global'])
           .order('week_start', { ascending: true })
-          .range(i * PAGE, (i + 1) * PAGE - 1)
+          .range(i * PAGE, (i + 1) * PAGE - 1))
       )
     ),
     Promise.all(
       peerIdxs.map((i) =>
-        sb
+        limit(() => sb
           .from('peer_comparisons')
           .select(
             'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
@@ -164,55 +213,75 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
           .order('scope_type',   { ascending: true })
           .order('scope_key',    { ascending: true, nullsFirst: false })
           .order('entity_key',   { ascending: true })
-          .range(i * PAGE, (i + 1) * PAGE - 1)
+          .range(i * PAGE, (i + 1) * PAGE - 1))
       )
     ),
-    // MNA rows: one query per upload to guarantee all rows are fetched, PAGED
-    // within each upload. ⚠️ CORRECTED (BUILD.md Phase 2, 2026-09-09): this
-    // project's PostgREST Max Rows is 1000 and silently caps `.limit()` too
-    // — a real mna upload has ~5,000 true rows, so `.limit(10_000)` here was
-    // silently returning only the first 1000 (verified). mna is the only app
-    // whose uploads exceed 1000 rows; every other per-upload fetch on this
-    // page (faltantes below) was checked and stays safely under the cap.
+    // MNA rows: PAGED within each upload to guarantee all rows are fetched.
+    // ⚠️ CORRECTED (BUILD.md Phase 2, 2026-09-09): this project's PostgREST
+    // Max Rows is 1000 and silently caps `.limit()` too — a real mna upload
+    // has ~5,000 true rows, so `.limit(10_000)` here was silently returning
+    // only the first 1000 (verified). mna is the only app whose uploads
+    // exceed 1000 rows; every other per-upload fetch on this page (faltantes
+    // below) was checked and stays safely under the cap.
+    //
+    // ⚠️ PERFORMANCE FIX (session 15, 2026-09-10): the first version of this
+    // correctness fix paged each upload SEQUENTIALLY (a `for` loop awaiting
+    // one range() at a time — 5 round trips for a ~4,800-row upload). That
+    // measured at a clean, uncontended 23.2s of real SSR time in a production
+    // build against real prod data — well past any serverless function
+    // timeout — and broke /historicos on Netlify entirely (client saw
+    // "Error: Connection closed." mid-RSC-stream, the signature of the host
+    // killing the connection mid-response). Fixed by getting each upload's
+    // row COUNT first (cheap head query, all uploads in parallel, ~1 round
+    // trip) then firing every page's range() query for every upload in one
+    // flat Promise.all (~1 more round trip, all pages in parallel) — 2 round
+    // trips total instead of 5 sequential ones. Safe because each range()
+    // query is an independent single-index-scan on upload_id (see comment
+    // above), not a cursor depending on a previous page's result.
     mnaUploadList.length > 0
-      ? Promise.all(
-          mnaUploadList.map(async (u) => {
-            const rows: { upload_id: string; data: Record<string, unknown> }[] = [];
-            const MNA_PAGE = 1000;
-            for (let from = 0; ; from += MNA_PAGE) {
-              const { data, error } = await sb
-                .from('upload_rows')
-                .select('upload_id, data')
-                .eq('upload_id', u.id)
-                .eq('is_excluded', false)
-                .range(from, from + MNA_PAGE - 1);
-              if (error) return { data: null, error };
-              const page = data ?? [];
-              rows.push(...(page as { upload_id: string; data: Record<string, unknown> }[]));
-              if (page.length < MNA_PAGE) break;
+      ? (async () => {
+          const MNA_PAGE = 1000;
+          const counts = await Promise.all(
+            mnaUploadList.map((u) =>
+              limit(() => sb.from('upload_rows').select('*', { count: 'exact', head: true })
+                .eq('upload_id', u.id).eq('is_excluded', false))
+            )
+          );
+          const pageRequests: PromiseLike<{ data: { upload_id: string; data: Record<string, unknown> }[] | null; error: unknown }>[] = [];
+          mnaUploadList.forEach((u, idx) => {
+            const total = counts[idx].count ?? 0;
+            const pages = Math.max(1, Math.ceil(total / MNA_PAGE));
+            for (let p = 0; p < pages; p++) {
+              const from = p * MNA_PAGE;
+              pageRequests.push(
+                limit(() => sb.from('upload_rows').select('upload_id, data')
+                  .eq('upload_id', u.id).eq('is_excluded', false)
+                  .range(from, from + MNA_PAGE - 1))
+              );
             }
-            return { data: rows, error: null };
-          })
-        )
+          });
+          return Promise.all(pageRequests);
+        })()
       : Promise.resolve([]),
     // Faltantes rows: same per-upload strategy.
-    faltantesUploadList.length > 0
+    (faltantesUploadList.length > 0
       ? Promise.all(
           faltantesUploadList.map((u) =>
-            sb
+            limit(() => sb
               .from('upload_rows')
               .select('upload_id, data')
               .eq('upload_id', u.id)
               .eq('is_excluded', false)
-              .limit(10_000)
+              .limit(10_000))
           )
         )
-      : Promise.resolve([]),
+      : Promise.resolve([])
+    ),
     // Assembler WoW: multi-week operator peers (within_hub scope only).
-    assemblerTrendIdxs.length > 0
+    (assemblerTrendIdxs.length > 0
       ? Promise.all(
           assemblerTrendIdxs.map((i) =>
-            sb
+            limit(() => sb
               .from('peer_comparisons')
               .select(
                 'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
@@ -222,15 +291,16 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
               .gte('week_start', sinceIso)
               .lte('week_start', currentWeek)
               .order('week_start', { ascending: true })
-              .range(i * PAGE, (i + 1) * PAGE - 1)
+              .range(i * PAGE, (i + 1) * PAGE - 1))
           )
         )
-      : Promise.resolve([]),
+      : Promise.resolve([])
+    ),
     // Driver WoW: multi-week driver peers (within_hub scope only).
-    driverTrendIdxs.length > 0
+    (driverTrendIdxs.length > 0
       ? Promise.all(
           driverTrendIdxs.map((i) =>
-            sb
+            limit(() => sb
               .from('peer_comparisons')
               .select(
                 'kpi_id, week_start, entity_type, entity_key, scope_type, scope_key, value, peer_mean, z_score, rank, rank_total'
@@ -240,10 +310,11 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
               .gte('week_start', sinceIso)
               .lte('week_start', currentWeek)
               .order('week_start', { ascending: true })
-              .range(i * PAGE, (i + 1) * PAGE - 1)
+              .range(i * PAGE, (i + 1) * PAGE - 1))
           )
         )
-      : Promise.resolve([]),
+      : Promise.resolve([])
+    ),
   ]);
 
   const allSnaps         = snapPages.flatMap((r) => r.data ?? []);
