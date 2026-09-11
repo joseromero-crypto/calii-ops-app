@@ -994,7 +994,10 @@ What the ~18s-regardless-of-restructuring pattern actually suggests: a **fixed t
 
 **Immediate escape hatch, still available, not urgent per José ("I don't need historicos working right now, as long as I know how to get it working"):** Netlify → Deploys → the deploy from before this session (2026-09-10 morning) → **"Publish deploy"**. Instant, no code changes, fully reversible. Use this if/when uptime becomes urgent before the real fix (precomputed aggregation) is built.
 
-**Status at end of session:** `/historicos` is still broken in production. This session's fix (round-trip/concurrency reduction) is deployed and is a real, harmless improvement, but is confirmed NOT to be the fix — do not spend further time tuning request scheduling on this page. Next session should start from the precomputed-aggregation direction above.
+**Status at end of session:** `/historicos` is still broken in production.
+
+> ✅ **RESOLVED in session 16 — see §26.** The "fixed ~18s ceiling" reading below was right; the precompute conclusion was not the cheapest fix. The page fetched all four tabs' data on every request, including 33,241 raw MNA rows (19.29 MB) that only a tile flip uses. Fetching per tab took it to **704 ms** in production. No precomputed table was needed.
+ This session's fix (round-trip/concurrency reduction) is deployed and is a real, harmless improvement, but is confirmed NOT to be the fix — do not spend further time tuning request scheduling on this page. Next session should start from the precomputed-aggregation direction above.
 
 ## 26. /historicos production outage — RESOLVED by cutting data volume, not scheduling (session 16, 2026-09-11)
 
@@ -1068,8 +1071,117 @@ Note the trend window landed at 2026-07-10 for both roles (8 upload weeks back),
 
 One defect found and fixed during this pass: while a hub's flip slice was in flight, an already-flipped tile rendered *"Sin datos MNA esta semana."* — stating there is no data when the truth was "not fetched yet". Flipped MNA/faltantes tiles now show `Cargando…` while `flipLoading`, and `No se pudo cargar el detalle.` on error.
 
-### Still to confirm after deploy
+### CONFIRMED IN PRODUCTION (2026-09-11)
 
-Netlify Observability on the next `/historicos` request: status 200 with a **normal-sized** body (not ~1KB) and a duration nowhere near the ~18s that was cutting it off. If Por hub is still slow at 6.54 MB, the next levers, in order: narrow `snapshots` (9,957 rows / 2.23 MB, fetched by every tab) to the weeks each tab actually plots, and move current-week `peer_comparisons` to per-hub like the MNA route. Precomputing MNA aggregates (§25's proposal) is no longer on the critical path at all.
+Deployed to Netlify. Netlify Observability on the `/historicos` request: **704ms**, against **17975ms** before session 15's fix and **17879ms** after it. Status 200, normal body. The page is fixed.
+
+For the record, the three data points together:
+
+| | duration |
+|---|---|
+| before session 15 | 17975 ms |
+| after session 15 (concurrency + round trips) | 17879 ms |
+| after session 16 (data volume) | **704 ms** |
+
+The middle row is the lesson. Two structurally different request schedules over the same 31.9 MB landed within 0.5% of each other; cutting the 31.9 MB to 2.2 MB cut the time 25x. **When a page is slow, measure what it moves before changing how it moves it.** `scripts/diag-historicos.ts` exists so the next person can do that in one command.
+
+Jose confirmed the intended UX: entering Por hub is slower than the other tabs (it fetches 6.54 MB vs 2.23 MB), and switching hubs once inside is quick.
+
+### Remaining levers, if Por hub entry ever needs to be faster
+
+Por hub's 6.54 MB breaks down as snapshots 2.23 + current-week peers 1.49 + assembler trend 2.02 + driver trend 0.80.
+
+- **Cheap, preserves instant hub switching:** narrow `snapshots` on the hub tab to ~12 weeks. Por hub's tiles are labelled "KPIS · 12 SEMANAS" and its sparklines never plot further back, but it currently receives the same 51-week fetch Por KPI needs for its `1a` / `YTD` range buttons. Worth roughly 1.7 MB of the 6.54.
+- **Bigger, but costs instant hub switching:** scope current-week `peer_comparisons` per hub like the MNA route (1.49 MB → a fraction). Rejected this session because hub switching would then hit the server each time, which Jose explicitly did not want. Note `hubCityKey` resolution in PorHubTab reads `within_city` peers across hubs, so a per-hub scope would have to include the hub's city rows too.
+- The WoW trend windows are already at 8 upload weeks for 5 displayed — little left there.
+
+Precomputing MNA aggregates (§25's proposal) is off the critical path entirely and should not be built without a new reason.
+
+### Housekeeping
 
 `_git_lock_backup/` in the repo root holds two empty `.git` lock files moved aside this session — safe to delete, kept rather than removed at Jose's request.
+
+## 27. Chat: Netlify's hard 26 s function ceiling kills deep investigations (session 16, 2026-09-11)
+
+**Symptom:** a real investigation in `/chat` on production ran 16 tool calls (`listHubs`, `listKpis`, `listWeeks`, `mnaBreakdown`, `kpiTrend`, `kpiByHub` ×5, `lookupColumn`, `kpiTrend`, `stockCover`, `lookupContext`) and then died with **"No done event in response — the stream ended unexpectedly."** The whole turn was lost, after real Anthropic spend.
+
+### Root cause — measured, from the Netlify function log
+
+```
+Sep 10, 06:40:10 PM: 47017b48   Duration: 26961 ms   ← the turn that died
+Sep 10, 06:03:59 PM: 1dde2b35   Duration: 24368 ms
+Sep 10, 06:09:59 PM: 93012d93   Duration: 21719 ms
+```
+
+**26961 ms is Netlify's hard synchronous-function ceiling (26 s), and it is a wall-clock cap, not an inactivity timeout.** Three consequences, each of which had been assumed otherwise somewhere in this repo:
+
+1. **`export const maxDuration = 120` in `app/api/chat/route.ts` does nothing on Netlify.** It is a Vercel convention. The same false comfort exists in `insights/generate` (120), `tools/[name]` (60), `evidence` (60), `recompute` (60), `generar-reporte` (60) — **every one of those is really capped at 26 s.** There is no `netlify.toml`, so nothing raises it.
+2. **The 10 s SSE keepalive does not help here.** It was added for the *inactivity* timeout documented in `app/api/recompute/route.ts` ("Netlify closes connections that send no bytes for ~26 s"). That is a real and different limit. Keepalives keep an idle connection open; they cannot extend total function duration.
+3. **The failure is silent-ish by construction.** SSE flushes headers immediately, so the client sees `200 OK` and only discovers the truncation by the missing `done` event — the same shape as the `/historicos` outage in §25/§26 (200, short body, stream cut).
+
+**Why it hits deep turns specifically:** `reconstructMessages()` replays the *entire* turn on every hop, so hop N resends all N−1 prior tool results. Input grows quadratically across a turn, later hops get slower, and eventually one crosses 26 s. Short exchanges were always fine, which is why the GATE testing in session 15 never caught it — and the deep Contry investigations that did complete (§24, $1.08 / $1.25) were run locally, where no such ceiling exists. **This feature had likely never completed a deep investigation in production.**
+
+### Shipped this session — the turn is no longer destroyed
+
+A cut hop is fully resumable and always was: every tool result is persisted before the model is called again, and re-issuing `{ assistant_message_id, tool_results: [] }` re-asks the model from the same state **without re-running a single tool**. `ChatShell` already had a "Reintentar" button wired to exactly that, for the `max_tokens` case. It just was never offered here, because the truncation path called `onError` with no `retryable` flag and no message id.
+
+- `app/api/chat/route.ts` now emits a **`start` SSE event with `conversation_id` + `assistant_message_id` before calling the model.** Without it, a hop cut on the *first* hop leaves the client with no id at all — unresumable even though the server state is intact.
+- `lib/chat/client.ts` tracks that id across hops and reports a truncated stream as **retryable**, so "Reintentar" appears.
+
+This does not stop the 26 s kill; it stops the kill from costing the whole investigation.
+
+### Trimming the replayed history — MEASURED, AND REJECTED
+
+The obvious next lever, named in the route's own reverted-caching comment, was to trim old tool results out of the resent history. `scripts/diag-chat-context.ts` (new, read-only) was written to size it first. It says don't:
+
+```
+total tool results: 42 KB (~10730 tok) across 26 calls
+AT THE FINAL HOP (the one that got killed at 26s):
+  today (no trim)          ~  11006 tok
+  keep last 4 verbatim     ~   1490 tok   (7.4x less)
+  cap each result @ 8 KB   ~  10046 tok   (1.1x less)
+```
+
+**~11k tokens of replayed input cannot explain a 26-second hop** — that is about a second of prefill. Trimming would have cost the model its working memory of the investigation and bought roughly nothing. Second time this session that a plausible fix died on contact with a measurement; see §26.
+
+What the same output actually revealed: hops 17–26 are ten `tool_calls` rows with `result` null and `duration_ms` 0, while Jose saw only 16 chips. Those are tool_use blocks the model emitted and the route persisted, whose results never came back because the client never got `done`. **So the hop that died was a single generation producing ten tool calls at once** — the cost was output generation, not input size. The 24368 ms and 21719 ms hops before it were the same shape.
+
+### Shipped: the loop moved to a background function
+
+Chosen over capping tools-per-hop, which would only have made the ceiling harder to hit rather than removing it. Netlify Pro plan confirmed, so `*-background` functions (15 min) are available.
+
+| file | role |
+|---|---|
+| `supabase/migrations/20260911000001_chat_background.sql` | `messages.status` ('running'/'done'/'error'), `error_text`, `run_token` |
+| `app/api/chat/start/route.ts` | auth, create rows, mint run token, kick off the function, return ids — all fast and synchronous |
+| `netlify/functions/chat-background.mts` | claims the run token atomically, then runs the turn |
+| `lib/chat/run-turn.ts` | the agent loop, server-side |
+| `lib/chat/client.ts` | `startTurn()` — the loop is no longer here |
+| `components/chat/ChatShell.tsx` | polls the DB every 1.5 s until `status` leaves 'running' |
+| `netlify.toml` | new file; `node_bundler = "esbuild"` so the function can bundle TS from `lib/` |
+
+Things that fell out of the move, beyond the ceiling going away:
+
+- **Tools run in-process.** `TOOL_REGISTRY` was always kept in `lib/` "so scripts/tests can dispatch the same way without going through HTTP" — so no per-tool round trip. The loop is faster than the one it replaces, not just longer-lived.
+- **History is held in memory across hops.** The old route rebuilt it from the DB every hop via `reconstructMessages`, which collapsed each assistant turn to its tool_use blocks and **dropped the model's own interstitial text** — it could not see what it had said one hop earlier, and reopening a conversation lost that prose entirely. Now the real content blocks stay in an array and interstitial text is persisted as it happens. `loadPriorMessages` handles only the start of a turn and resumes.
+- **A turn outlives the browser tab.** It runs server-side, so closing the laptop mid-investigation no longer kills it; `openConversation` rejoins any conversation it finds still `running`.
+- **Nothing was lost by dropping SSE.** The old client did `await resp.text()` and only then parsed events, so a hop's text always landed in one lump. Polling is equal or better.
+- `messages.run_token` is deliberately excluded from `loadConversation`'s select list — it is a bearer credential and has no business in the browser.
+- `lib/analysis/shared.ts` had a **value** import of `createAdminSupabase`, which would have dragged `next/headers` into the function bundle. Now `import type`, matching the convention `lib/tenure.ts` already documents. The whole import graph reachable from `run-turn.ts` was checked for `next/*` and is clean.
+
+`app/api/chat/route.ts` and `app/api/tools/[name]/route.ts` are now unused by the chat. The former carries a deprecation header; neither was deleted.
+
+### Deploying this — three steps, in order
+
+1. **Apply the migration by hand**, in the Supabase SQL editor — *not* `npm run db:push`. `PLAN_RESUMEN_OPERATIVO.md` §302 records that the migrations folder has drifted from production (`apps.group_id` / `group_label_es` exist in production and in no local migration), so a push could try to reconcile more than this one change.
+2. **Nothing to install** — `npm run dev` is `npx -y netlify dev`, which fetches the CLI into the npx cache on first run (a minute or so, then cached). A global `npm i -g netlify-cli` fails on this machine with EACCES on `/usr/local/lib/node_modules`; `sudo` would fix it but is not worth a system-wide change, and installing `netlify-cli` as a devDependency is worse — Netlify installs devDependencies during its own builds, so it would slow every deploy. The old command survives as `npm run dev:next`, but background functions do not exist under it, and local-vs-prod divergence is exactly what hid this bug.
+3. `npm run build`, then test, then deploy.
+
+### Still open
+
+- The **26 s ceiling still applies to every other route** — `insights/generate`, `tools/[name]`, `evidence`, `recompute`, `generar-reporte` all declare a `maxDuration` that does nothing. `recompute` and `generar-reporte` are the plausible next casualties as data grows. Same remedy when they break: `*-background` + poll.
+- `MAX_HOPS` is 40 in the new loop (was 20 client-side). It is a runaway guard now, not a budget — the real budget is the platform's 15 minutes.
+
+### For anyone touching a slow route in this app
+
+The budget is **26 s per request, whatever `maxDuration` says**. Two limits, both real, both already hit here: ~8 s per Postgres statement (§12) and 26 s per function invocation. `/historicos` (§26) blew the second one with 60+ individually-cheap queries. Assume neither is negotiable and design the work to fit.

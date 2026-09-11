@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npx -y netlify dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -12,7 +12,8 @@
     "db:diff": "supabase db diff",
     "db:push": "supabase db push",
     "seed:samples": "tsx scripts/seed-sample-uploads.ts",
-    "test:tenure": "tsx scripts/test-tenure.ts"
+    "test:tenure": "tsx scripts/test-tenure.ts",
+    "dev:next": "next dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

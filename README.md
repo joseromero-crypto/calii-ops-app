@@ -36,13 +36,29 @@ See `../calii-ops-app-proposal.md` for the full design (v7).
 >   reading only ~1000 of ~5000 rows per `mna` upload (a PostgREST "Max
 >   Rows" cap that silently truncates `.limit()`/`.range()` instead of
 >   erroring) — see `HANDOFF.md` §12 for the full writeup.
-> None of this has been committed or deployed yet as of this footnote.
+>
+> **Update 2026-09-11:** all of the above is now committed and deployed. One
+> more change shipped since: `/historicos` was down in production (~18 s, the
+> host cutting the RSC stream) and now loads in **704 ms** — the page fetched
+> every tab's data on every request, including 33,241 raw MNA rows / 19.29 MB
+> that exist only for a tile flip. It now fetches **per tab**, and the
+> MNA/faltantes rankings come from `app/api/historicos/mna-products` per hub
+> after first paint. Full writeup in `HANDOFF.md` §26; `scripts/diag-historicos.ts`
+> prints the row/byte breakdown on demand.
 
 ---
 
 ## Local setup
 
 Prerequisites: Node 20+, pnpm or npm, Supabase CLI (`brew install supabase/tap/supabase`), an Anthropic API key.
+
+> **`npm run dev` runs `netlify dev`, not `next dev`** (since 2026-09-11). It
+> serves on **http://localhost:8888**, not 3000, and that is the only port where
+> `/.netlify/functions/*` is routed — so `/chat` does not work on 3000. The
+> chat agent loop lives in a Netlify background function, which plain `next dev`
+> cannot run. `npm run dev:next` still exists for work that doesn't touch chat,
+> but note that local-not-matching-production is what hid `HANDOFF.md` §27 for
+> a whole session.
 
 ```bash
 # 1. Install deps
@@ -83,13 +99,24 @@ app/                       Next.js App Router pages
   layout.tsx               Root layout: sidebar shell, fonts, theme
   globals.css              Global styles + design tokens
   upload/                  Subir archivos
-  historicos/              Históricos & análisis (3 tabs)
+  historicos/              Históricos & análisis (4 tabs: Por KPI, Por hub,
+                           Comparativa, Resumen). page.tsx fetches PER TAB —
+                           see HANDOFF.md §26 before adding data to it
   prioridades/             Prioridades AI (vista normal + modo foco)
   config/                  Configuración (apps, KPIs, contexto, reglas)
   api/                     Route handlers (server-only)
     upload/                CSV upload + validate + persist
     insights/              Anthropic API calls
     kpi-snapshots/         Computation triggers
+    historicos/mna-products/  Per-hub MNA + faltantes SKU rankings for the
+                           Por hub tile flips (lazy, off the page's critical path)
+    chat/start/            Begins a chat turn, then hands off to the background
+                           function. (chat/ itself is superseded — see HANDOFF §27)
+    conversations/[id]/    Archive / restore a conversation (soft, never deleted)
+netlify/
+  functions/
+    chat-background.mts    The chat agent loop. A *-background function gets
+                           15 min; every normal function is killed at 26 s
 components/                Shared React components
 lib/
   supabase.ts              Browser client
@@ -105,6 +132,8 @@ supabase/
     20260427000003_seed_registry.sql
 scripts/
   seed-sample-uploads.ts   Load the original sample CSVs as week 17 data
+  diag-historicos.ts       Read-only: rows + bytes /historicos moves, per tab
+  diag-chat-context.ts     Read-only: replayed context per hop of a chat turn
 ```
 
 ---

@@ -11,10 +11,27 @@ export async function listConversations(limit = 50): Promise<ConversationRow[]> 
   return (data ?? []) as ConversationRow[];
 }
 
+/**
+ * Archive a conversation (soft — the row and all its messages/tool_calls/claims
+ * stay, so old evidence links keep resolving). Restore with archived=false.
+ */
+export async function setConversationArchived(id: string, archived: boolean): Promise<void> {
+  const resp = archived
+    ? await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+    : await fetch(`/api/conversations/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: false }),
+      });
+  if (!resp.ok) throw new Error(`archive failed: ${resp.status}`);
+}
+
 /** Full history for one conversation — messages with their tool_calls/claims attached, resumable with tool results intact (ARCHITECTURE.md §9). */
 export async function loadConversation(conversationId: string): Promise<MessageWithChildren[]> {
   const sb = createClient();
-  const { data: messages, error } = await sb.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
+  // Explicit column list, not '*': `messages.run_token` is the bearer the
+  // background function authenticates with (migration 20260911000001) and has
+  // no business reaching the browser, even for the one authenticated user.
+  const MESSAGE_COLS = 'id, conversation_id, role, content, prompt_version, input_tokens, output_tokens, cost_usd, created_at, status, error_text';
+  const { data: messages, error } = await sb.from('messages').select(MESSAGE_COLS).eq('conversation_id', conversationId).order('created_at', { ascending: true });
   if (error) throw error;
   const rows = (messages ?? []) as MessageRow[];
   if (!rows.length) return [];

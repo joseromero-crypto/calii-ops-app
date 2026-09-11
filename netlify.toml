@@ -1,0 +1,34 @@
+# Added session 16 (2026-09-11). The site ran without this file; it exists now
+# because netlify/functions/chat-background.mts bundles TypeScript from lib/
+# and needs esbuild rather than the legacy bundler to do it.
+#
+# NOTE ON TIMEOUTS: there is deliberately no timeout setting here. Netlify's
+# synchronous function ceiling is 26 s and is not configurable on the Pro plan
+# — `maxDuration` in the route files is a Vercel convention and does nothing.
+# Anything that can exceed 26 s belongs in a *-background function (15 min),
+# not in a longer timeout. See HANDOFF §27.
+
+[build]
+  command = "npm run build"
+
+[functions]
+  node_bundler = "esbuild"
+
+# ── Local dev ────────────────────────────────────────────────────────────────
+# `framework = "#custom"` disables Netlify's framework auto-detection. Two
+# reasons it must stay off:
+#
+#   1. Auto-detection runs the package.json `dev` script — which IS
+#      `npx -y netlify dev`. That recurses into itself.
+#   2. With `framework = "next"` it started `next dev` on 3000 AND then ran
+#      `npm run start` (`next start`) on the same port, which died with
+#      EADDRINUSE and took the whole dev server down with it.
+#
+# So: run `dev:next` explicitly, tell Netlify which port it lands on, and serve
+# the wrapped site (with /.netlify/functions/* routed) on 8888.
+[dev]
+  framework = "#custom"
+  command = "npm run dev:next"
+  targetPort = 3000
+  port = 8888
+  autoLaunch = false

@@ -1,4 +1,21 @@
 /**
+ * ⚠️ SUPERSEDED, session 16 (2026-09-11) — kept for reference, no longer called.
+ *
+ * This route cannot work reliably in production: Netlify kills any synchronous
+ * function at a hard 26 s wall clock (`maxDuration` below is a Vercel
+ * convention it ignores), and a deep hop's model call runs longer than that —
+ * measured at 26961 ms, cut mid-SSE-stream, whole turn lost. See HANDOFF §27.
+ *
+ * The live path is now:
+ *   app/api/chat/start/route.ts        → auth + create rows + kick off
+ *   netlify/functions/chat-background  → the loop, 15 min budget
+ *   lib/chat/run-turn.ts               → the loop itself
+ *   lib/chat/client.ts + ChatShell     → start, then poll the DB
+ *
+ * Do not wire anything new to this file. Delete it once the background path
+ * has a few weeks of real use behind it.
+ *
+ * ── original header ─────────────────────────────────────────────────────────
  * BUILD.md Phase 3 — /api/chat: ONE model turn per request. The CLIENT
  * drives the loop (ARCHITECTURE.md §2) — this route never calls itself or
  * loops internally. A "turn" here means: reconstruct history from the DB,
@@ -230,6 +247,15 @@ export async function POST(req: Request) {
     async start(controller) {
       const enqueue = (s: string) => { try { controller.enqueue(encoder.encode(s)); } catch { /* closed */ } };
       const keepalive = setInterval(() => enqueue(':\n\n'), 10_000); // SSE comment as Netlify keepalive, same pattern as /api/recompute
+
+      // Emitted BEFORE the model call so the client learns the ids even if this
+      // hop never finishes (session 16 — HANDOFF §27). Netlify kills the
+      // function at a hard 26 s wall clock regardless of `maxDuration`, which
+      // truncates the SSE body mid-stream: status 200, no `done` event. Without
+      // this, a first hop cut that way leaves the client with no
+      // assistant_message_id, so a turn whose tool results are all safely
+      // persisted still can't be resumed and the whole investigation is lost.
+      enqueue(sseEvent('start', { conversation_id: conversationId, assistant_message_id: assistantMessageId }));
 
       try {
         const anthropicStream = anthropic().messages.stream({

@@ -3,7 +3,13 @@
  * Not part of the public tool catalogue (ARCHITECTURE.md §4) — just the
  * bounded-query and comparability-caveat plumbing every module needs.
  */
-import { createAdminSupabase } from '../supabase-server';
+// TYPE-ONLY on purpose: supabase-server statically imports `next/headers`,
+// which does not exist outside the Next runtime. lib/tenure.ts documents the
+// same constraint for tsx scripts; since session 16 it also matters for
+// netlify/functions/chat-background.mts, which bundles this module. Every
+// function here already takes its SB client as a parameter, so nothing needs
+// the value import.
+import type { createAdminSupabase } from '../supabase-server';
 import { resolveHubId } from '../hub-aliases';
 import { normalizeName } from '../normalize';
 

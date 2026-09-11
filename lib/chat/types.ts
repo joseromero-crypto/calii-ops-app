@@ -18,6 +18,13 @@ export interface MessageRow {
   output_tokens: number | null;
   cost_usd: number | null;
   created_at: string;
+  /**
+   * 'running' while the background function is working the turn, then 'done'
+   * or 'error' (migration 20260911000001). The browser has no other way to
+   * tell an in-flight turn from a crashed one — both have content ''.
+   */
+  status: 'running' | 'done' | 'error';
+  error_text: string | null;
 }
 
 export interface ToolCallRow {
