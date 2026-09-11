@@ -398,6 +398,8 @@ Then `page.tsx:446` — the cast is `searchParams.tab as 'kpi' | 'hub' | 'cmp' |
 
 ⚠️ `syncUrl` uses `window.history.pushState`. **Never** `router.push` here — it re-runs `page.tsx` and all six Supabase batches (HANDOFF §4a, 4–5 second freeze).
 
+> ⚠️ **Superseded for tab changes (sesión 16, 2026-09-11 — `HANDOFF.md` §26).** `page.tsx` now fetches **per tab**, so `switchTab` deliberately uses `router.push`: re-running the query set is what makes this tab cost 2.23 MB instead of 31.90 MB. The rule still holds for **KPI selection and hub selection** — those need no new data and stay on `history.pushState`.
+
 ### Step 7 — targets & config
 
 Mostly free. `/config` → "Metas / Targets" reads every row in `kpis` (`config/page.tsx:11`, no filter), so the new KPIs get target inputs automatically and `resolveTarget`/`meetsTarget` work unchanged.

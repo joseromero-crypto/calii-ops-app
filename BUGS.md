@@ -16,9 +16,22 @@ exactly. Run `npm run typecheck` and `npm run lint` when done.
 ## Reglas de la sesión
 
 - `app/(app)/historicos/page.tsx` **sí se toca** — la causa raíz de BUG-1 está
-  en la paginación de ese archivo (ver BUG-1a). Lo que NO hay que cambiar es la
-  ventana de 51 semanas (`sinceIso`, línea ~36): ya alcanza para todos los
-  rangos de BUG-2, no se necesita query nueva para eso.
+  en la paginación de ese archivo (ver BUG-1a).
+- ⚠️ **Actualizado (sesión 16, 2026-09-11 — `HANDOFF.md` §26).** Ese archivo se
+  reescribió: ahora **trae datos por pestaña** (`searchParams.tab`) y ya no
+  todo en cada request. Dos consecuencias para cualquier fix de este archivo:
+  - `sinceIso` (51 semanas) **sigue igual y sigue sin tocarse** para
+    `snapshots` — alcanza para todos los rangos de BUG-2, no se necesita query
+    nueva.
+  - Pero `assemblerTrend` / `driverTrend` **ya NO traen 51 semanas**: usan
+    `trendWindowStart()`, las últimas 8 semanas con upload de roster validado
+    (las gráficas dibujan `slice(-5)`). Medido: 22450 → 7512 y 8942 → 2975
+    filas. **No lo "restaures" a 51 semanas** pensando que es un bug; y si un
+    fix necesita más historia en las gráficas WoW, sube `TREND_WEEKS`, no el
+    rango entero.
+  - `mnaProducts` / `faltantesSkuProducts` **ya no son props de `page.tsx`**.
+    Viven en `app/api/historicos/mna-products/route.ts`, se piden por hub
+    desde `PorHubTab` después del primer paint y se cachean por hub.
 - Do not "fix" things that aren't listed here. Minimal, surgical diffs.
 - Keep the existing visual language (Tailwind classes, `var(--line)`,
   `var(--ink)`, `var(--muted)`, `shadow-soft`, `rounded-xl`).
@@ -448,7 +461,7 @@ distintos:
 | | Query "peers" (~línea 152) | Query "trend" (~línea 195) |
 |---|---|---|
 | Consumidores | flip cards, tiles, conteo "N armadores con datos", `GenerarReporte` | las 11 gráficas WoW |
-| Semanas | solo `currentWeek` | 51 semanas |
+| Semanas | solo `currentWeek` | ~~51 semanas~~ → últimas 8 semanas con upload (sesión 16) |
 | Scope | `within_hub` + `within_city` | solo `within_hub` |
 | Orden | 5 columnas (estable) | `week_start` solo (**roto**) |
 
@@ -541,7 +554,18 @@ trendForHub(all, hubId, weeks)   // lo que hoy es assemblerTrend/driverTrend
 ```
 
 Si el volumen de traer 51 semanas de ambos scopes resulta pesado, mide primero
-con el count real antes de optimizar. Si de verdad hay que partirlo, entonces
+con el count real antes de optimizar.
+
+> ⚠️ **Ese conteo ya se hizo (sesión 16, `HANDOFF.md` §26) y sí resulta pesado.**
+> 51 semanas de `within_hub` solo: 22450 filas de operador (6.03 MB) + 8942 de
+> repartidor (2.40 MB). Sumar `within_city` encima lo empeora. Traer eso en
+> **una** tubería es exactamente lo que tumbó `/historicos` en producción
+> (31.9 MB por request, ~18 s, la conexión cortada a media respuesta).
+> Colapsar D1 sigue siendo correcto — un solo origen por valor es la regla de
+> Jose — pero **la tubería única tiene que ser la del query-builder compartido
+> con ventana acotada**, no la de "traer 51 semanas de todo y derivar en
+> cliente". Corre `npx tsx scripts/diag-historicos.ts` antes de decidir el
+> alcance; imprime filas y bytes reales por rama. Si de verdad hay que partirlo, entonces
 las dos queries se construyen desde **un solo query-builder compartido** con el
 mismo `orderBy`, mismo `select` y mismo dedupe — nunca dos escritas a mano.
 

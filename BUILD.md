@@ -28,8 +28,16 @@ Verbatim from `HANDOFF.md`, restated because they are easy to violate:
 - **`pct` KPI values and `rolling_mean_4w` are stored as 0–1 fractions**, not percentages.
   `currency` is raw MXN.
 - **Every new route needs a `loading.tsx`.** Without it Next blocks navigation.
-- **Never `router.push` inside `/historicos`** — it re-runs every Supabase query. Use
-  `history.pushState`.
+- **`router.push` inside `/historicos`: correct for TAB changes, wrong for everything else.**
+  This rule used to read "never `router.push` inside `/historicos`, it re-runs every Supabase
+  query" — true when the page fetched all four tabs' data on every request. Since session 16
+  (`HANDOFF.md` §26) the page fetches **per tab**, so re-running the query set is the entire
+  point: it is what makes Por KPI / Comparativa / Resumen cost 2.23 MB instead of 31.90 MB.
+  `HistoricosClient.switchTab` uses `router.push` deliberately. **KPI selection and hub
+  selection still use `history.pushState`** — neither needs new data, and turning either into
+  a navigation would refetch for nothing (hub switching staying instant is an explicit
+  requirement from Jose). Before turning any other control into a `router.push`, check whether
+  the server would actually fetch something different for it.
 - **RLS policies go in the same migration as the table.** This was forgotten twice
   (`person_tenure`, `kpi_ramp_targets`) and needed follow-up migrations.
 - **`.eq('is_excluded', false)` on `upload_rows`** — and apply it symmetrically when comparing

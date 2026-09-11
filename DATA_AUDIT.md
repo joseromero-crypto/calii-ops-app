@@ -179,7 +179,7 @@ cite the 43% figure or recompute it against the legacy denominator.
 ### 4.5 MNA — 96% of the DB, 6 columns used
 
 Consumed: `Producto`, `Proveedor`, `MNA ($)`, `Recibido`, `Source price`, `city`,
-`Inventario` (tile flip in page.tsx only).
+`Inventario` (tile flip only — since sesión 16 the data comes from `app/api/historicos/mna-products`, per hub, not from `page.tsx`; see `HANDOFF.md` §26).
 
 `MNA ($)` is **95% zeros** — merma concentrates in ~5% of SKUs. That Pareto is nowhere in the UI.
 

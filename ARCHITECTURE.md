@@ -50,9 +50,14 @@ question in favour of always-on. Mechanism in §4.
 |---|---|---|
 | Next/Netlify function duration | **120 s** | `app/api/insights/generate/route.ts` already sets `maxDuration = 120` |
 | **Supabase statement timeout** | **~8 s** | HANDOFF §12 — real timeouts on `upload_rows` at 25+ uploads/week |
+| **Total bytes moved per request** | the one that actually bit | HANDOFF §26 — `/historicos` sat at ~18 s until the data it fetched went 31.9 MB → 2.2 MB (704 ms). Two different *schedules* over the same bytes differed by 0.5% |
 | Anthropic SDK in repo | `^0.39.0` | ⚠️ old; prompt caching + current tool-use ergonomics likely need an upgrade |
 
-**The function duration is not the binding constraint. The 8-second statement timeout is.**
+**The function duration is not the binding constraint. The 8-second statement timeout is** — per
+query. Per *request*, the constraint that actually took `/historicos` down was total volume:
+60+ cheap queries, none of them near the statement timeout, adding up to 31.9 MB and ~18 s.
+Both limits are real and they fail differently; a design that respects the per-query budget can
+still blow the per-request one. See HANDOFF §26.
 That is a *per-query* budget, and it is why `kpi-compute.ts` fetches one upload at a time and
 upserts in sequential 200-row batches, and why `deriveTenureLedger` does the same.
 
