@@ -995,3 +995,81 @@ What the ~18s-regardless-of-restructuring pattern actually suggests: a **fixed t
 **Immediate escape hatch, still available, not urgent per José ("I don't need historicos working right now, as long as I know how to get it working"):** Netlify → Deploys → the deploy from before this session (2026-09-10 morning) → **"Publish deploy"**. Instant, no code changes, fully reversible. Use this if/when uptime becomes urgent before the real fix (precomputed aggregation) is built.
 
 **Status at end of session:** `/historicos` is still broken in production. This session's fix (round-trip/concurrency reduction) is deployed and is a real, harmless improvement, but is confirmed NOT to be the fix — do not spend further time tuning request scheduling on this page. Next session should start from the precomputed-aggregation direction above.
+
+## 26. /historicos production outage — RESOLVED by cutting data volume, not scheduling (session 16, 2026-09-11)
+
+**Read §25 first.** Session 15 deployed a round-trip/concurrency fix and measured 17975ms → 17879ms: no change. §25's own conclusion was that a fixed ~18s ceiling was being hit and that the next lever was precomputing the MNA/faltantes aggregation. The ceiling reading was right; the precompute conclusion was only a third of the story, and the cheaper two thirds were never looked at.
+
+### What was actually wrong
+
+`app/(app)/historicos/page.tsx` fetched **every tab's data on every request**, while `HistoricosClient` renders **exactly one tab at a time**. Verified by reading each tab's prop destructuring, not by assumption:
+
+| Tab | destructures |
+|---|---|
+| `PorKpiTab` | `kpis, hubs, snapshots, currentWeek, selectedKpi, onKpiChange, targets` |
+| `ComparativaTab` | `kpis, hubs, snapshots, currentWeek` |
+| `ResumenTab` | `kpis, hubs, snapshots, currentWeek` |
+| `PorHubTab` | everything |
+
+`peers` and `roles` are *declared* in `PorKpiTab`/`ResumenTab`'s `Props` but never destructured or referenced — dead props. So three of the four tabs, including the default landing tab, read **only `snapshots`** plus four tiny registry tables. Everything expensive on the page — current-week `peer_comparisons`, a *year* of operator and driver WoW peer rows, the tenure ledger, and ~7 MNA/faltantes uploads' worth of raw JSONB `upload_rows` — existed solely for Por hub.
+
+That also explains §25's null result cleanly: bounding concurrency and cutting MNA from 5 round trips to 2 changed *how* the same bytes were scheduled. Neither version moved fewer bytes. The ceiling was never going to move.
+
+### The three changes (all volume, none scheduling)
+
+1. **Tab-scoped fetching** — `page.tsx` branches on `searchParams.tab`. The three light tabs issue 5 registry/count queries plus the snapshot pages, and nothing else. `HistoricosClient.switchTab` became a `router.push` (was `history.pushState`) so the server component re-runs per tab; `loading.tsx` already existed and covers the first visit, and Next's router cache makes a revisit instant. **KPI switching inside Por KPI stays `pushState`** — every snapshot is already client-side, so it needs no refetch. Hub switching inside Por hub stays client state, per Jose's call this session.
+
+2. **Trend window: last 8 upload weeks, not 51.** `AssemblerWowSection`/`DriverWowSection` render `allSectionWeeks.slice(-5)` — five weeks, always. The page was fetching 52 weeks of `operator × KPI × week` and `driver × KPI × week` `peer_comparisons` to draw five. The bound comes from `trendWindowStart()`, which anchors on **weeks with a validated roster upload** rather than a calendar offset: a fixed "last N calendar weeks" would silently shorten the chart for a hub that skipped uploads, where the old 51-week fetch found its five points further back. 8 = the 5 displayed plus three weeks of slack.
+
+3. **MNA/faltantes moved off the page** to `app/api/historicos/mna-products/route.ts`, **scoped to one hub**, fetched by `PorHubTab` after paint and cached per hub in a ref. Both consumers are user-triggered and single-hub — the tile flips (`clic en tile para ver ranking`) and `GenerarReporte` — so pulling all hubs' raw rows ahead of first paint bought nothing. The aggregation logic (monetary MNA formula, 3-minute sliding-window faltantes dedup) was **moved verbatim**, not rewritten.
+   - City-level uploads (`uploads.hub_id` null, one file covering several hubs) are still included — the query is `hub_id.eq.<hub>,hub_id.is.null` and `resolveHubId()` does the per-row filtering, so no hub fed by a city-level file loses its flip data.
+   - `GenerarReporte` takes a new `dataLoading` prop and is disabled while the slice is in flight. Without it, clicking early would produce a report *missing* its MNA/faltantes sections rather than visibly failing — a silent wrong answer, which is worse.
+   - A fetch failure surfaces next to the hub header (`no se pudo cargar el detalle de productos`) instead of rendering as an empty ranking.
+
+**No new precomputed table was built.** §25 proposed one; per-hub scoping gets most of the same reduction (~7 uploads → 1) with no second place where MNA % is computed, which matters given the architecture rule that a value shown twice must be *read* from one source. If the route alone ever becomes too slow, precompute is still the next lever — but measure first this time.
+
+### Measured result (`scripts/diag-historicos.ts`, real prod data, week 2026-08-28)
+
+Row counts and bytes, not wall-clock — machine-independent, unlike §25's timings.
+
+```
+DEFAULT TAB (Por KPI)            before   ->    after
+snapshots                    9957 ->     9957 rows     2.23 MB ->   2.23 MB
+peers (current week)         5560 ->        0 rows     1.49 MB ->   0.00 MB
+assembler trend             22450 ->        0 rows     6.03 MB ->   0.00 MB
+driver trend                 8942 ->        0 rows     2.40 MB ->   0.00 MB
+mna raw upload_rows         33241 ->        0 rows    19.29 MB ->   0.00 MB
+faltantes raw rows            771 ->        0 rows     0.45 MB ->   0.00 MB
+TOTAL fetched                        31.90 MB ->   2.23 MB   (14.3x less)
+supabase requests                         104 ->        15
+
+POR HUB TAB                      before   ->    after
+assembler trend             22450 ->     7512 rows     6.03 MB ->   2.02 MB
+driver trend                 8942 ->     2975 rows     2.40 MB ->   0.80 MB
+mna raw (blocking)          33241 ->        0 rows    19.29 MB ->   0.00 MB
+TOTAL blocking fetch                 31.90 MB ->   6.54 MB   (4.9x less)
+
+after first paint, per selected hub: ~4876 mna rows (~2.83 MB)
+```
+
+**The single largest item on every page load was 33,241 raw MNA rows / 19.29 MB — fetched to populate a tile flip.** That alone was 60% of the page's data, on the critical path, for all seven hubs, on a tab that does not display it. Session 15's two variants both moved that same 19.29 MB, which is why bounded concurrency changed the total by 0.5%.
+
+Note the trend window landed at 2026-07-10 for both roles (8 upload weeks back), against `sinceIso` 2025-09-05 — a 3x cut on those two queries with the rendered five-week x-axis unchanged.
+
+### Verification status — verified in the browser against real data
+
+`npm run build` clean (`/api/historicos/mna-products` registered as ƒ). `tsc --noEmit` clean. Checked live on `next dev` against production Supabase:
+
+- **All four tabs render.** Por KPI (charts + top movers), Comparativa (7 hubs · 21 KPIs), Resumen (city rollup table + WoW charts), Por hub (chips, tiles, sparklines).
+- **Tile flips work off the new route.** MH Avícola's MNA flip: Chocolate amargo con caramelo $1,673 / 95.0%, Chocolate con leche Lindt $1,057, Yoghurt LALA $716. MH Contry's, after switching: Fresas caja 454g $1,702 / 12.8%, Huevo blanco San Juan $1,102, Papa blanca $826 — correctly different per hub, confirming the per-hub scoping returns that hub's slice and not a shared one.
+- **WoW x-axis still five weeks** (6 ago / 13 ago / 20 ago / 27 ago / 3 sep), all 13 armadores plotted, section labelled "últimas 5 semanas". The trend-window narrowing did not shorten it.
+- **Hub switching is still instant** — tiles repaint immediately with the new hub's numbers; only the flip slice refetches, with "Generar reporte" showing "Cargando…" until it lands.
+- **Tab switching** dims the tab bar during the server navigation, then paints. No console errors on any tab.
+
+One defect found and fixed during this pass: while a hub's flip slice was in flight, an already-flipped tile rendered *"Sin datos MNA esta semana."* — stating there is no data when the truth was "not fetched yet". Flipped MNA/faltantes tiles now show `Cargando…` while `flipLoading`, and `No se pudo cargar el detalle.` on error.
+
+### Still to confirm after deploy
+
+Netlify Observability on the next `/historicos` request: status 200 with a **normal-sized** body (not ~1KB) and a duration nowhere near the ~18s that was cutting it off. If Por hub is still slow at 6.54 MB, the next levers, in order: narrow `snapshots` (9,957 rows / 2.23 MB, fetched by every tab) to the weeks each tab actually plots, and move current-week `peer_comparisons` to per-hub like the MNA route. Precomputing MNA aggregates (§25's proposal) is no longer on the critical path at all.
+
+`_git_lock_backup/` in the repo root holds two empty `.git` lock files moved aside this session — safe to delete, kept rather than removed at Jose's request.

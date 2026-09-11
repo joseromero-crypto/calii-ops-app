@@ -1,6 +1,7 @@
 'use client';
-import { useMemo, useState } from 'react';
-import type { Kpi, Hub, Snapshot, Peer, MnaProduct, FaltantesSku, KpiTarget, RampTarget } from './_shared';
+import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import type { Kpi, Hub, Snapshot, Peer, KpiTarget, RampTarget } from './_shared';
 import { weekEndLabel } from './_shared';
 import { buildTenureNameIndex, type TenureRow } from '@/lib/tenure';
 import { PorKpiTab } from './PorKpiTab';
@@ -16,8 +17,6 @@ interface Props {
   assemblerTrend: Peer[];
   /** Multi-week driver peer rows (within_hub) for the driver WoW charts. */
   driverTrend: Peer[];
-  mnaProducts: MnaProduct[];
-  faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
   targets: KpiTarget[];
   /** Derived tenure ledger, both roles combined — see lib/tenure.ts. */
@@ -30,7 +29,7 @@ interface Props {
   selectedCity?: string;
 }
 export function HistoricosClient(props: Props) {
-  const { currentWeek, mnaProducts, tenureRows } = props;
+  const { currentWeek, tenureRows } = props;
 
   // Built once here (not per tile/dropdown/tooltip) and passed down as Maps —
   // every consumer does name lookups, rebuilding this per render is wasteful.
@@ -45,35 +44,45 @@ export function HistoricosClient(props: Props) {
     [tenureRows],
   );
 
-  // ── Client-side navigation state ─────────────────────────────────────────────
-  // All three state variables are initialised from server-provided props (which
-  // come from URL searchParams on first load / direct links / back-navigation).
-  // Subsequent changes are pure client state + history.pushState — no Supabase
-  // re-fetch, no server round-trip, same mechanism as hub switching in PorHubTab.
+  // ── Navigation state ─────────────────────────────────────────────────────────
+  //
+  // Session 16 — tab switching is a SERVER navigation now, KPI switching is not.
+  //
+  // The page fetches per tab (see page.tsx header): three of the four tabs read
+  // only `snapshots`, and everything expensive belongs to Por hub. That only
+  // holds if changing tab re-runs the server component, so `switchTab` uses
+  // router.push instead of the old history.pushState. Next's router cache keeps
+  // a recently-visited tab instant on the way back, and loading.tsx covers the
+  // first visit.
+  //
+  // Switching KPI inside Por KPI needs no new data — every snapshot is already
+  // loaded — so it stays pure client state + pushState, as before. Hub
+  // switching inside Por hub likewise stays client-side.
 
-  const [activeTab, setActiveTab] = useState<'kpi' | 'hub' | 'cmp' | 'res'>(props.tab);
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const activeTab = props.tab;
   const defaultKpi = props.kpis.find((k) => k.watched_globally)?.id ?? props.kpis[0]?.id ?? '';
   const [activeKpi, setActiveKpi] = useState<string>(props.selectedKpi ?? defaultKpi);
 
-  // Build and push URL without triggering a Next.js server navigation.
-  function syncUrl(tab: 'kpi' | 'hub' | 'cmp' | 'res', kpi: string) {
+  const hrefFor = (tab: 'kpi' | 'hub' | 'cmp' | 'res', kpi: string) => {
     const params = new URLSearchParams();
     if (tab !== 'kpi') params.set('tab', tab);
     if (tab === 'kpi' && kpi && kpi !== defaultKpi) params.set('kpi', kpi);
-    const url = params.toString() ? `/historicos?${params.toString()}` : '/historicos';
-    window.history.pushState(null, '', url);
-  }
+    return params.toString() ? `/historicos?${params.toString()}` : '/historicos';
+  };
 
   const switchTab = (t: 'kpi' | 'hub' | 'cmp' | 'res') => {
-    setActiveTab(t);
-    syncUrl(t, activeKpi);
+    if (t === activeTab) return;
+    startTransition(() => router.push(hrefFor(t, activeKpi)));
   };
 
   const switchKpi = (id: string) => {
     setActiveKpi(id);
-    syncUrl('kpi', id);
-    // If the user is on a different tab, also switch to kpi tab.
-    if (activeTab !== 'kpi') setActiveTab('kpi');
+    // No refetch needed — snapshots for every KPI are already on the client.
+    window.history.pushState(null, '', hrefFor('kpi', id));
+    if (activeTab !== 'kpi') switchTab('kpi');
   };
 
   return (
@@ -90,14 +99,14 @@ export function HistoricosClient(props: Props) {
           Esta sem: jue {weekEndLabel(currentWeek)}
         </span>
       </div>
-      <div className="flex gap-1 border-b border-[var(--line)] mb-5 overflow-x-auto">
+      <div className={`flex gap-1 border-b border-[var(--line)] mb-5 overflow-x-auto transition-opacity ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
         <Tab onClick={() => switchTab('kpi')} active={activeTab === 'kpi'}>📈 Por KPI</Tab>
         <Tab onClick={() => switchTab('hub')} active={activeTab === 'hub'}>🏬 Por hub<span className="hidden sm:inline"> · vista 1:1</span></Tab>
         <Tab onClick={() => switchTab('cmp')} active={activeTab === 'cmp'}>⚖️ Comparativa<span className="hidden sm:inline"> entre MHs</span></Tab>
         <Tab onClick={() => switchTab('res')} active={activeTab === 'res'}>📦 Resumen</Tab>
       </div>
       {activeTab === 'kpi' && <PorKpiTab {...props} selectedKpi={activeKpi} onKpiChange={switchKpi} />}
-      {activeTab === 'hub' && <PorHubTab {...props} mnaProducts={mnaProducts} faltantesSkuProducts={props.faltantesSkuProducts} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} tenureByNameArmador={tenureByNameArmador} tenureByNameRepartidor={tenureByNameRepartidor} />}
+      {activeTab === 'hub' && <PorHubTab {...props} assemblerTrend={props.assemblerTrend} driverTrend={props.driverTrend} tenureByNameArmador={tenureByNameArmador} tenureByNameRepartidor={tenureByNameRepartidor} />}
       {activeTab === 'cmp' && <ComparativaTab {...props} />}
       {activeTab === 'res' && <ResumenTab {...props} />}
     </div>

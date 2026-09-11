@@ -31,6 +31,14 @@ interface Props {
   tenureByNameArmador:     Map<string, TenureRow>;
   tenureByNameRepartidor:  Map<string, TenureRow>;
   currentWeek:             string;
+  /**
+   * True while PorHubTab is still fetching this hub's MNA/faltantes slice
+   * (session 16 — that data moved to /api/historicos/mna-products and now
+   * arrives after first paint). The button is disabled until it lands:
+   * generating from empty mnaProducts would silently produce a report with
+   * no MNA/faltantes sections rather than an obviously broken one.
+   */
+  dataLoading?:            boolean;
 }
 
 // ─── KPI definitions for the report ──────────────────────────────────────────
@@ -543,6 +551,7 @@ export function GenerarReporte({
   tenureByNameArmador,
   tenureByNameRepartidor,
   currentWeek,
+  dataLoading = false,
 }: Props) {
   const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
@@ -599,9 +608,11 @@ export function GenerarReporte({
       {/* Trigger button */}
       <button
         onClick={generate}
-        className="shrink-0 px-3 py-1.5 text-[12px] font-medium bg-teal-500 hover:bg-teal-600 active:bg-teal-700 text-white rounded-full shadow-sm transition-colors"
+        disabled={dataLoading}
+        title={dataLoading ? 'Cargando datos del hub…' : undefined}
+        className="shrink-0 px-3 py-1.5 text-[12px] font-medium bg-teal-500 hover:bg-teal-600 active:bg-teal-700 disabled:bg-slate-300 disabled:cursor-wait text-white rounded-full shadow-sm transition-colors"
       >
-        Generar reporte
+        {dataLoading ? 'Cargando…' : 'Generar reporte'}
       </button>
 
       {/* Modal overlay */}

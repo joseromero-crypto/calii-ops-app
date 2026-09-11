@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import {
   LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -54,8 +54,6 @@ interface Props {
   assemblerTrend: Peer[];
   /** Multi-week driver peer rows (within_hub) for driver WoW charts. */
   driverTrend: Peer[];
-  mnaProducts: MnaProduct[];
-  faltantesSkuProducts: FaltantesSku[];
   roles: { id: string; name_es: string }[];
   targets: KpiTarget[];
   ramps: RampTarget[];
@@ -122,7 +120,7 @@ const KPI_META: Record<string, KpiMeta> = {
   discrepancia_mxn:                   { title: 'Discrepancia ($)',         unit: 'currency', direction: 'lower_is_better'  },
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], mnaProducts = [], faltantesSkuProducts = [], targets = [], ramps = [], tenureByNameArmador, tenureByNameRepartidor, currentWeek, selectedHub }: Props) {
+export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], targets = [], ramps = [], tenureByNameArmador, tenureByNameRepartidor, currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   // Tile coloring mode — defaults to the existing σ-vs-own-history behavior
@@ -136,6 +134,51 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
   // All data is already loaded; we just filter it here.
   const [hubId, setHubId] = useState<string>(selectedHub || hubs[0]?.id || '');
   const hub = hubs.find((h) => h.id === hubId);
+
+  // ── MNA / faltantes tile-flip data — fetched per hub, after paint ──────────
+  //
+  // Session 16: this used to be computed inside historicos/page.tsx for every
+  // hub on every request — ~7 uploads × ~5,000 raw JSONB rows pulled and
+  // aggregated before the page could stream, which is what kept /historicos
+  // over Netlify's response ceiling (see page.tsx header). Both consumers are
+  // user-triggered and single-hub — the tile flips below and "Generar
+  // reporte" — so it now loads in the background for the selected hub only,
+  // and is cached per hub for the lifetime of the tab so switching back to a
+  // hub you have already viewed stays instant.
+  type FlipData = { mnaProducts: MnaProduct[]; faltantesSkuProducts: FaltantesSku[] };
+  const flipCacheRef = useRef<Map<string, FlipData>>(new Map());
+  const [flipData, setFlipData] = useState<FlipData | null>(null);
+  const [flipLoading, setFlipLoading] = useState(false);
+  const [flipError, setFlipError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hubId) return;
+    const cached = flipCacheRef.current.get(hubId);
+    if (cached) { setFlipData(cached); setFlipLoading(false); setFlipError(null); return; }
+
+    let cancelled = false;
+    setFlipData(null);
+    setFlipError(null);
+    setFlipLoading(true);
+
+    fetch(`/api/historicos/mna-products?hub=${encodeURIComponent(hubId)}&week=${encodeURIComponent(currentWeek)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((j) => {
+        const d: FlipData = {
+          mnaProducts: j.mnaProducts ?? [],
+          faltantesSkuProducts: j.faltantesSkuProducts ?? [],
+        };
+        flipCacheRef.current.set(hubId, d);
+        if (!cancelled) setFlipData(d);
+      })
+      .catch((e) => { if (!cancelled) setFlipError(e instanceof Error ? e.message : 'error'); })
+      .finally(() => { if (!cancelled) setFlipLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [hubId, currentWeek]);
+
+  const mnaProducts          = flipData?.mnaProducts ?? [];
+  const faltantesSkuProducts = flipData?.faltantesSkuProducts ?? [];
 
   function toggleTile(kpiId: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -300,6 +343,11 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
           <div className="flex items-center gap-3">
             <div className="text-[11.5px] text-[var(--muted)]">
               {operatorCount} armadores · {driverCount} repartidores con datos esta sem
+              {flipError && (
+                <span className="ml-2 text-amber-600" title={flipError}>
+                  · no se pudo cargar el detalle de productos
+                </span>
+              )}
             </div>
             <GenerarReporte
               hub={hub}
@@ -313,6 +361,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               tenureByNameArmador={tenureByNameArmador}
               tenureByNameRepartidor={tenureByNameRepartidor}
               currentWeek={currentWeek}
+              dataLoading={flipLoading}
             />
           </div>
         </div>
@@ -576,7 +625,16 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
                     <span className="text-[9px] text-[var(--muted)] shrink-0 opacity-70">esta sem · clic para volver</span>
                   </div>
 
-                  {isFaltantesSku ? (
+                  {(isFaltantesSku || isMna) && flipLoading ? (
+                    /* ── Session 16: MNA/faltantes arrive from
+                         /api/historicos/mna-products after first paint, so an
+                         empty list here means "not here yet", not "no data".
+                         Saying "Sin datos esta semana" during the fetch would
+                         be a wrong answer, not just an ugly one. ── */
+                    <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">Cargando…</div>
+                  ) : (isFaltantesSku || isMna) && flipError ? (
+                    <div className="text-[11px] text-amber-600 text-center py-4">No se pudo cargar el detalle.</div>
+                  ) : isFaltantesSku ? (
                     /* ── Faltantes subcategory: top SKUs by count from breakdown ── */
                     faltantesForHub.length === 0 ? (
                       <div className="text-[11px] text-[var(--muted)] text-center py-4 opacity-60">Sin datos esta semana.</div>
