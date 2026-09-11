@@ -9,13 +9,17 @@
  * Trigger: `POST /api/recompute` after uploads finalize for a week,
  * or on a Friday-evening cron.
  */
-import { createAdminSupabase } from './supabase-server';
+import { createAdminSupabase } from './supabase-admin';
 import { classifyMnaProduct } from './sku-classifier';
 import type { MnaCategory } from './sku-classifier';
 import type { Kpi, City } from './types';
 import { resolveHubId } from './hub-aliases';
 
 type SB = ReturnType<typeof createAdminSupabase>;
+
+/** This project's PostgREST "Max Rows" setting. It caps `.limit()` too, not
+ *  just unranged requests — every multi-row read here must page with `.range()`. */
+const PAGE_ROWS = 1000;
 
 interface UploadRef {
   id: string;
@@ -59,8 +63,11 @@ interface ComputeResult {
 // ----------------------------------------------------------------------------
 // Public entry point
 // ----------------------------------------------------------------------------
-export async function computeSnapshotsForWeek(weekStart: string): Promise<ComputeResult> {
-  const sb = createAdminSupabase();
+export async function computeSnapshotsForWeek(weekStart: string, client?: SB): Promise<ComputeResult> {
+  // `client` lets a caller outside the Next runtime pass its own admin client
+  // (netlify/functions/recompute-background.mts, tsx scripts). Route handlers
+  // keep calling it with one argument and get the default.
+  const sb = client ?? createAdminSupabase();
   const warnings: string[] = [];
 
   // Load registry
@@ -118,7 +125,6 @@ export async function computeSnapshotsForWeek(weekStart: string): Promise<Comput
   //   within each upload_id so no single file's rows are silently dropped.
   //   25 uploads × ~50–200 ms each (× however many pages a large file needs)
   //   stays comfortably within budget.
-  const PAGE_ROWS = 1000; // this project's PostgREST Max Rows setting
   const rowsByApp = new Map<string, { upload: UploadRef; data: Record<string, unknown> }[]>();
   for (const u of uploads) {
     for (let from = 0; ; from += PAGE_ROWS) {
@@ -891,12 +897,42 @@ async function enrichWithHistory(sb: SB, snapshots: Snapshot[], weekStart: strin
   const sinceIso = since.toISOString().slice(0, 10);
 
   const kpiIds = [...new Set(snapshots.map((s) => s.kpi_id))];
-  const { data: history } = await sb
-    .from('kpi_snapshots')
-    .select('kpi_id, week_start, scope_level, scope_key, value')
-    .in('kpi_id', kpiIds)
-    .gte('week_start', sinceIso)
-    .lt('week_start', weekStart);
+
+  // ⚠️ PAGINATED (session 17). This select used to be unranged, which means
+  // PostgREST capped it at this project's Max Rows = 1000 — the same trap that
+  // silently truncated the mna reads above (BUILD.md Phase 2). Five weeks of
+  // history across every KPI × scope is far more than 1000 rows, so every
+  // snapshot whose history fell outside that arbitrary first page got
+  // prev_week_value / rolling_mean_4w / rolling_std_4w = null. The Por KPI
+  // heatmap colours read those columns, so they were quietly wrong for most
+  // cells.
+  //
+  // ORDER BY is load-bearing here, and is the one case where HANDOFF §9's
+  // "never IN(...) with range pagination" rule is satisfiable rather than
+  // avoidable. `.range()` over an unordered result set is not stable — the
+  // planner may hand back overlapping or missing rows between pages. These
+  // four columns are exactly `kpi_snapshots`' unique constraint
+  // (kpi_id, week_start, scope_level, scope_key), so ordering by them in that
+  // order is a total order served by the unique index: a plain index scan, not
+  // the full sort §9 warns about. Do not reorder them, and do not drop one.
+  const history: { kpi_id: string; week_start: string; scope_level: string; scope_key: string | null; value: number | null }[] = [];
+  for (let from = 0; ; from += PAGE_ROWS) {
+    const { data: page, error } = await sb
+      .from('kpi_snapshots')
+      .select('kpi_id, week_start, scope_level, scope_key, value')
+      .in('kpi_id', kpiIds)
+      .gte('week_start', sinceIso)
+      .lt('week_start', weekStart)
+      .order('kpi_id')
+      .order('week_start')
+      .order('scope_level')
+      .order('scope_key')
+      .range(from, from + PAGE_ROWS - 1);
+    if (error) throw error;
+    const rows = (page ?? []) as typeof history;
+    history.push(...rows);
+    if (rows.length < PAGE_ROWS) break;
+  }
 
   const histMap = new Map<string, { week_start: string; value: number | null }[]>();
   for (const h of history ?? []) {

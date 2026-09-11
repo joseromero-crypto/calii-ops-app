@@ -26,7 +26,7 @@
  * (see scripts/tenure-dry-run.ts, scripts/tenure-backfill.ts). Route
  * handlers just pass their own `createAdminSupabase()` instance in.
  */
-import type { createAdminSupabase } from './supabase-server';
+import type { createAdminSupabase } from './supabase-admin';
 import { resolveHubId } from './hub-aliases';
 import { normalizeName } from './normalize';
 

@@ -1,5 +1,4 @@
 import { createServerClient as createSSRClient, type CookieOptions } from '@supabase/ssr';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
@@ -26,13 +25,8 @@ export function createServerClient() {
   );
 }
 
-export function createAdminSupabase() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for admin operations');
-  }
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false } }
-  );
-}
+// Moved to ./supabase-admin in session 17 so that code running outside the
+// Next runtime (netlify/functions/*, tsx scripts) can build an admin client
+// without pulling `next/headers` into the bundle. Re-exported here so the
+// existing call sites keep their import path.
+export { createAdminSupabase, type AdminSupabase } from './supabase-admin';

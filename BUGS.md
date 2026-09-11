@@ -632,3 +632,44 @@ filtro de personas dos veces.
 > numeradas con causa raíz y criterios de aceptación antes de que se trabajen.
 
 - (vacío)
+
+---
+
+# Resueltos
+
+## BUG-R1 — "Recomputar snapshots" dice `0` y la semana no aparece en Históricos — RESUELTO (sesión 17, 2026-09-11)
+
+**Qué pasó.** Subidos los 29 archivos de la semana 2026-09-04 (vie 4 – jue 10 sep),
+"Recomputar snapshots" tardaba un rato y terminaba en `OK · 0 snapshots · 0 KPIs`.
+En `/historicos` no había nada del 10 de sep: Por hub todo en `-`, las gráficas de
+Por KPI cortadas en el 3 de sep.
+
+**Causa raíz.** Netlify mata cualquier función síncrona a los **26 segundos** de
+reloj (`maxDuration` es convención de Vercel y aquí no hace nada — `HANDOFF.md`
+§27). `computeSnapshotsForWeek()` no escribe **nada** hasta sus dos upserts
+finales, así que el corte tiraba la corrida completa. Dos costos habían venido
+creciendo por debajo: `refreshTenureLedger()` re-deriva el ledger desde *todos*
+los uploads validados que existen (una query por upload, crece cada semana), y
+el fix de paginación de MNA del 9 de sep pasó de ~7 lecturas truncadas a ~42
+completas. Esta semana fue la primera en cruzar la línea.
+
+**Por qué decía "OK" y no "Error".** `RecomputeButton` trataba un stream cortado
+como éxito (`res.ok` ya era `true` porque el header 200 sale *antes* de que
+empiece el cálculo). Una corrida muerta y una semana vacía se veían idénticas.
+
+**Arreglo.** El recompute se movió a `netlify/functions/recompute-background.mts`
+(15 min), con tabla `recompute_runs` para el estado y polling desde el botón. Un
+`0` real ahora sale en rojo diciendo que no hay uploads validados. Detalle
+completo en `HANDOFF.md` §28.
+
+## BUG-R2 — `prev_week_value` y las estadísticas móviles de 4 semanas estaban en `null` — RESUELTO (sesión 17, 2026-09-11)
+
+`enrichWithHistory()` en `lib/kpi-compute.ts` hacía un `select` **sin rango** sobre
+`kpi_snapshots` — la misma trampa de PostgREST Max Rows = 1000 que ya se había
+arreglado para `mna`. Cinco semanas de historia por cada KPI × scope son muchas
+más de 1000 filas, así que todo snapshot cuya historia caía fuera de esa primera
+página se escribía con `prev_week_value` / `rolling_mean_4w` / `rolling_std_4w`
+en `null`. Los colores del heatmap de Por KPI leen esas columnas.
+
+Arreglado con `.range()`. **Las filas existentes necesitan backfill:**
+`npx tsx scripts/recompute-week.ts --all` (de la semana más vieja a la más nueva).

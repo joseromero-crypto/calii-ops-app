@@ -786,9 +786,22 @@ Positive = driver is short (owes money). `direction = lower_is_better`.
 
 ```
 Workspace:   /Users/adrianrodriguez/Desktop/calii-ops-app
-Deploy:      Netlify (git push to main triggers deploy)
+Deploy:      Netlify (a push to main triggers the deploy)
 Supabase:    https://nxwpsvvfgygafjnhwccc.supabase.co
 ```
+
+### How José commits and pushes (session 17, 2026-09-11)
+
+**`git add` and `git commit` in the terminal, as normal. `git push` never
+works there** — an authenticator mix-up between two GitHub accounts broke
+push auth on this machine and was never untangled. He pushes by opening the
+GitHub Desktop app and clicking Push; that is the app's only role in the
+workflow.
+
+So: terminal blocks may include `git add` and `git commit` (and should say
+which files to leave out — build artifacts, `_git_lock_backup/`, in-progress
+plan docs). **Never end one with `git push`** — end at the commit and say
+"then click Push in GitHub Desktop".
 
 ---
 
@@ -1180,8 +1193,76 @@ Things that fell out of the move, beyond the ceiling going away:
 ### Still open
 
 - The **26 s ceiling still applies to every other route** — `insights/generate`, `tools/[name]`, `evidence`, `recompute`, `generar-reporte` all declare a `maxDuration` that does nothing. `recompute` and `generar-reporte` are the plausible next casualties as data grows. Same remedy when they break: `*-background` + poll.
+- **Mobile.** José reported he cannot reach past conversations on a phone. `PLAN_MOBILE.md` (new, not started) has that plus three more found in the same audit — the evidence pane is also desktop-only, so `[c1]` citations silently do nothing on touch, which undercuts the assistant's whole claims-with-evidence model.
 - `MAX_HOPS` is 40 in the new loop (was 20 client-side). It is a runaway guard now, not a budget — the real budget is the platform's 15 minutes.
 
 ### For anyone touching a slow route in this app
 
 The budget is **26 s per request, whatever `maxDuration` says**. Two limits, both real, both already hit here: ~8 s per Postgres statement (§12) and 26 s per function invocation. `/historicos` (§26) blew the second one with 60+ individually-cheap queries. Assume neither is negotiable and design the work to fit.
+
+---
+
+## 28. Recompute: the casualty §27 predicted (session 17, 2026-09-11)
+
+**Symptom.** José uploaded the 29 files for week 2026-09-04 (vie 4 – jue 10 sep). All 29 showed as uploaded. "Recomputar snapshots" churned for a while and then reported `OK · 0 snapshots · 0 KPIs`. `/historicos` had nothing for Sep 10: Por hub all `-`, Por KPI charts stopping at Sep 3. He noted the "0" had appeared before and the data had shown up anyway, so it read as a known cosmetic quirk.
+
+**It was not cosmetic this time.** §27 closed with: *"`recompute` and `generar-reporte` are the plausible next casualties as data grows."* This is that, three weeks later.
+
+`POST /api/recompute` ran `computeSnapshotsForWeek()` inside a synchronous function. Netlify kills those at **26 s of wall clock**; `export const maxDuration = 60` is a Vercel convention this platform ignores. `computeSnapshotsForWeek()` accumulates every snapshot in memory and writes them in **two upserts at the very end**, so a kill discards the entire run — no partial data, no error, nothing.
+
+**Why the browser said "OK".** `RecomputeButton` had this, added when the streamed keepalive went in:
+
+```ts
+} catch {
+  // Stream closed before final JSON arrived — DB write already completed.
+  if (!res.ok) throw new Error('compute_failed (no response body)');
+}
+```
+
+The premise is wrong. The 200 header goes out *before* the computation starts (that is what streaming means), so `res.ok` is true whether the run finished or was executed. A killed run and a genuinely empty week produced the identical message. **The two earlier "said 0 but the data appeared" runs were the benign case, and they taught everyone to ignore the one signal this failure had.**
+
+**Why it crossed 26 s now — two costs growing underneath it.**
+
+1. `refreshTenureLedger()` runs *before* any compute and re-derives the ledger from **every validated upload ever recorded** — `deriveTenureLedger` loops uploads one query at a time, for both roles. `desempeno_operadores` and `desempeno_repartidores` are `per_city` (4 files/week each), so at ~19 weeks of history that is ~150 sequential round trips, each returning up to 1000 fat JSONB rows. **This grows every week, forever, and it is redone in full on every single recompute of any week.**
+2. The MNA pagination fix (BUILD.md Phase 2, 2026-09-09) turned MNA from ~7 truncated reads into ~42 full ones — ~33k rows, ~19 MB. Correct, and necessary, but it landed *the day before* this upload.
+
+Week 2026-09-04 was simply the first week where (1) + (2) + the upserts crossed the line.
+
+### The fix
+
+Same remedy §27 prescribed: `*-background` + poll.
+
+- `supabase/migrations/20260911000002_recompute_runs.sql` — new `recompute_runs` table. Exists so that "still working", "finished with N snapshots" and "died with this error" are three distinguishable states instead of one ambiguous zero. RLS mirrors the chat tables: authenticated read, service-role write.
+- `netlify/functions/recompute-background.mts` — the run, with 15 minutes instead of 26 seconds. Single-use `run_token` claim, atomic conditional update, same shape as `chat-background.mts`. Writes a terminal status on every path, including the throw path.
+- `app/api/recompute/route.ts` — now only auth + create the run row + mint the token + kick the function. The streamed keepalive is gone; it was defending against the wrong limit (inactivity, not wall clock). Refuses to start a second run over a week already in flight, and reaps a run stuck `running` past 16 minutes.
+- `components/RecomputeButton.tsx` — polls `recompute_runs` every 2 s, shows the live phase (`actualizando antigüedades` / `calculando KPIs`) with elapsed seconds, and **reports a real failure as a failure**. A genuine `0 snapshots` is now shown in red as "no hay uploads validados para esta semana" rather than as OK, because that state means every file for the week is missing or stuck in `pending` — which is a problem, not a result.
+- `lib/supabase-admin.ts` — new. `createAdminSupabase()` moved out of `lib/supabase-server.ts`, which statically imports `next/headers` and therefore cannot be in a background function's import graph. `supabase-server.ts` re-exports it so the ~20 existing call sites are untouched. This is the same hazard `lib/tenure.ts` documents in its header; `kpi-compute.ts` was the remaining value-import of it.
+- `computeSnapshotsForWeek(weekStart, client?)` — optional client, so a caller with no Next runtime passes its own. Route handlers are unchanged.
+
+### Second bug, found while reading the same file
+
+`enrichWithHistory()` did an **unranged** `select` on `kpi_snapshots` — the exact PostgREST Max Rows = 1000 trap fixed for `mna` in BUILD.md Phase 2, still live here. Five weeks of history across every KPI × scope is far more than 1000 rows, so **every snapshot whose history fell outside that arbitrary first page was written with `prev_week_value`, `rolling_mean_4w` and `rolling_std_4w` = null.** The Por KPI heatmap colours read those columns; they have been quietly wrong for most cells since the feature shipped. Now paginated with `.range()` **plus an explicit `ORDER BY`** on `(kpi_id, week_start, scope_level, scope_key)` — `.range()` over an unordered result set is not stable between pages, and those four columns are exactly the table's unique constraint, so the order is total and served by the unique index rather than by the full sort §9 warns about. That is the narrow case where `IN(...)` + range pagination is safe; it is not a licence to do it on `upload_rows`. `PAGE_ROWS` was promoted to module scope with a comment, because this is the third time this trap has been hit in this file.
+
+Existing rows need a backfill — `npx tsx scripts/recompute-week.ts --all`, oldest first (week N enriches from weeks N−1…N−4, so newest-first would read rows it is about to replace).
+
+### `scripts/recompute-week.ts` (new)
+
+Local escape hatch and backfill tool. No HTTP layer, no ceiling. Prints an upload inventory first — which is what rules out the two cheaper explanations for a zero (wrong `week_start`, or files sitting in `pending` and therefore excluded) — then times the tenure phase and the compute phase separately.
+
+```
+npx tsx scripts/recompute-week.ts 2026-09-04   # one week
+npx tsx scripts/recompute-week.ts --all        # backfill, oldest first
+```
+
+### Deploying this
+
+1. **Apply `20260911000002_recompute_runs.sql` by hand in the Supabase SQL editor** — not `npm run db:push`, for the reason §27 gives (the migrations folder has drifted from production).
+2. `npm run build`, commit in the terminal, then click Push in GitHub Desktop (see §20 — pushing from the terminal does not work on this machine). The background function needs `netlify.toml`'s esbuild bundler, which is already there from §27.
+3. Backfill: `npx tsx scripts/recompute-week.ts --all`. Independent of the deploy — it writes to production Supabase directly, so it can run while Netlify builds.
+4. First production run: the button should show `actualizando antigüedades… ~31s` and then `calculando KPIs…`. If it never leaves the first phase, that is the open tenure item below.
+
+### Still open
+
+- **`refreshTenureLedger()` is unbounded growth.** 15 minutes is a much higher ceiling, not an absent one, and this function's cost is linear in total weeks of history × uploads per week — it will keep climbing whether or not anyone touches it. It should become incremental (derive only weeks not already in the ledger) or move off the recompute path onto its own schedule. It is *not* fixed here; it is only no longer fatal.
+- `generar-reporte` still declares a meaningless `maxDuration` and still runs synchronously. It is now the last plausible casualty on the list.
+- Nothing recomputes automatically. A week is only ever computed because someone clicked the button, which is why a silent failure could sit undetected until `/historicos` was opened.

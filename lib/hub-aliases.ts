@@ -54,6 +54,26 @@ export const HUB_ALIAS_MAP: Record<string, string> = {
 };
 
 /**
+ * Deliberately NOT in the map (confirmed with José, session 17, 2026-09-11):
+ *
+ *   "MH Santa Fé"        → mh_santa_fe
+ *   "MH Miguel Hidalgo"  → mh_miguel_hidalgo
+ *
+ * Both are **inactive** CDMX hubs with no operation behind them. They appear
+ * as rows in the Retool `resumen_operativo` export, which is why a local
+ * recompute logs `[resolveHubId] unrecognised hub label` for them once per
+ * resumen KPI. That warning is expected and the rows are correctly dropped —
+ * they carry no data, and `extractResumenOperativoValues` would skip them on
+ * the `Pedidos (#) <= 0` guard even if they resolved.
+ *
+ * Do not "fix" this by adding them here. Adding them without rows in the
+ * `hubs` table reproduces the MH San Pedro problem documented above: orphan
+ * snapshots no UI can render, plus a phantom zero-order hub polluting every
+ * weighted KPI. If either hub is ever activated, it needs a `hubs` row, a
+ * HUB_COLORS entry and an alias here — all three, in the same change.
+ */
+
+/**
  * Normalise an arbitrary hub label from a CSV or Retool export to the
  * canonical hub_id slug, or null if unrecognised / excluded.
  *
