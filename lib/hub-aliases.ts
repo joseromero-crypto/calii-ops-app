@@ -80,6 +80,9 @@ export const HUB_ALIAS_MAP: Record<string, string> = {
  * Handles: accented characters, mixed case, spaces vs underscores, "MH "
  * prefix, CH Guadalupe exclusion.
  */
+/** Labels already warned about in this process — see the note in resolveHubId. */
+const warnedLabels = new Set<string>();
+
 export function resolveHubId(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const cleaned = raw
@@ -93,7 +96,15 @@ export function resolveHubId(raw: string | null | undefined): string | null {
   if (!resolved) {
     // Surface unrecognised labels during development so the alias map stays
     // up to date. Safe to ignore in production — the row is simply skipped.
-    if (process.env.NODE_ENV !== 'production') {
+    //
+    // Once per distinct label per process (session 17). Every extractor
+    // re-scans the same rows once per KPI, so an unrecognised label used to
+    // print once per KPI per week: the 24-week backfill emitted ~400 lines of
+    // it, three distinct labels repeated, which buried the per-week result
+    // lines the run actually exists to show. Deduplicating loses nothing —
+    // the second occurrence carried no information the first did not.
+    if (process.env.NODE_ENV !== 'production' && !warnedLabels.has(cleaned)) {
+      warnedLabels.add(cleaned);
       console.warn(`[resolveHubId] unrecognised hub label: ${JSON.stringify(raw)} → normalised: ${JSON.stringify(cleaned)}`);
     }
   }

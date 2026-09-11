@@ -1261,6 +1261,18 @@ npx tsx scripts/recompute-week.ts --all        # backfill, oldest first
 3. Backfill: `npx tsx scripts/recompute-week.ts --all`. Independent of the deploy — it writes to production Supabase directly, so it can run while Netlify builds.
 4. First production run: the button should show `actualizando antigüedades… ~31s` and then `calculando KPIs…`. If it never leaves the first phase, that is the open tenure item below.
 
+### Backfill results (24 weeks, 2026-03-27 → 2026-09-04)
+
+857.5s total, zero failures. Two things the run exposed that were not visible before:
+
+**Every week is over the 26 s ceiling, not just the recent ones.** Phase 2 alone ranged 22.6s – 79.7s with a median around 30s, and that excludes the 32s tenure refresh that precedes it on a real button press. So a production recompute is a 55–110s job today. The background function's 15 minutes is ample; a synchronous route was never going to work for *any* week, which means this was not a threshold crossed in September — September is just when a week's worth of data was missing conspicuously enough to notice.
+
+**Four April weeks computed 21 KPIs instead of 29,** with 8 `no_entity_values` warnings each: `2026-04-03`, `04-10`, `04-17`, `04-24`. `2026-03-27` before them and `2026-05-01` after them both compute all 29 cleanly, so this is not a feature that had not shipped yet — it looks like one app's uploads are missing for those four weeks specifically. Not investigated. **Unresolved, and it is a data gap rather than a code bug.**
+
+**A third unrecognised hub label: `San Rafael Puebla`.** Present from `2026-03-27` through `2026-08-07`, absent from `08-14` onward, 7 occurrences per week (a different count from Santa Fé / Miguel Hidalgo's 8, so it arrives through a different extractor). Its rows have been dropped that whole time. Whether that is correct depends on whether the hub was ever real — **unconfirmed**, unlike Santa Fé and Miguel Hidalgo, which José confirmed are inactive.
+
+`resolveHubId` now warns once per distinct label per process. It used to warn once per KPI per week, so the backfill printed ~400 lines of three repeating labels and buried the per-week results.
+
 ### Still open
 
 - **`refreshTenureLedger()` is unbounded growth.** 15 minutes is a much higher ceiling, not an absent one, and this function's cost is linear in total weeks of history × uploads per week — it will keep climbing whether or not anyone touches it. It should become incremental (derive only weeks not already in the ledger) or move off the recompute path onto its own schedule. It is *not* fixed here; it is only no longer fatal.
