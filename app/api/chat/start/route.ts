@@ -88,33 +88,16 @@ export async function POST(req: Request) {
     await admin.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   }
 
-  // `URL` is set by Netlify to the site's own address; the request origin is
-  // the fallback for `netlify dev`. Awaited only until Netlify accepts the
-  // invocation (background functions answer 202 straight away) — not until the
-  // turn finishes, which is the whole point.
-  const origin = process.env.URL ?? new URL(req.url).origin;
-  try {
-    const kick = await fetch(`${origin}/.netlify/functions/chat-background`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assistant_message_id: assistantMessageId, run_token: runToken }),
-    });
-    if (!kick.ok && kick.status !== 202) {
-      const detail = await kick.text().catch(() => '');
-      await admin.from('messages').update({
-        status: 'error',
-        error_text: `No se pudo iniciar el proceso en segundo plano (${kick.status}). ${detail.slice(0, 200)}`,
-        run_token: null,
-      }).eq('id', assistantMessageId);
-      return NextResponse.json({ error: 'background_start_failed', status: kick.status }, { status: 502 });
-    }
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    await admin.from('messages').update({
-      status: 'error', error_text: `No se pudo iniciar el proceso en segundo plano: ${message}`, run_token: null,
-    }).eq('id', assistantMessageId);
-    return NextResponse.json({ error: 'background_start_failed', message }, { status: 502 });
-  }
-
-  return NextResponse.json({ ok: true, conversation_id: conversationId, assistant_message_id: assistantMessageId });
+  // Session 18 (2026-09-18): this route no longer invokes the background
+  // function itself. Function-to-function HTTP silently does nothing on this
+  // site — the kick came back 2xx and `chat-background` was not invoked once
+  // in the 7 days after it shipped, so every turn started here would have sat
+  // on 'running' forever. The browser invokes it with the token below, which
+  // is the path that was measured working; see lib/kick-background.ts.
+  return NextResponse.json({
+    ok: true,
+    conversation_id: conversationId,
+    assistant_message_id: assistantMessageId,
+    run_token: runToken,
+  });
 }

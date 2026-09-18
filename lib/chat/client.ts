@@ -19,6 +19,8 @@
  * in one lump regardless. Polling loses nothing.
  */
 
+import { kickBackground } from '@/lib/kick-background';
+
 export interface StartedTurn {
   conversation_id: string;
   assistant_message_id: string;
@@ -47,6 +49,31 @@ export async function startTurn(opts: {
   if (!resp.ok) {
     throw new Error(json?.message ?? json?.error ?? `/api/chat/start returned ${resp.status}`);
   }
+
+  // Session 18: the browser invokes the background function, because the
+  // route cannot — a Netlify function invoking another over HTTP answers 2xx
+  // and never runs it (lib/kick-background.ts has the measurements). The token
+  // is single-use and the function clears it as it claims the run.
+  if (json.run_token) {
+    try {
+      await kickBackground('chat-background', {
+        assistant_message_id: json.assistant_message_id,
+        run_token: json.run_token,
+      });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      // Don't leave the row on 'running' — /api/chat/start refuses to resume
+      // one, so the conversation would be wedged behind a turn nobody is
+      // running.
+      await fetch('/api/chat/abandon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assistant_message_id: json.assistant_message_id, reason: message }),
+      }).catch(() => { /* best effort */ });
+      throw new Error(message);
+    }
+  }
+
   return { conversation_id: json.conversation_id, assistant_message_id: json.assistant_message_id };
 }
 

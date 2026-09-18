@@ -1267,9 +1267,11 @@ npx tsx scripts/recompute-week.ts --all        # backfill, oldest first
 
 **Every week is over the 26 s ceiling, not just the recent ones.** Phase 2 alone ranged 22.6s – 79.7s with a median around 30s, and that excludes the 32s tenure refresh that precedes it on a real button press. So a production recompute is a 55–110s job today. The background function's 15 minutes is ample; a synchronous route was never going to work for *any* week, which means this was not a threshold crossed in September — September is just when a week's worth of data was missing conspicuously enough to notice.
 
-**Four April weeks computed 21 KPIs instead of 29,** with 8 `no_entity_values` warnings each: `2026-04-03`, `04-10`, `04-17`, `04-24`. `2026-03-27` before them and `2026-05-01` after them both compute all 29 cleanly, so this is not a feature that had not shipped yet — it looks like one app's uploads are missing for those four weeks specifically. Not investigated. **Unresolved, and it is a data gap rather than a code bug.**
+**Four April weeks computed 21 KPIs instead of 29,** with 8 `no_entity_values` warnings each: `2026-04-03`, `04-10`, `04-17`, `04-24`. **Expected, not a bug** — José has added apps to the registry over time, so early weeks do not have a file for every app, and a KPI whose source app has no upload that week correctly produces no entity values. Treat `no_entity_values` on a historical week as normal; it is only worth investigating on a *current* week, where it means a file is genuinely missing.
 
-**A third unrecognised hub label: `San Rafael Puebla`.** Present from `2026-03-27` through `2026-08-07`, absent from `08-14` onward, 7 occurrences per week (a different count from Santa Fé / Miguel Hidalgo's 8, so it arrives through a different extractor). Its rows have been dropped that whole time. Whether that is correct depends on whether the hub was ever real — **unconfirmed**, unlike Santa Fé and Miguel Hidalgo, which José confirmed are inactive.
+(One detail still does not quite fit and is left as a curiosity rather than a question: `2026-03-27`, the oldest week of all, computes 29. If apps accumulated over time the oldest week should have the fewest, so that week's full set was most likely uploaded later as a backfill. Nothing depends on the answer.)
+
+**A third unrecognised hub label: `San Rafael Puebla`** (in the data 2026-03-27 → 08-07). **Inactive, confirmed by José** — same status as Santa Fé and Miguel Hidalgo. Its rows are correctly dropped; see the note in `lib/hub-aliases.ts` for why adding it to the map would be a mistake.
 
 `resolveHubId` now warns once per distinct label per process. It used to warn once per KPI per week, so the backfill printed ~400 lines of three repeating labels and buried the per-week results.
 
@@ -1278,3 +1280,41 @@ npx tsx scripts/recompute-week.ts --all        # backfill, oldest first
 - **`refreshTenureLedger()` is unbounded growth.** 15 minutes is a much higher ceiling, not an absent one, and this function's cost is linear in total weeks of history × uploads per week — it will keep climbing whether or not anyone touches it. It should become incremental (derive only weeks not already in the ledger) or move off the recompute path onto its own schedule. It is *not* fixed here; it is only no longer fatal.
 - `generar-reporte` still declares a meaningless `maxDuration` and still runs synchronously. It is now the last plausible casualty on the list.
 - Nothing recomputes automatically. A week is only ever computed because someone clicked the button, which is why a silent failure could sit undetected until `/historicos` was opened.
+
+---
+
+## 29. The background functions were never invoked at all (session 18, 2026-09-18)
+
+§28 moved the recompute into `netlify/functions/recompute-background.mts`, and §27 did the same for chat. Neither has ever run in production.
+
+**What José saw.** He uploaded the week's files, pressed *Recomputar*, and the button sat on `trabajando… 310s`. That label is the tell: `PHASE_LABEL` has entries for `tenure`, `compute` and `done`, so `trabajando` was the fallback for a row whose `phase` was still **null** — and `phase: 'tenure'` is the background function's very first write, made as it claims the run, before any work. The row had not been touched by anything.
+
+**Measured, production, 2026-09-18:**
+
+| Evidence | Result |
+| --- | --- |
+| `recompute_runs` | one row ever: `2026-09-11`, `status: running`, `phase: null`, since 20:46:05Z |
+| Netlify logs, `recompute-background`, last 7 days | **zero invocations** |
+| Netlify logs, `chat-background`, last 7 days | **zero invocations** |
+| Same POST issued from the browser to the same path | invoked immediately — 202 in ~850 ms, log entry in the function |
+
+So the deploy is fine, the bundle is fine, the endpoint is fine. What does not work on this site is **one function invoking another over HTTP**: `fetch(`${process.env.URL}/.netlify/functions/<name>`)` from inside the Next server handler comes back with a status the route reads as success, and the function is never invoked. Both `/api/recompute` and `/api/chat/start` were built on exactly that call, which is why both paths were dead from the day they shipped — and why nobody noticed chat was dead too.
+
+**The failure mode is the same one §28 was written to eliminate.** A run row that says `running` when nothing is running is indistinguishable, from the browser, from a run that is merely slow. The lesson is narrower than "add a timeout": *the process that creates the run row must not also be the only thing that can prove it started.*
+
+### The fix
+
+The browser invokes the background function — the path that was measured working.
+
+- `lib/kick-background.ts` (new) — one helper, `kickBackground(fn, payload)`, POSTs `/.netlify/functions/<fn>` and treats anything but 202/2xx as a failed start. The full measurements live in its header.
+- `/api/recompute` and `/api/chat/start` no longer call `fetch` at all. They do auth, create the row, mint the single-use `run_token`, and **return it**. The token now passes through the browser; the security model is unchanged in substance, because the function still claims it with a conditional update that clears it in the same statement, so a replay cannot start a second run.
+- `RecomputeButton` kicks, then polls. New rule: **a run still on `phase: null` after 45 s is a failed start**, not slow work — it says so and stops, instead of spinning to 16 minutes.
+- `/api/recompute/abandon` and `/api/chat/abandon` (new) retire a row that never started, so a failed kick does not block the week for the full stale window (or wedge a conversation behind a turn nobody is running). Both refuse to touch a row the function has claimed — `phase is null` for runs, `run_token is not null` for messages.
+
+### Deploy
+
+`npm run build`, commit in the terminal, then Push in GitHub Desktop (§20). No migration. After deploying, one press of *Recomputar* should reach `actualizando antigüedades…` within a couple of seconds; if it does not, the new 45 s guard will say so rather than leaving a spinner.
+
+### Note for whoever reads the logs next
+
+`refreshTenureLedger` shows up in the **Next.js Server Handler** logs on upload days with durations of 32.5 s and 37.2 s — over the 26 s wall clock §27/§28 describe, and completing. Either the ceiling is not what those sections assume, or it does not apply to that handler. Worth pinning down before the next timing decision is made on the strength of that number.

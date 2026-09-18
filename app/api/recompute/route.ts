@@ -12,11 +12,19 @@
  * truncated stream as success and reported "OK · 0 snapshots". Week 2026-09-04
  * failed that way with no visible error at all.
  *
- * So this route now does only the fast part — auth, create the run row, mint a
- * single-use token — and hands the work to
+ * So this route does only the fast part — auth, create the run row, mint a
+ * single-use token — and the work happens in
  * `netlify/functions/recompute-background.mts`, which has 15 minutes. The
  * browser polls `recompute_runs` (readable under RLS by any authenticated
  * user) until `status` leaves 'running'.
+ *
+ * Session 18 (2026-09-18): this route no longer invokes that function itself.
+ * Function-to-function HTTP does not work on this site — the kick came back
+ * 2xx and the function was never invoked, so the run row sat on 'running' /
+ * phase null and the button span for 16 minutes. Evidence and measurements are
+ * in `lib/kick-background.ts`. The browser now does the invoking with the
+ * `run_token` returned below; the function still claims that token with a
+ * conditional update, so a replay cannot start a second run over the same row.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -33,7 +41,8 @@ const Body = z.object({
 /** A run older than this with status still 'running' is assumed dead — the
  *  background function's own ceiling is 15 minutes, so nothing legitimate
  *  outlives it. Without this, one crashed invocation would block the week
- *  forever. */
+ *  forever. A run that never started is retired sooner than this, by
+ *  /api/recompute/abandon, so a failed kick does not cost a 16-minute wait. */
 const STALE_RUN_MS = 16 * 60 * 1000;
 
 export async function POST(req: Request) {
@@ -64,7 +73,9 @@ export async function POST(req: Request) {
 
   if (inFlight && Date.now() - new Date(inFlight.started_at).getTime() < STALE_RUN_MS) {
     // Hand back the existing run rather than erroring: the client attaches its
-    // poller to it, which is what the user wants anyway.
+    // poller to it, which is what the user wants anyway. No token — that run
+    // was already claimed by whoever started it, and re-kicking it would only
+    // earn a 403 from the function.
     return NextResponse.json({ ok: true, run_id: inFlight.id, already_running: true });
   }
   if (inFlight) {
@@ -86,37 +97,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'db_error', message: insErr?.message }, { status: 500 });
   }
 
-  // `URL` is set by Netlify to the site's own address; the request origin is
-  // the fallback for `netlify dev`. Awaited only until Netlify accepts the
-  // invocation (background functions answer 202 straight away) — not until the
-  // recompute finishes, which is the whole point.
-  const origin = process.env.URL ?? new URL(req.url).origin;
-  try {
-    const kick = await fetch(`${origin}/.netlify/functions/recompute-background`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ run_id: run.id, run_token: runToken }),
-    });
-    if (!kick.ok && kick.status !== 202) {
-      const detail = await kick.text().catch(() => '');
-      await admin.from('recompute_runs').update({
-        status: 'error',
-        error_text: `No se pudo iniciar el proceso en segundo plano (${kick.status}). ${detail.slice(0, 200)}`,
-        run_token: null,
-        finished_at: new Date().toISOString(),
-      }).eq('id', run.id);
-      return NextResponse.json({ error: 'background_start_failed', status: kick.status }, { status: 502 });
-    }
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    await admin.from('recompute_runs').update({
-      status: 'error',
-      error_text: `No se pudo iniciar el proceso en segundo plano: ${message}`,
-      run_token: null,
-      finished_at: new Date().toISOString(),
-    }).eq('id', run.id);
-    return NextResponse.json({ error: 'background_start_failed', message }, { status: 502 });
-  }
-
-  return NextResponse.json({ ok: true, run_id: run.id });
+  // The caller invokes the background function with these two values and then
+  // polls the row. Nothing has started yet at this point.
+  return NextResponse.json({ ok: true, run_id: run.id, run_token: runToken });
 }

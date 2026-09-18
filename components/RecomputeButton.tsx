@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { kickBackground } from '@/lib/kick-background';
 
 interface Props {
   weekStart: string;
@@ -26,11 +27,29 @@ const POLL_MS = 2000;
  *  own 15-minute ceiling. */
 const POLL_TIMEOUT_MS = 16 * 60 * 1000;
 
+/** How long a run may sit on phase null before we call the start failed.
+ *  The background function's first write is `phase: 'tenure'`, and it claims
+ *  the run before doing any work, so this only has to cover a cold start.
+ *  Session 18: without this, a kick that never reached the function showed as
+ *  "trabajando… 310s" and kept going to 16 minutes. */
+const START_GRACE_MS = 45_000;
+
 const PHASE_LABEL: Record<string, string> = {
   tenure: 'actualizando antigüedades',
   compute: 'calculando KPIs',
   done: 'guardando',
 };
+
+/** Retire a run that never started, so the week isn't blocked for 16 minutes. */
+async function abandonRun(runId: string, reason: string) {
+  try {
+    await fetch('/api/recompute/abandon', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ run_id: runId, reason }),
+    });
+  } catch { /* best effort — the stale-run window still covers us */ }
+}
 
 /**
  * Session 17 (HANDOFF §28): this component used to POST and wait for the
@@ -39,8 +58,11 @@ const PHASE_LABEL: Record<string, string> = {
  * trust res.ok" fallback turned that silent kill into a cheerful
  * "OK · 0 snapshots". A failed run and an empty week looked identical.
  *
- * Now the POST only starts a background run and returns a run id; this polls
- * the `recompute_runs` row until it leaves 'running'. A run that dies says so.
+ * Now the POST only creates the run row; this component invokes the background
+ * function itself and then polls `recompute_runs` until the row leaves
+ * 'running'. The invocation moved here in session 18 because a function
+ * invoking another function over HTTP silently does nothing on this site — see
+ * lib/kick-background.ts for the measurements.
  */
 export function RecomputeButton({ weekStart, label = 'Recomputar snapshots', allWeeks }: Props) {
   const [busy, setBusy] = useState(false);
@@ -59,22 +81,39 @@ export function RecomputeButton({ weekStart, label = 'Recomputar snapshots', all
       body: JSON.stringify({ week_start: week }),
     });
 
-    let json: { ok?: boolean; run_id?: string; error?: string; message?: string } = {};
+    let json: {
+      ok?: boolean; run_id?: string; run_token?: string;
+      already_running?: boolean; error?: string; message?: string;
+    } = {};
     try { json = await res.json(); } catch { /* fall through to the check below */ }
 
     if (!res.ok || !json.run_id) {
       throw new Error(json.message ?? json.error ?? `no se pudo iniciar (HTTP ${res.status})`);
     }
 
-    const sb = createClient();
     const runId = json.run_id;
+
+    // A run handed back as already_running was started by someone else (or by
+    // another tab) and has already consumed its token — just poll it.
+    if (json.run_token) {
+      setMsg(`${prefix}iniciando…`);
+      try {
+        await kickBackground('recompute-background', { run_id: runId, run_token: json.run_token });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await abandonRun(runId, message);
+        throw new Error(message);
+      }
+    }
+
+    const sb = createClient();
     const startedAt = Date.now();
 
     for (;;) {
       if (cancelled.current) throw new Error('cancelado');
       await new Promise((r) => setTimeout(r, POLL_MS));
 
-      // Explicit column list — run_token must never reach the browser.
+      // Explicit column list — run_token must never come back out of the DB.
       const { data, error } = await sb
         .from('recompute_runs')
         .select('status, phase, error_text, snapshots_written, peers_written, kpis_processed, warnings')
@@ -86,7 +125,18 @@ export function RecomputeButton({ weekStart, label = 'Recomputar snapshots', all
 
       if (data.status === 'running') {
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        const phase = PHASE_LABEL[data.phase ?? ''] ?? 'trabajando';
+
+        // Still no phase means the function never claimed the run. That is a
+        // failed start, not slow work, and it says so instead of spinning.
+        if (!data.phase && Date.now() - startedAt > START_GRACE_MS) {
+          await abandonRun(runId, 'El proceso en segundo plano no arrancó (sin phase).');
+          throw new Error(
+            `el proceso en segundo plano no arrancó (${elapsed}s sin señal). ` +
+            'Revisa los logs de la función recompute-background en Netlify.'
+          );
+        }
+
+        const phase = PHASE_LABEL[data.phase ?? ''] ?? 'arrancando';
         setMsg(`${prefix}${phase}… ${elapsed}s`);
         if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
           throw new Error('sin respuesta después de 16 min');

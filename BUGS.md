@@ -673,3 +673,29 @@ en `null`. Los colores del heatmap de Por KPI leen esas columnas.
 
 Arreglado con `.range()`. **Las filas existentes necesitan backfill:**
 `npx tsx scripts/recompute-week.ts --all` (de la semana más vieja a la más nueva).
+
+## BUG-R3 — "Recomputar" se queda en `trabajando… 310s` para siempre — RESUELTO (sesión 18, 2026-09-18)
+
+**Qué pasó.** Subidos los archivos de la semana 2026-09-11, "Recomputar snapshots"
+se quedó en `trabajando… 310s` y siguió subiendo. Ni error ni resultado.
+
+**Causa raíz.** La función en segundo plano **nunca se invocó** — ni ésta ni la de
+chat, ninguna de las dos, desde el día que se desplegaron (logs de Netlify: cero
+invocaciones en 7 días). `/api/recompute` arrancaba el trabajo con
+`fetch(`${process.env.URL}/.netlify/functions/recompute-background`)` desde dentro
+del server handler de Next: esa llamada **responde 2xx y no invoca nada** en este
+sitio. La ruta daba el arranque por bueno, escribía el row en `recompute_runs` y
+el botón se quedaba esperando a alguien que nunca iba a llegar. El mismo POST
+hecho **desde el navegador** invoca la función al instante (202 en ~850 ms, con su
+entrada en el log) — o sea: el deploy, el bundle y el endpoint estaban bien.
+
+**Por qué decía `trabajando` y no otra cosa.** `PHASE_LABEL` sólo tiene `tenure`,
+`compute` y `done`; `trabajando` era el fallback de un row con `phase` en **null**,
+y `phase: 'tenure'` es la primera escritura de la función. El label era la prueba
+de que nada la había tocado.
+
+**Arreglo.** El navegador invoca la función (`lib/kick-background.ts`); las rutas
+sólo crean el row y devuelven el `run_token`. Además: un run que sigue en
+`phase: null` a los 45 s se declara arranque fallido y lo dice, en vez de girar
+16 minutos, y `/api/recompute/abandon` lo retira para que la semana no quede
+bloqueada. Detalle completo en `HANDOFF.md` §29.
