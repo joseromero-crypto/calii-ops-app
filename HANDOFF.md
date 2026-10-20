@@ -116,6 +116,20 @@ Driver roster — used to zero-fill drivers with no incidents in `extractInciden
 
 ---
 
+### ⚠️ New tables need explicit grants (Supabase change, Oct 2026)
+
+Since **2026-10-30**, Supabase no longer auto-grants Data API access to new tables in the `public` schema (existing tables kept their grants). Any table created after that date — via a migration, the SQL editor, or the dashboard — returns `permission denied` to supabase-js / PostgREST until it is granted explicitly. This also hits anything that rebuilds the schema from scratch (new project, preview branch, local `supabase db reset`). Add the grants in the **same** migration/script that creates the table:
+
+```sql
+grant select on public.your_table to anon;
+grant select, insert, update, delete on public.your_table to authenticated;
+grant select, insert, update, delete on public.your_table to service_role;
+```
+
+Grants only decide whether the API can reach the table; RLS policies still decide which rows. Trim the grants to what the table actually needs (e.g. drop `anon` for a server-only table). Ref: https://github.com/orgs/supabase/discussions/45329
+
+**This project today:** all tables in `supabase/migrations/` predate the change and none of those migrations contain grants — they relied on the old auto-grant. Production is fine, but every **new** `create table` migration must include grants (the service-role code in `lib/supabase-admin.ts` and the Netlify background functions needs the `service_role` grant too), and a from-scratch rebuild of the schema will come back without access unless a grants migration is added for the existing tables.
+
 ## 4. Data Flow in `/historicos`
 
 ```
