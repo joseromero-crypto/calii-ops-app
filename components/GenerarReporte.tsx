@@ -17,7 +17,7 @@ import { effectiveDirection } from '@/lib/kpi-direction';
 import { reportKpiLabel } from '@/lib/kpi-labels';
 import { tenureStatus, tenureCode, type TenureRow, type TenureStatus } from '@/lib/tenure';
 import { normalizeName } from '@/lib/normalize';
-import { checkAuxMinimos } from '@/lib/aux-minimos';
+import { checkAuxMinimos, type AuxConfig } from '@/lib/aux-minimos';
 import type { ReportBundle, IncidenteErroneo } from '@/app/api/generar-reporte/route';
 
 interface Props {
@@ -29,6 +29,8 @@ interface Props {
   faltantesSkuProducts:    FaltantesSku[];
   targets:                 KpiTarget[];
   ramps:                   RampTarget[];
+  /** /config "Mínimo de armado por auxiliar" rows (lib/aux-minimos.ts). */
+  auxConfig:               AuxConfig;
   tenureByNameArmador:     Map<string, TenureRow>;
   tenureByNameRepartidor:  Map<string, TenureRow>;
   currentWeek:             string;
@@ -146,6 +148,7 @@ function buildBundle(
   tenureByNameArmador:     Map<string, TenureRow>,
   tenureByNameRepartidor:  Map<string, TenureRow>,
   currentWeek:             string,
+  auxConfig:               AuxConfig,
 ): Omit<ReportBundle, 'incidentesErroneas'> {
   // Week label: "vie 2 may — jue 8 may"
   const startDate = new Date(currentWeek + 'T00:00:00');
@@ -450,7 +453,7 @@ function buildBundle(
     // Same pedidos_armados peer rows as numOrders above — one source. Empty
     // map = KPI not computed this week → null, so the report skips the
     // section instead of claiming every auxiliar armó 0.
-    auxMinimos: assemblerOrderCount.size > 0 ? checkAuxMinimos(hub.id, assemblerOrderCount) : null,
+    auxMinimos: assemblerOrderCount.size > 0 ? checkAuxMinimos(hub.id, assemblerOrderCount, auxConfig) : null,
   };
 }
 
@@ -553,6 +556,7 @@ export function GenerarReporte({
   faltantesSkuProducts,
   targets,
   ramps,
+  auxConfig,
   tenureByNameArmador,
   tenureByNameRepartidor,
   currentWeek,
@@ -573,7 +577,7 @@ export function GenerarReporte({
     try {
       // 1. Build the data bundle from existing props
       const bundle: ReportBundle = {
-        ...buildBundle(hub, kpis, snapshots, peers, mnaProducts, faltantesSkuProducts, targets, ramps, tenureByNameArmador, tenureByNameRepartidor, currentWeek),
+        ...buildBundle(hub, kpis, snapshots, peers, mnaProducts, faltantesSkuProducts, targets, ramps, tenureByNameArmador, tenureByNameRepartidor, currentWeek, auxConfig),
         incidentesErroneas: [],
       };
 

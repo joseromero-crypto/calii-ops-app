@@ -49,6 +49,7 @@
  * far fewer queries it still bounds the burst. It is not what fixed this.
  */
 import { createServerClient } from '@/lib/supabase-server';
+import type { AuxConfig, AuxMinimoDbRow, AuxHubSettingDbRow } from '@/lib/aux-minimos';
 import { lastCompletedWeekStart } from '@/lib/types';
 import type { KpiTarget, RampTarget } from './_shared';
 import { HistoricosClient } from './HistoricosClient';
@@ -186,6 +187,9 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
         limit(() => sb.from('uploads').select('app_id, week_start')
           .eq('status', 'validated')
           .in('app_id', ['desempeno_operadores', 'desempeno_repartidores'])),
+        // Mínimo de armado por auxiliar (/config) — tiny, report-only.
+        limit(() => sb.from('aux_minimos').select('position, scope_level, scope_key, minimo')),
+        limit(() => sb.from('aux_hub_settings').select('hub_id, tiene_recibo')),
       ])
     : null;
 
@@ -194,6 +198,10 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
   const tenureRes   = hubBatch ? hubBatch[1] : null;
   const rampsRes    = hubBatch ? hubBatch[2] : null;
   const rosterWeeks = hubBatch ? (hubBatch[3].data ?? []) : [];
+  const auxConfig: AuxConfig = {
+    minimos:     (hubBatch?.[4].data ?? []) as AuxMinimoDbRow[],
+    hubSettings: (hubBatch?.[5].data ?? []) as AuxHubSettingDbRow[],
+  };
 
   const weeksWithDataByRole: Record<TenureRole, Set<string>> = {
     armador: new Set(rosterWeeks.filter((u) => u.app_id === ROSTER_APP_BY_ROLE.armador).map((u) => u.week_start)),
@@ -316,6 +324,7 @@ export default async function HistoricosPage({ searchParams }: PageProps) {
       targets={(targetsRes.data ?? []) as KpiTarget[]}
       tenureRows={tenureRows}
       ramps={(rampsRes?.data ?? []) as RampTarget[]}
+      auxConfig={auxConfig}
       currentWeek={currentWeek}
       tab={tab}
       selectedKpi={searchParams.kpi}

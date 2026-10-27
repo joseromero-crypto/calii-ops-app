@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import type { Kpi, Hub, Snapshot, Peer, KpiTarget, RampTarget } from './_shared';
 import { weekEndLabel } from './_shared';
 import { buildTenureNameIndex, type TenureRow } from '@/lib/tenure';
+import type { AuxConfig } from '@/lib/aux-minimos';
 import { PorKpiTab } from './PorKpiTab';
 import { PorHubTab } from './PorHubTab';
 import { ComparativaTab } from './ComparativaTab';
@@ -22,6 +23,8 @@ interface Props {
   /** Derived tenure ledger, both roles combined — see lib/tenure.ts. */
   tenureRows: TenureRow[];
   ramps: RampTarget[];
+  /** Mínimo de armado por auxiliar rows (/config) — Generar reporte only. */
+  auxConfig: AuxConfig;
   currentWeek: string;
   tab: 'kpi' | 'hub' | 'cmp' | 'res';
   selectedKpi?: string;

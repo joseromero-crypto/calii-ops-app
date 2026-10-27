@@ -1,5 +1,7 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { KpiTargetsSection } from './KpiTargetsSection';
+import { AuxMinimosSection } from './AuxMinimosSection';
+import type { AuxMinimoDbRow, AuxHubSettingDbRow } from '@/lib/aux-minimos';
 import { RampTargetsSection, type RampTargetRow, type BadgedPersonRow } from './RampTargetsSection';
 import type { KpiTarget } from '../historicos/_shared';
 import { defaultComparator } from '@/lib/kpi-direction';
@@ -33,6 +35,7 @@ export default async function ConfigPage() {
   const [
     { data: apps }, { data: kpis }, { data: hubs }, { data: rules }, { data: scope },
     { data: targets }, { data: ramps }, { data: tenureRowsRaw }, { data: rosterUploads },
+    { data: auxMinimos }, { data: auxHubSettings },
   ] = await Promise.all([
     supabase.from('apps').select('id, name_es, scope, expected_files_per_week, active'),
     supabase.from('kpis').select('id, name_es, unit, direction, category, watched_globally, parent_kpi_id, display_order').order('display_order'),
@@ -44,6 +47,8 @@ export default async function ConfigPage() {
     // Modo Entrenamiento (session 14, slice 7) — supervision list source data.
     supabase.from('person_tenure').select('*'),
     supabase.from('uploads').select('app_id, week_start').eq('status', 'validated').in('app_id', ['desempeno_operadores', 'desempeno_repartidores']),
+    supabase.from('aux_minimos').select('position, scope_level, scope_key, minimo'),
+    supabase.from('aux_hub_settings').select('hub_id, tiene_recibo'),
   ]);
 
   const activeHubs = (hubs ?? []).filter((h) => h.active);
@@ -98,6 +103,12 @@ export default async function ConfigPage() {
         kpis={kpis ?? []}
         hubs={activeHubs}
         initialTargets={(targets ?? []) as KpiTarget[]}
+      />
+
+      <AuxMinimosSection
+        hubs={activeHubs}
+        initialMinimos={(auxMinimos ?? []) as AuxMinimoDbRow[]}
+        initialHubSettings={(auxHubSettings ?? []) as AuxHubSettingDbRow[]}
       />
 
       {tasaArmadoKpi && (

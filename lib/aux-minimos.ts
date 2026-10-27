@@ -1,7 +1,12 @@
 /**
  * Mínimo semanal de pedidos armados por puesto de auxiliar (+ coordinador).
  *
- * Source: José's "Armado auxiliares" sheet (2026-10-27). Weekly totals —
+ * Editable from /config (tables aux_minimos + aux_hub_settings, migration
+ * 20261027000001). Resolution per hub × puesto: hub row → global row → the
+ * code defaults below, which are ONLY a fallback for an empty/unreachable
+ * table — the migration seeds the same numbers so the DB is the live source.
+ *
+ * Defaults = José's "Armado auxiliares" sheet (2026-10-27). Weekly totals —
  * Domingo / Lunes rota windows roll up into one number per position. A
  * Sunday + Monday aux de inventarios is covered by the weekly 9 as-is
  * (sheet footnote: "con que arme los 9 pedidos del domingo es suficiente").
@@ -37,8 +42,32 @@ export const AUX_POSITION_ORDER: AuxPosition[] = [
   'lider_dia', 'lider_tarde', 'inventarios', 'calidad', 'recibo', 'coordinador',
 ];
 
+// ─── Config (DB rows) ────────────────────────────────────────────────────────
+
+export interface AuxMinimoDbRow {
+  position: AuxPosition;
+  scope_level: 'global' | 'hub';
+  scope_key: string | null;
+  minimo: number;
+}
+
+export interface AuxHubSettingDbRow {
+  hub_id: string;
+  tiene_recibo: boolean;
+}
+
+export interface AuxConfig {
+  minimos: AuxMinimoDbRow[];
+  hubSettings: AuxHubSettingDbRow[];
+}
+
+export const EMPTY_AUX_CONFIG: AuxConfig = { minimos: [], hubSettings: [] };
+
+
+// ─── Code fallbacks ──────────────────────────────────────────────────────────
+
 /** Weekly minimum, every hub unless overridden below. */
-const DEFAULT_MINIMO: Record<AuxPosition, number> = {
+export const DEFAULT_MINIMO: Record<AuxPosition, number> = {
   lider_dia:   5,
   lider_tarde: 5,
   calidad:     9,
@@ -56,14 +85,39 @@ const HUB_MINIMO_OVERRIDE: Partial<Record<string, Partial<Record<AuxPosition, nu
  * Hubs that staff a separate aux de recibo (5-aux hubs). Everywhere else the
  * receiving/FyV auxiliar IS the aux de calidad — OPS_CONTEXT.md §2.
  */
-const HUBS_WITH_RECIBO = new Set(['mh_zapopan', 'mh_condesa']);
+const DEFAULT_HUBS_WITH_RECIBO = new Set(['mh_zapopan', 'mh_condesa']);
 
-export function expectedPositions(hubId: string): AuxPosition[] {
-  return AUX_POSITION_ORDER.filter((p) => p !== 'recibo' || HUBS_WITH_RECIBO.has(hubId));
+// ─── Resolution ──────────────────────────────────────────────────────────────
+
+export function tieneRecibo(hubId: string, config: AuxConfig): boolean {
+  const row = config.hubSettings.find((h) => h.hub_id === hubId);
+  return row ? row.tiene_recibo : DEFAULT_HUBS_WITH_RECIBO.has(hubId);
 }
 
-export function auxMinimo(hubId: string, position: AuxPosition): number {
-  return HUB_MINIMO_OVERRIDE[hubId]?.[position] ?? DEFAULT_MINIMO[position];
+export function expectedPositions(hubId: string, config: AuxConfig): AuxPosition[] {
+  const recibo = tieneRecibo(hubId, config);
+  return AUX_POSITION_ORDER.filter((p) => p !== 'recibo' || recibo);
+}
+
+/** Global minimum: DB global row → code default. */
+export function globalMinimo(position: AuxPosition, config: AuxConfig): number {
+  const g = config.minimos.find((r) => r.position === position && r.scope_level === 'global');
+  return g ? Number(g.minimo) : DEFAULT_MINIMO[position];
+}
+
+/**
+ * Hub × puesto: DB hub row → DB global row → code hub override → code default.
+ * The code hub override only applies when the table has NO rows at all (DB
+ * unreachable / migration not run) — once a global row exists, a blank hub
+ * cell in /config means "use the global", exactly as it reads on screen.
+ */
+export function auxMinimo(hubId: string, position: AuxPosition, config: AuxConfig): number {
+  const h = config.minimos.find((r) => r.position === position && r.scope_level === 'hub' && r.scope_key === hubId);
+  if (h) return Number(h.minimo);
+  if (config.minimos.length === 0) {
+    return HUB_MINIMO_OVERRIDE[hubId]?.[position] ?? DEFAULT_MINIMO[position];
+  }
+  return globalMinimo(position, config);
 }
 
 // ─── Account name → position ─────────────────────────────────────────────────
@@ -119,22 +173,24 @@ export interface AuxMinimoRow {
 export function checkAuxMinimos(
   hubId: string,
   assembledByAccount: Map<string, number | null>,
+  config: AuxConfig,
 ): AuxMinimoRow[] {
+  const recibo = tieneRecibo(hubId, config);
   const byPos = new Map<AuxPosition, { armados: number; accounts: string[] }>();
   for (const [account, value] of assembledByAccount) {
     let pos = classifyAuxAccount(account);
     if (!pos) continue;
     // 4-aux hubs: the receiving auxiliar IS the aux de calidad, whatever the
     // account is called ("Auxiliar Recibo Contry" — OPS_CONTEXT.md §2).
-    if (pos === 'recibo' && !HUBS_WITH_RECIBO.has(hubId)) pos = 'calidad';
+    if (pos === 'recibo' && !recibo) pos = 'calidad';
     const e = byPos.get(pos) ?? { armados: 0, accounts: [] };
     e.armados += typeof value === 'number' && Number.isFinite(value) ? value : 0;
     e.accounts.push(account);
     byPos.set(pos, e);
   }
-  return expectedPositions(hubId).map((position) => {
+  return expectedPositions(hubId, config).map((position) => {
     const e = byPos.get(position) ?? { armados: 0, accounts: [] };
-    const minimo = auxMinimo(hubId, position);
+    const minimo = auxMinimo(hubId, position, config);
     return {
       position,
       label: AUX_POSITION_LABEL[position],

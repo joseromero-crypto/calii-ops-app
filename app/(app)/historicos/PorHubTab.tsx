@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState, useEffect, useRef } from 'react';
+import type { AuxConfig } from '@/lib/aux-minimos';
 import {
   LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -57,6 +58,7 @@ interface Props {
   roles: { id: string; name_es: string }[];
   targets: KpiTarget[];
   ramps: RampTarget[];
+  auxConfig: AuxConfig;
   tenureByNameArmador: Map<string, TenureRow>;
   tenureByNameRepartidor: Map<string, TenureRow>;
   currentWeek: string;
@@ -120,7 +122,7 @@ const KPI_META: Record<string, KpiMeta> = {
   discrepancia_mxn:                   { title: 'Discrepancia ($)',         unit: 'currency', direction: 'lower_is_better'  },
 };
 
-export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], targets = [], ramps = [], tenureByNameArmador, tenureByNameRepartidor, currentWeek, selectedHub }: Props) {
+export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], driverTrend = [], targets = [], ramps = [], auxConfig, tenureByNameArmador, tenureByNameRepartidor, currentWeek, selectedHub }: Props) {
   const [flippedTiles, setFlippedTiles] = useState<Set<string>>(new Set());
 
   // Tile coloring mode — defaults to the existing σ-vs-own-history behavior
@@ -358,6 +360,7 @@ export function PorHubTab({ kpis, hubs, snapshots, peers, assemblerTrend = [], d
               faltantesSkuProducts={faltantesSkuProducts}
               targets={targets}
               ramps={ramps}
+              auxConfig={auxConfig}
               tenureByNameArmador={tenureByNameArmador}
               tenureByNameRepartidor={tenureByNameRepartidor}
               currentWeek={currentWeek}
