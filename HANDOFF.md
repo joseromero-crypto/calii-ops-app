@@ -56,6 +56,10 @@ The main feature areas:
 | `app/(app)/config/KpiTargetsSection.tsx` | **Session 11.** "Metas / Targets" editor on `/config` — global target per KPI + expandable per-hub overrides, auto-save on blur. See §14. |
 | `app/api/kpi-targets/route.ts` | **Session 11.** GET/PUT/DELETE for `kpi_targets`. Delete-then-insert against the partial unique index (not a plain upsert) — see §14. |
 | `supabase/migrations/20260717000001_kpi_targets.sql` | **Session 11.** Creates the real `kpi_targets` table (replacing an old, unused, differently-shaped speculative one from the original registry schema) + seeds it from the constants that were hardcoded pre-session-11. |
+| `lib/aux-minimos.ts` | **Session 19.** Mínimo semanal de armado por puesto de auxiliar — account-name → puesto classifier, code fallback minimums, and the resolver (`auxMinimo` / `tieneRecibo` / `checkAuxMinimos`) shared by `/config` and the report. See §30. |
+| `app/(app)/config/AuxMinimosSection.tsx` | **Session 19.** "Mínimo de armado por auxiliar" grid on `/config` — puesto × (Global + hub), "Tiene aux de recibo" toggle per hub. See §30. |
+| `app/api/aux-minimos/route.ts` | **Session 19.** PUT/DELETE a minimum (delete-then-insert, like `/api/kpi-targets`), PATCH a hub's `tiene_recibo`. |
+| `supabase/migrations/20261027000001_aux_minimos.sql` | **Session 19.** `aux_minimos` + `aux_hub_settings`, explicit grants, seeded from José's sheet. |
 | `CONFIGURABLE_KPI_TARGETS.md` | Feature spec for the configurable KPI targets work (session 11) — design rationale, precedence rules, unit-conversion contract. Read this before touching targets code. |
 | `PLAN_RESUMEN_OPERATIVO.md` | **Session 12 build doc — shipped 2026-07-31.** Original build instructions for the "Resumen operativo" tab. The feature is live; treat this as historical rationale (the weighting math, the footgun table), not a task list. See §21 for what shipped and how it diverged. |
 | `app/(app)/historicos/ResumenTab.tsx` | **Session 12.** "📦 Resumen" tab — Total/city/hub expandable tree over the 8 `resumen_operativo` KPIs, client-side Total-row override for count/currency (§21), upload-completeness banner. |
@@ -698,6 +702,7 @@ The session name changes each conversation — check the system prompt for the c
 ## 16. Commits
 
 ```
+(session 19) feat: weekly armado minimum per auxiliar position in Generar reporte + editable on /config (aux_minimos, aux_hub_settings) — see §30
 (session 14) feat: Modo Entrenamiento — person_tenure + kpi_ramp_targets tables (+ RLS follow-up fixes), lib/tenure.ts derivation/status/target-resolution, (Sx)/(RI) badges across PorHubTab, report training-block wiring, /config ramp editor + supervision list + manual overrides — see §23
 (session 13) feat: upload identity safety net — hub-column city check + roster-overlap-vs-history check (lib/validate-identity.ts), override via force_identity=true logged to audit_log, UploadDropzone override/cancel UI — see §22
 (session 12) feat: Resumen operativo tab — filter-only commit, migrations (currency_avg unit, resumen_operativo app/columns/8 kpis), extractResumenOperativoValues, ResumenTab tree + Total-row override, tab wiring; follow-up: ingresos_hub switched to delivered orders, 3 WoW trend charts (Total/por ciudad/por hub) — see §21
@@ -1332,3 +1337,31 @@ The browser invokes the background function — the path that was measured worki
 ### Note for whoever reads the logs next
 
 `refreshTenureLedger` shows up in the **Next.js Server Handler** logs on upload days with durations of 32.5 s and 37.2 s — over the 26 s wall clock §27/§28 describe, and completing. Either the ceiling is not what those sections assume, or it does not apply to that handler. Worth pinning down before the next timing decision is made on the strength of that number.
+
+---
+
+## 30. Mínimo de armado por auxiliar (session 19, 2026-10-27)
+
+**Why.** Every auxiliar, líder de turno and coordinador is expected to assemble a minimum number of orders per week (José's sheet, 2026-10-27). The report now nudges coordinators weekly when a position falls short.
+
+**What shipped.**
+
+- **Report:** new "Armado auxiliares" block in the Generar reporte Slack text — one line per position below its minimum (`- Aux. calidad: 2 de 9 pedidos`, or `sin pedidos armados registrados (mínimo 9)` when no account for that position appeared that week). Omitted when every position meets; skipped entirely when `pedidos_armados` isn't computed for the week, so it never reports everyone at 0. Lines are pre-formatted in `buildTextBundle`; Haiku only copies them.
+- **/config:** "Mínimo de armado por auxiliar" grid, below Metas / Targets. Blank hub cell = global; blank global = code default.
+
+**Minimums (seed = sheet).** Pedidos armados por semana: Líder turno día 5, Líder turno tarde 5, Aux. inventarios 9 (**Contry 18** — 6–10am Monday), Aux. calidad 9, Aux. recibo 9, Coordinador 5. A Sunday + Monday aux de inventarios is covered by the weekly 9 (sheet footnote).
+
+**Data source — one source.** Counts are the `pedidos_armados` within-hub peer rows (`desempeno_operadores.num_assembled` per assembler account), the same rows that feed the report's `[N pedidos]` context. Never re-read `upload_rows` for this.
+
+**Account name → puesto.** Hubs name their role accounts themselves, so `classifyAuxAccount` matches role words only; the hub always comes from `geofence`. A gate (`auxiliar|aux|líder|coordinad|turno|matutino|vespertino`) runs first so regular armadores (Lidia, Díaz, a surname "Calidad") are never classified. Rule order matters: coordinador → tarde/vespertino → matutino/día → calidad (so "recepción y calidad" = calidad) → recibo/recepción → inventari → bare "turno"/"líder" = día. Several accounts on one puesto are summed.
+
+**Recibo.** Only hubs with `tiene_recibo` (seed: Zapopan, Condesa — the 5-aux hubs, OPS_CONTEXT.md §2) are checked for Aux. recibo. Elsewhere a recibo-named account counts toward Aux. calidad (e.g. `Auxiliar Recibo Contry`).
+
+**Resolution.** Hub row → global row → code default. The code per-hub override (Contry 18) only applies when the table has no rows at all; once global rows exist, a blank hub cell means "use the global", exactly as the grid shows it. `/config` placeholders use the same resolver as the report.
+
+**Tables.** `aux_minimos` (position, scope_level global|hub, scope_key, minimo; partial unique indexes — NULL-in-UNIQUE, same as `kpi_targets`) and `aux_hub_settings` (hub_id pk, tiene_recibo). RLS authenticated read; writes via service role in `/api/aux-minimos`. Explicit grants included (§3 note). **Run the migration once in the Supabase SQL editor before deploying** — without it the report silently falls back to the code defaults and `/config` saves fail.
+
+**Known at handoff.**
+- Generar reporte failed on localhost during José's check (2026-10-27); the `/config` grid loaded fine. Cause not yet diagnosed — check the `npm run dev` terminal for the `[generar-reporte] error:` line. `ANTHROPIC_API_KEY` is present in `.env.local`; the Haiku id in `lib/anthropic.ts` (`claude-haiku-4-5-20251001`) is worth verifying against `GET /v1/models`.
+- From the June–August census: Zapopan's Recepción account has had no rows since 06-19, Condesa's Calidad/Inventarios accounts sat at 0 from 08-07, so those will show up in the report until fixed on the ground.
+
