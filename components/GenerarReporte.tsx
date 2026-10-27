@@ -17,6 +17,7 @@ import { effectiveDirection } from '@/lib/kpi-direction';
 import { reportKpiLabel } from '@/lib/kpi-labels';
 import { tenureStatus, tenureCode, type TenureRow, type TenureStatus } from '@/lib/tenure';
 import { normalizeName } from '@/lib/normalize';
+import { checkAuxMinimos } from '@/lib/aux-minimos';
 import type { ReportBundle, IncidenteErroneo } from '@/app/api/generar-reporte/route';
 
 interface Props {
@@ -446,6 +447,10 @@ function buildBundle(
     repartidoresPorKpi,
     mnaProductos,
     faltantesSkus,
+    // Same pedidos_armados peer rows as numOrders above — one source. Empty
+    // map = KPI not computed this week → null, so the report skips the
+    // section instead of claiming every auxiliar armó 0.
+    auxMinimos: assemblerOrderCount.size > 0 ? checkAuxMinimos(hub.id, assemblerOrderCount) : null,
   };
 }
 

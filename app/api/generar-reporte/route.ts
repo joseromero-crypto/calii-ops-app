@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { anthropic, MODELS } from '@/lib/anthropic';
+import type { AuxMinimoRow } from '@/lib/aux-minimos';
 
 export const runtime   = 'nodejs';
 export const dynamic   = 'force-dynamic';
@@ -69,6 +70,12 @@ export interface ReportBundle {
   incidentesErroneas: IncidenteErroneo[];
   mnaProductos: { producto: string; amount: number; pct: number; category: string }[];
   faltantesSkus:  { producto: string; count: number; category: string }[];
+  /**
+   * Mínimo semanal de armado por puesto de auxiliar (lib/aux-minimos.ts).
+   * null = pedidos_armados not computed for this week — section is skipped
+   * rather than reporting every puesto at 0.
+   */
+  auxMinimos?: AuxMinimoRow[] | null;
 }
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -129,6 +136,12 @@ Luego un bullet por armador (la etiqueta de semana, si la trae, va antes del par
 "- Nombre (S4) (X.X%, Xx el promedio)"
 
 --- FIN SECCIÓN ARMADO ---
+
+--- SECCIÓN ARMADO AUXILIARES (omitir sección completa si el bundle dice "(todos cumplen esta semana)" o "(sin datos esta semana)") ---
+Escribir la cabecera: "Armado auxiliares"
+Luego esta línea exacta: "Puestos por debajo de su mínimo semanal de pedidos armados:"
+Luego copiar cada item de la sección ARMADO AUXILIARES del bundle tal cual, palabra por palabra. No agregar puestos que no vengan en la lista, no recalcular números, no agregar nombres de personas.
+--- FIN SECCIÓN ARMADO AUXILIARES ---
 
 --- SECCIÓN REPARTO (omitir sección completa si no hay nada que reportar) ---
 Escribir la cabecera: "Reparto"
@@ -397,6 +410,27 @@ function buildTextBundle(b: ReportBundle): string {
       lines.push('');
     }
   }
+
+  // ── Aux mínimos (lib/aux-minimos.ts) ─────────────────────────────────────
+  // Lines are fully pre-formatted: Haiku copies them, never derives them.
+  lines.push('=== ARMADO AUXILIARES (mínimo semanal por puesto) ===');
+  if (!b.auxMinimos) {
+    lines.push('(sin datos esta semana)');
+  } else {
+    const below = b.auxMinimos.filter((r) => !r.cumple);
+    if (below.length === 0) {
+      lines.push('(todos cumplen esta semana)');
+    } else {
+      for (const r of below) {
+        lines.push(
+          r.accounts.length === 0
+            ? `- ${r.label}: sin pedidos armados registrados (mínimo ${r.minimo})`
+            : `- ${r.label}: ${fmtBare(r.armados)} de ${r.minimo} pedidos`,
+        );
+      }
+    }
+  }
+  lines.push('');
 
   // ── Driver data ──────────────────────────────────────────────────────────
   lines.push('=== REPARTIDORES (datos por KPI — solo mencionar si hay flaggeados) ===');
